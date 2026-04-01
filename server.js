@@ -956,6 +956,29 @@ function minutesBetween(earlierIso, laterIso = new Date().toISOString()) {
   return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
 }
 
+function getTotalBreakMinutesSoFar(events) {
+  let total = 0;
+  let openBreak = null;
+
+  for (const ev of events || []) {
+    if (ev.action === "break") {
+      openBreak = ev;
+      continue;
+    }
+
+    if (ev.action === "back" && openBreak) {
+      total += minutesBetween(openBreak.created_at, ev.created_at);
+      openBreak = null;
+    }
+  }
+
+  if (openBreak) {
+    total += minutesBetween(openBreak.created_at, new Date().toISOString());
+  }
+
+  return total;
+}
+
 function formatDurationMinutes(totalMinutes) {
   const mins = Math.max(0, Number(totalMinutes || 0));
   const hours = Math.floor(mins / 60);
@@ -1102,12 +1125,6 @@ async function handleMyTasks(res, user) {
   const suffix = data.length > 8 ? `\n...and ${data.length - 8} more.` : "";
 
   return sendTwiml(res, `Your open tasks:\n${lines.join("\n")}${suffix}`);
-}
-
-function canActOnTarget({ senderUser, targetUser }) {
-  if (!senderUser || !targetUser) return false;
-  if (senderUser.id === targetUser.id) return true;
-  return isManagerOrAdmin(senderUser);
 }
 
 async function handleShowTask(res, user, taskId) {
@@ -1491,6 +1508,7 @@ async function handleOffDayForOther(res, actingUser, offCommand) {
   if (!isManagerOrAdmin(actingUser)) {
     return sendTwiml(res, "You are not allowed to mark day off for others.");
   }
+
   const targetUser = await findUniqueUserByName(offCommand.target_name);
 
   if (!targetUser) {
@@ -2091,7 +2109,10 @@ async function handleNowSummary(res, actingUser) {
 
     const workingNow = [];
     const onBreakNow = [];
+    const breakOverdue = [];
+    const plannedLate = [];
     const onLeaveToday = plannedOff.map((x) => x.users?.name || "Unknown");
+
     const loggedOutToday = [];
     const noUpdateToday = [];
 
@@ -2103,23 +2124,53 @@ async function handleNowSummary(res, actingUser) {
 
       if (!latest) {
         const lateInfo = lateByUser.get(user.id);
+
         if (lateInfo) {
-          noUpdateToday.push(
-            `${user.name} (late till ${formatTimeOnly(lateInfo.expected_login_at)})`,
+          plannedLate.push(
+            `${user.name} (till ${formatTimeOnly(lateInfo.expected_login_at)})`,
           );
         } else {
           noUpdateToday.push(user.name);
         }
+
         continue;
       }
 
       if (latest.action === "break") {
-        onBreakNow.push(user.name);
+        const breakTime = formatTimeOnly(latest.created_at);
+        const expectedMin = latest.expected_duration_min || null;
+        const totalBreakMinSoFar = getTotalBreakMinutesSoFar(userEvents);
+        const breakAgeMin = minutesBetween(latest.created_at);
+
+        let label = `${user.name} (since ${breakTime})`;
+
+        if (expectedMin) {
+          label += ` | expected ${expectedMin}m`;
+        }
+
+        label += ` | total break today ${totalBreakMinSoFar}m`;
+
+        onBreakNow.push(label);
+
+        if (expectedMin && breakAgeMin > expectedMin) {
+          breakOverdue.push(
+            `${user.name} (away ${breakAgeMin}m, expected ${expectedMin}m)`,
+          );
+        }
+
         continue;
       }
 
       if (latest.action === "logout") {
-        loggedOutToday.push(user.name);
+        const time = formatTimeOnly(latest.created_at);
+
+        let label = `${user.name} (${time})`;
+
+        if (latest.reason) {
+          label += ` - ${latest.reason}`;
+        }
+
+        loggedOutToday.push(label);
         continue;
       }
 
@@ -2133,14 +2184,37 @@ async function handleNowSummary(res, actingUser) {
 
     const lines = [
       "📋 Now summary",
-      `Total team: ${users.length} | Working: ${workingNow.length} | Break: ${onBreakNow.length} | Leave: ${onLeaveToday.length} | Logged out: ${loggedOutToday.length} | No update: ${noUpdateToday.length}`,
+
+      `Total team: ${users.length} | Working: ${workingNow.length} | Break: ${onBreakNow.length} | Planned late: ${plannedLate.length} | Leave: ${onLeaveToday.length} | Logged out: ${loggedOutToday.length} | No update: ${noUpdateToday.length}`,
+
       "",
-      `✅ Working: ${workingNow.length ? workingNow.join(", ") : "None"}`,
-      `☕ Break: ${onBreakNow.length ? onBreakNow.join(", ") : "None"}`,
-      `🌴 Leave: ${onLeaveToday.length ? onLeaveToday.join(", ") : "None"}`,
-      `🏁 Logged out: ${loggedOutToday.length ? loggedOutToday.join(", ") : "None"}`,
-      `❓ No update: ${noUpdateToday.length ? noUpdateToday.join(", ") : "None"}`,
+
+      `✅ Working:\n${workingNow.length ? workingNow.join("\n") : "None"}`,
+
+      "",
+
+      `☕ On break:\n${onBreakNow.length ? onBreakNow.join("\n") : "None"}`,
+
+      "",
+
+      `🕒 Planned late:\n${plannedLate.length ? plannedLate.join("\n") : "None"}`,
+
+      "",
+
+      `🌴 On leave today:\n${onLeaveToday.length ? onLeaveToday.join("\n") : "None"}`,
+
+      "",
+
+      `🏁 Logged out today:\n${loggedOutToday.length ? loggedOutToday.join("\n") : "None"}`,
+
+      "",
+
+      `❓ No update:\n${noUpdateToday.length ? noUpdateToday.join("\n") : "None"}`,
     ];
+
+    if (breakOverdue.length) {
+      lines.push(`⚠ Break overdue: \n${breakOverdue.join("\n")}`);
+    }
 
     return sendTwiml(res, lines.join("\n"));
   } catch (error) {
@@ -2298,7 +2372,7 @@ async function handleHelp(res, user) {
     "break 15 personal issue",
     "back",
     "logout",
-    "logout early due to family concern",
+    "logout family concern",
     "late 11:00 AM",
     "",
     "Tasks",
