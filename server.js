@@ -42,6 +42,12 @@ const APP_TIMEZONE_OFFSET = "+05:30";
 const DEFAULT_SHIFT_START_TEXT = "10:30 AM";
 const LATE_APPROVAL_NOTICE_HOURS = 3;
 
+// Attendance day settings
+const ATTENDANCE_DAY_START_HOUR = 6; // 6:00 AM IST
+const LONG_SHIFT_THRESHOLD_MIN = 10 * 60; // 10 hours
+const LONG_BREAK_THRESHOLD_MIN = 2 * 60; // 2 hours
+const HALF_DAY_THRESHOLD_MIN = 4 * 60; // optional future use
+
 function normalizeText(text) {
   return String(text || "")
     .trim()
@@ -1027,13 +1033,13 @@ async function getLatestBreakEvent(userId) {
   return data || null;
 }
 
-async function getTodayAttendanceEventsForAllUsers() {
-  const { startUtc, endUtc } = getUtcRangeForTodayInTimeZone(APP_TIMEZONE);
+async function getAttendanceEventsForAttendanceDay(attendanceDateString) {
+  const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
 
   const { data, error } = await supabase
     .from("attendance_events")
     .select(
-      "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
+      "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note, acted_by_phone, target_phone",
     )
     .gte("created_at", startUtc)
     .lt("created_at", endUtc)
@@ -1044,6 +1050,11 @@ async function getTodayAttendanceEventsForAllUsers() {
   }
 
   return data || [];
+}
+
+async function getTodayAttendanceEventsForAllUsers() {
+  const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
+  return getAttendanceEventsForAttendanceDay(attendanceDate);
 }
 
 function computeWorkedMinutesFromEvents(events) {
@@ -1069,6 +1080,104 @@ function computeWorkedMinutesFromEvents(events) {
   }
 
   return total;
+}
+
+function getLastLogoutEvent(events) {
+  let lastLogout = null;
+  for (const ev of events || []) {
+    if (ev.action === "logout") {
+      lastLogout = ev;
+    }
+  }
+  return lastLogout;
+}
+
+function getAttendanceSummaryFromEvents(events, options = {}) {
+  const shiftStartIso = options.shiftStartIso || getShiftStartIsoForToday();
+
+  let workedMinutes = 0;
+  let breakMinutes = 0;
+  let workStart = null;
+  let openBreak = null;
+  let longestBreakMin = 0;
+  let breakCount = 0;
+
+  for (const ev of events || []) {
+    if (ev.action === "login" || ev.action === "back") {
+      if (!workStart) {
+        workStart = ev.created_at;
+      }
+      if (ev.action === "back" && openBreak) {
+        const oneBreak = minutesBetween(openBreak.created_at, ev.created_at);
+        breakMinutes += oneBreak;
+        if (oneBreak > longestBreakMin) longestBreakMin = oneBreak;
+        openBreak = null;
+      }
+      continue;
+    }
+
+    if (ev.action === "break") {
+      if (workStart) {
+        workedMinutes += minutesBetween(workStart, ev.created_at);
+        workStart = null;
+      }
+      openBreak = ev;
+      breakCount += 1;
+      continue;
+    }
+
+    if (ev.action === "logout") {
+      if (workStart) {
+        workedMinutes += minutesBetween(workStart, ev.created_at);
+        workStart = null;
+      }
+      if (openBreak) {
+        const oneBreak = minutesBetween(openBreak.created_at, ev.created_at);
+        breakMinutes += oneBreak;
+        if (oneBreak > longestBreakMin) longestBreakMin = oneBreak;
+        openBreak = null;
+      }
+    }
+  }
+
+  if (workStart) {
+    workedMinutes += minutesBetween(workStart);
+  }
+
+  if (openBreak) {
+    const oneBreak = minutesBetween(openBreak.created_at);
+    breakMinutes += oneBreak;
+    if (oneBreak > longestBreakMin) longestBreakMin = oneBreak;
+  }
+
+  const firstLogin = getFirstLoginEvent(events);
+  const lastLogout = getLastLogoutEvent(events);
+  const latest = events?.length ? events[events.length - 1] : null;
+
+  const lateMinutes = firstLogin
+    ? Math.max(
+        0,
+        Math.round(
+          (new Date(firstLogin.created_at) - new Date(shiftStartIso)) / 60000,
+        ),
+      )
+    : 0;
+
+  return {
+    firstLogin,
+    lastLogout,
+    latest,
+    workedMinutes,
+    breakMinutes,
+    breakCount,
+    longestBreakMin,
+    currentStatus: latest?.action || "no_update",
+    lateMinutes,
+    longShiftFlag: workedMinutes > LONG_SHIFT_THRESHOLD_MIN,
+    longBreakFlag: longestBreakMin >= LONG_BREAK_THRESHOLD_MIN,
+    possibleHalfDay:
+      workedMinutes > 0 && workedMinutes < HALF_DAY_THRESHOLD_MIN,
+  };
 }
 
 async function logIncomingMessage(user, reqBody, body, from) {
@@ -1101,6 +1210,49 @@ async function logIncomingMessage(user, reqBody, body, from) {
 
   console.log("Message saved to Supabase");
   return { duplicate: false, error: null };
+}
+
+async function handleEmployeeSummary(res, actingUser, command) {
+  if (!isManagerOrAdmin(actingUser)) {
+    return sendTwiml(res, "You are not allowed to view employee summary.");
+  }
+
+  const targetUser = await findUniqueUserByName(command.target_name);
+
+  if (!targetUser) {
+    return sendTwiml(
+      res,
+      `I could not uniquely find an active user named "${command.target_name}".`,
+    );
+  }
+
+  try {
+    const currentEvent = await getLatestAttendanceEvent(targetUser.id);
+    const monthly = await getEmployeeMonthlyAttendanceSummary(targetUser.id);
+
+    const lines = [
+      `📊 Employee summary: ${targetUser.name}`,
+      "",
+      `Present days this month: ${monthly.presentDays}`,
+      `Leave days this month: ${monthly.leaveDays}`,
+      `Late joins this month: ${monthly.lateJoins}`,
+      `Approved late: ${monthly.approvedLate}`,
+      `Late not approved: ${monthly.unapprovedLate}`,
+      `Late without prior info: ${monthly.uninformedLate}`,
+      `Average login time/day: ${monthly.avgLoginTimeText}`,
+      `Average break time/day: ${formatDurationMinutes(monthly.avgBreakMin)}`,
+      `Current status: ${currentEvent?.action || "No update"}`,
+      `Long shift flags: ${monthly.longShiftCount}`,
+      `Long break flags: ${monthly.longBreakCount}`,
+      `Possible half days: ${monthly.possibleHalfDays}`,
+      `Manager corrections: ${monthly.managerCorrectionCount}`,
+    ];
+
+    return sendTwiml(res, lines.join("\n"));
+  } catch (error) {
+    console.error("Employee summary error:", error);
+    return sendTwiml(res, "Failed to fetch employee summary.");
+  }
 }
 
 async function handleMyTasks(res, user) {
@@ -1295,8 +1447,8 @@ async function handleWhoAmI(res, user) {
 
 async function handleStatus(res, user) {
   try {
-    const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
-    const { startUtc, endUtc } = getUtcRangeForTodayInTimeZone(APP_TIMEZONE);
+    const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
+    const { startUtc, endUtc } = getCurrentAttendanceDayRange();
 
     const [latestEvent, eventsResult, lateRows] = await Promise.all([
       getLatestAttendanceEvent(user.id),
@@ -1309,7 +1461,7 @@ async function handleStatus(res, user) {
         .gte("created_at", startUtc)
         .lt("created_at", endUtc)
         .order("created_at", { ascending: true }),
-      getLateArrivalRowsForDate(today),
+      getLateArrivalRowsForDate(attendanceDate),
     ]);
 
     if (eventsResult.error) {
@@ -1318,30 +1470,14 @@ async function handleStatus(res, user) {
     }
 
     const userEvents = eventsResult.data || [];
-    const workedMinutes = computeWorkedMinutesFromEvents(userEvents);
-
-    let totalBreakMinutes = 0;
-    for (let i = 0; i < userEvents.length; i += 1) {
-      const ev = userEvents[i];
-      if (ev.action !== "break") continue;
-
-      const nextEnd = userEvents
-        .slice(i + 1)
-        .find((x) => x.action === "back" || x.action === "logout");
-
-      if (nextEnd) {
-        totalBreakMinutes += minutesBetween(ev.created_at, nextEnd.created_at);
-      } else {
-        totalBreakMinutes += minutesBetween(ev.created_at);
-      }
-    }
+    const summary = getAttendanceSummaryFromEvents(userEvents);
 
     const myLate = (lateRows || []).find((x) => x.user_id === user.id) || null;
-    const firstLogin = getFirstLoginEvent(userEvents);
+    const firstLogin = summary.firstLogin;
 
     const lines = [
       `👤 ${user.name}`,
-      `Status: ${latestEvent?.action || "No update"}`,
+      `Status: ${summary.currentStatus === "no_update" ? "No update" : summary.currentStatus}`,
     ];
 
     if (latestEvent?.created_at) {
@@ -1367,10 +1503,22 @@ async function handleStatus(res, user) {
       );
     }
 
+    if (summary.longShiftFlag) {
+      lines.push(
+        `⚠ Long shift flag: ${formatDurationMinutes(summary.workedMinutes)}`,
+      );
+    }
+
+    if (summary.longBreakFlag) {
+      lines.push(
+        `⚠ Long break flag: longest break ${formatDurationMinutes(summary.longestBreakMin)}`,
+      );
+    }
+
     lines.push("");
     lines.push("Today:");
-    lines.push(`Worked: ${formatDurationMinutes(workedMinutes)}`);
-    lines.push(`Break: ${formatDurationMinutes(totalBreakMinutes)}`);
+    lines.push(`Worked: ${formatDurationMinutes(summary.workedMinutes)}`);
+    lines.push(`Break: ${formatDurationMinutes(summary.breakMinutes)}`);
 
     return sendTwiml(res, lines.join("\n"));
   } catch (error) {
@@ -1633,7 +1781,7 @@ async function handleSelfAttendance(res, user, attendanceCommand) {
 
   if (attendanceCommand.action === "login") {
     try {
-      const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
+      const today = getAttendanceDayDateStringFromDate(new Date());
       const plannedOffRows = await getPlannedOffRowsForDate(today);
       const otherNames = (plannedOffRows || [])
         .filter((x) => x.user_id !== user.id)
@@ -1756,7 +1904,7 @@ async function upsertLateArrival(
   note = null,
   createdByUserId = null,
 ) {
-  const todayDb = getTodayDateStringInTimeZone(APP_TIMEZONE);
+  const todayDb = getAttendanceDayDateStringFromDate(new Date());
   const shiftStartIso = getShiftStartIsoForToday();
   const informedAtIso = new Date().toISOString();
   const approved = isLateApproved(informedAtIso, shiftStartIso);
@@ -2078,7 +2226,7 @@ async function handleWhoIsOffToday(res, actingUser) {
   }
 
   try {
-    const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
+    const today = getAttendanceDayDateStringFromDate(new Date());
     const plannedOffRows = await getPlannedOffRowsForDate(today);
     const plannedOff = plannedOffRows || [];
 
@@ -2101,7 +2249,7 @@ async function handleNowSummary(res, actingUser) {
   }
 
   try {
-    const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
+    const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
 
     const [usersResult, events, plannedOffRows, lateRows] = await Promise.all([
       supabase
@@ -2110,8 +2258,8 @@ async function handleNowSummary(res, actingUser) {
         .eq("is_active", true)
         .order("name", { ascending: true }),
       getTodayAttendanceEventsForAllUsers(),
-      getPlannedOffRowsForDate(today),
-      getLateArrivalRowsForDate(today),
+      getPlannedOffRowsForDate(attendanceDate),
+      getLateArrivalRowsForDate(attendanceDate),
     ]);
 
     if (usersResult.error) {
@@ -2142,15 +2290,22 @@ async function handleNowSummary(res, actingUser) {
     const breakOverdue = [];
     const plannedLate = [];
     const onLeaveToday = plannedOff.map((x) => x.users?.name || "Unknown");
-
     const loggedOutToday = [];
     const noUpdateToday = [];
+    const longShiftUsers = [];
 
     for (const user of users) {
       if (plannedOffUserIds.has(user.id)) continue;
 
       const userEvents = eventsByUser.get(user.id) || [];
       const latest = userEvents[userEvents.length - 1] || null;
+      const summary = getAttendanceSummaryFromEvents(userEvents);
+
+      if (summary.longShiftFlag) {
+        longShiftUsers.push(
+          `${user.name} (${formatDurationMinutes(summary.workedMinutes)})`,
+        );
+      }
 
       if (!latest) {
         const lateInfo = lateByUser.get(user.id);
@@ -2205,7 +2360,9 @@ async function handleNowSummary(res, actingUser) {
       }
 
       if (latest.action === "login" || latest.action === "back") {
-        workingNow.push(user.name);
+        workingNow.push(
+          `${user.name} (${formatDurationMinutes(summary.workedMinutes)})`,
+        );
         continue;
       }
 
@@ -2214,36 +2371,29 @@ async function handleNowSummary(res, actingUser) {
 
     const lines = [
       "📋 Now summary",
-
       `Total team: ${users.length} | Working: ${workingNow.length} | Break: ${onBreakNow.length} | Planned late: ${plannedLate.length} | Leave: ${onLeaveToday.length} | Logged out: ${loggedOutToday.length} | No update: ${noUpdateToday.length}`,
-
       "",
-
       `✅ Working:\n${workingNow.length ? workingNow.join("\n") : "None"}`,
-
       "",
-
       `☕ On break:\n${onBreakNow.length ? onBreakNow.join("\n") : "None"}`,
-
       "",
-
       `🕒 Planned late:\n${plannedLate.length ? plannedLate.join("\n") : "None"}`,
-
       "",
-
       `🌴 On leave today:\n${onLeaveToday.length ? onLeaveToday.join("\n") : "None"}`,
-
       "",
-
       `🏁 Logged out today:\n${loggedOutToday.length ? loggedOutToday.join("\n") : "None"}`,
-
       "",
-
       `❓ No update:\n${noUpdateToday.length ? noUpdateToday.join("\n") : "None"}`,
     ];
 
     if (breakOverdue.length) {
-      lines.push(`⚠ Break overdue: \n${breakOverdue.join("\n")}`);
+      lines.push("");
+      lines.push(`⚠ Break overdue:\n${breakOverdue.join("\n")}`);
+    }
+
+    if (longShiftUsers.length) {
+      lines.push("");
+      lines.push(`⚠ Long shift:\n${longShiftUsers.join("\n")}`);
     }
 
     return sendTwiml(res, lines.join("\n"));
@@ -2259,7 +2409,7 @@ async function handleSummaryToday(res, actingUser) {
   }
 
   try {
-    const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
+    const today = getAttendanceDayDateStringFromDate(new Date());
     const shiftStartIso = getShiftStartIsoForToday();
 
     const [usersResult, events, plannedOffRows, lateRows] = await Promise.all([
@@ -2449,6 +2599,7 @@ async function handleHelp(res, user) {
     "who is on break",
     "now",
     "summary today",
+    "employee summary Kavita",
     "",
     "Create task example",
     "task Aj high test dashboard by tomorrow",
@@ -2581,6 +2732,62 @@ function getPartsInTimeZone(date = new Date(), timeZone = APP_TIMEZONE) {
   };
 }
 
+function getAttendanceDayDateStringFromDate(date = new Date()) {
+  const parts = getPartsInTimeZone(date, APP_TIMEZONE);
+
+  let attendanceDate = formatDateForDbFromParts(
+    parts.year,
+    parts.month,
+    parts.day,
+  );
+
+  if (parts.hour < ATTENDANCE_DAY_START_HOUR) {
+    attendanceDate = addDaysToDateString(attendanceDate, -1);
+  }
+
+  return attendanceDate;
+}
+
+function getAttendanceDayUtcRange(attendanceDateString) {
+  const nextDate = addDaysToDateString(attendanceDateString, 1);
+
+  const startUtc = new Date(
+    `${attendanceDateString}T${String(ATTENDANCE_DAY_START_HOUR).padStart(2, "0")}:00:00${APP_TIMEZONE_OFFSET}`,
+  ).toISOString();
+
+  const endUtc = new Date(
+    `${nextDate}T${String(ATTENDANCE_DAY_START_HOUR).padStart(2, "0")}:00:00${APP_TIMEZONE_OFFSET}`,
+  ).toISOString();
+
+  return {
+    startUtc,
+    endUtc,
+    attendanceDate: attendanceDateString,
+  };
+}
+
+function getCurrentAttendanceDayRange() {
+  const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
+  return getAttendanceDayUtcRange(attendanceDate);
+}
+
+function parseEmployeeSummaryCommand(text) {
+  const raw = String(text || "").trim();
+  const match = raw.match(/^employee\s+summary\s+(.+)$/i);
+  if (!match) return null;
+
+  return {
+    target_name: match[1].trim(),
+  };
+}
+
+function parseIsoToAttendanceDateString(isoString) {
+  if (!isoString) return null;
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return null;
+  return getAttendanceDayDateStringFromDate(d);
+}
+
 function formatDateForDbFromParts(year, month, day) {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
@@ -2604,6 +2811,23 @@ function addDaysToDateString(dateString, days) {
     base.getUTCMonth() + 1,
     base.getUTCDate(),
   );
+}
+
+function getMonthDateRangeForTimeZone(
+  date = new Date(),
+  timeZone = APP_TIMEZONE,
+) {
+  const parts = getPartsInTimeZone(date, timeZone);
+  const startDate = formatDateForDbFromParts(parts.year, parts.month, 1);
+
+  const nextMonthYear = parts.month === 12 ? parts.year + 1 : parts.year;
+  const nextMonth = parts.month === 12 ? 1 : parts.month + 1;
+  const nextMonthStart = formatDateForDbFromParts(nextMonthYear, nextMonth, 1);
+
+  return {
+    startDate,
+    endDateExclusive: nextMonthStart,
+  };
 }
 
 function getCurrentYearInTimeZone(timeZone = APP_TIMEZONE) {
@@ -2632,7 +2856,7 @@ function buildDateForCurrentYear(month, day) {
 }
 
 async function getLatestAttendanceByUser() {
-  const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
+  const today = getAttendanceDayDateStringFromDate(new Date());
   const [usersResult, events, plannedOffRows] = await Promise.all([
     supabase
       .from("users")
@@ -2692,6 +2916,160 @@ async function getLatestAttendanceByUser() {
       has_login_today: hasLoginOrBack,
     };
   });
+}
+
+async function getEmployeeMonthlyAttendanceSummary(userId) {
+  const { startDate, endDateExclusive } = getMonthDateRangeForTimeZone(
+    new Date(),
+    APP_TIMEZONE,
+  );
+
+  const startUtc = new Date(
+    `${startDate}T${String(ATTENDANCE_DAY_START_HOUR).padStart(2, "0")}:00:00${APP_TIMEZONE_OFFSET}`,
+  ).toISOString();
+
+  const endUtc = new Date(
+    `${endDateExclusive}T${String(ATTENDANCE_DAY_START_HOUR).padStart(2, "0")}:00:00${APP_TIMEZONE_OFFSET}`,
+  ).toISOString();
+
+  const [eventsResult, leaveResult, lateResult, auditResult] =
+    await Promise.all([
+      supabase
+        .from("attendance_events")
+        .select(
+          "id, user_id, action, created_at, expected_duration_min, reason, note",
+        )
+        .eq("user_id", userId)
+        .gte("created_at", startUtc)
+        .lt("created_at", endUtc)
+        .order("created_at", { ascending: true }),
+
+      supabase
+        .from("planned_time_off")
+        .select("id, off_date")
+        .eq("user_id", userId)
+        .gte("off_date", startDate)
+        .lt("off_date", endDateExclusive),
+
+      supabase
+        .from("late_arrivals")
+        .select("id, late_date, is_approved")
+        .eq("user_id", userId)
+        .gte("late_date", startDate)
+        .lt("late_date", endDateExclusive),
+
+      supabase
+        .from("attendance_audit")
+        .select("id, action_type, created_at")
+        .eq("target_user_id", userId)
+        .gte("created_at", startUtc)
+        .lt("created_at", endUtc),
+    ]);
+
+  if (eventsResult.error) throw eventsResult.error;
+  if (leaveResult.error) throw leaveResult.error;
+  if (lateResult.error) throw lateResult.error;
+  if (auditResult.error) throw auditResult.error;
+
+  const events = eventsResult.data || [];
+  const leaveRows = leaveResult.data || [];
+  const lateRows = lateResult.data || [];
+  const auditRows = auditResult.data || [];
+
+  const eventsByAttendanceDay = new Map();
+
+  for (const ev of events) {
+    const attendanceDate = parseIsoToAttendanceDateString(ev.created_at);
+    if (!attendanceDate) continue;
+
+    if (!eventsByAttendanceDay.has(attendanceDate)) {
+      eventsByAttendanceDay.set(attendanceDate, []);
+    }
+    eventsByAttendanceDay.get(attendanceDate).push(ev);
+  }
+
+  let presentDays = 0;
+  let lateJoins = 0;
+  let approvedLate = 0;
+  let unapprovedLate = 0;
+  let uninformedLate = 0;
+  let totalLoginMinuteOfDay = 0;
+  let loginDaysCount = 0;
+  let totalBreakMinutes = 0;
+  let breakDaysCount = 0;
+  let longShiftCount = 0;
+  let longBreakCount = 0;
+  let possibleHalfDays = 0;
+
+  for (const [attendanceDate, dayEvents] of eventsByAttendanceDay.entries()) {
+    const summary = getAttendanceSummaryFromEvents(dayEvents);
+    const lateInfo =
+      lateRows.find((x) => x.late_date === attendanceDate) || null;
+
+    if (summary.firstLogin) {
+      presentDays += 1;
+
+      const firstLoginParts = getPartsInTimeZone(
+        new Date(summary.firstLogin.created_at),
+        APP_TIMEZONE,
+      );
+      totalLoginMinuteOfDay +=
+        firstLoginParts.hour * 60 + firstLoginParts.minute;
+      loginDaysCount += 1;
+    }
+
+    totalBreakMinutes += summary.breakMinutes;
+    if (summary.firstLogin) {
+      breakDaysCount += 1;
+    }
+
+    if (summary.lateMinutes > 0) {
+      lateJoins += 1;
+
+      if (lateInfo && lateInfo.is_approved) {
+        approvedLate += 1;
+      } else if (lateInfo && !lateInfo.is_approved) {
+        unapprovedLate += 1;
+      } else {
+        uninformedLate += 1;
+      }
+    }
+
+    if (summary.longShiftFlag) longShiftCount += 1;
+    if (summary.longBreakFlag) longBreakCount += 1;
+    if (summary.possibleHalfDay) possibleHalfDays += 1;
+  }
+
+  const avgLoginMin = loginDaysCount
+    ? Math.round(totalLoginMinuteOfDay / loginDaysCount)
+    : null;
+  const avgBreakMin = breakDaysCount
+    ? Math.round(totalBreakMinutes / breakDaysCount)
+    : 0;
+
+  const avgLoginTimeText =
+    avgLoginMin == null
+      ? "-"
+      : formatTimeOnly(
+          new Date(
+            `${startDate}T${String(Math.floor(avgLoginMin / 60)).padStart(2, "0")}:${String(avgLoginMin % 60).padStart(2, "0")}:00${APP_TIMEZONE_OFFSET}`,
+          ).toISOString(),
+        );
+
+  return {
+    presentDays,
+    leaveDays: leaveRows.length,
+    lateJoins,
+    approvedLate,
+    unapprovedLate,
+    uninformedLate,
+    avgLoginTimeText,
+    avgBreakMin,
+    longShiftCount,
+    longBreakCount,
+    possibleHalfDays,
+    managerCorrectionCount: auditRows.length,
+  };
 }
 
 async function getDashboardData() {
@@ -3166,9 +3544,8 @@ function renderDashboardPage(data) {
 }
 
 async function getDashboardSummaryData() {
-  const { startUtc, endUtc, todayDb } =
-    getUtcRangeForTodayInTimeZone(APP_TIMEZONE);
-  const today = todayDb;
+  const { startUtc, endUtc, attendanceDate } = getCurrentAttendanceDayRange();
+  const today = attendanceDate;
 
   const [
     openTasksResult,
@@ -3244,8 +3621,7 @@ async function getDashboardSummaryData() {
 }
 
 async function getAttendancePageData() {
-  const { startUtc, endUtc } = getUtcRangeForTodayInTimeZone(APP_TIMEZONE);
-
+  const { startUtc, endUtc } = getCurrentAttendanceDayRange();
   const [
     { data: users, error: usersError },
     { data: events, error: eventsError },
@@ -3261,8 +3637,9 @@ async function getAttendancePageData() {
       .select(
         "id, user_id, action, duration_min, expected_duration_min, reason, note, created_at",
       )
-      .order("created_at", { ascending: false })
-      .limit(500),
+      .gte("created_at", startUtc)
+      .lt("created_at", endUtc)
+      .order("created_at", { ascending: false }),
   ]);
 
   if (usersError) throw usersError;
@@ -3989,6 +4366,10 @@ app.post("/whatsapp", async (req, res) => {
       return handleDoneTask(res, user, doneTaskId);
     }
 
+    const employeeSummaryCommand = parseEmployeeSummaryCommand(body);
+    if (employeeSummaryCommand) {
+      return handleEmployeeSummary(res, user, employeeSummaryCommand);
+    }
     const progressCommand = parseProgressCommand(body);
     if (progressCommand) {
       return handleProgressTask(
