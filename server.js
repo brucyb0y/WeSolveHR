@@ -336,21 +336,47 @@ function getOpenBreakFromEvents(events) {
 function parseMarkAttendanceCommand(text) {
   const raw = String(text || "").trim();
 
-  let match = raw.match(/^mark\s+(.+?)\s+(login|logout|back)$/i);
+  let match = raw.match(
+    /^mark\s+(.+?)\s+(login|logout|back)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
+  );
   if (match) {
     return {
       target_name: match[1].trim(),
       action: match[2].toLowerCase(),
       duration_min: null,
+      time_text: match[3].trim().replace(/\s+/g, " "),
     };
   }
 
-  match = raw.match(/^mark\s+(.+?)\s+break$/i);
+  match = raw.match(/^mark\s+(.+?)\s+(login|logout|back)$/i);
+  if (match) {
+    return {
+      target_name: match[1].trim(),
+      action: match[2].toLowerCase(),
+      duration_min: null,
+      time_text: null,
+    };
+  }
+
+  match = raw.match(
+    /^mark\s+(.+?)\s+break\s+(\d+)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
+  );
+  if (match) {
+    return {
+      target_name: match[1].trim(),
+      action: "break",
+      duration_min: Number(match[2]),
+      time_text: match[3].trim().replace(/\s+/g, " "),
+    };
+  }
+
+  match = raw.match(/^mark\s+(.+?)\s+break\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
   if (match) {
     return {
       target_name: match[1].trim(),
       action: "break",
       duration_min: null,
+      time_text: match[2].trim().replace(/\s+/g, " "),
     };
   }
 
@@ -360,6 +386,17 @@ function parseMarkAttendanceCommand(text) {
       target_name: match[1].trim(),
       action: "break",
       duration_min: Number(match[2]),
+      time_text: null,
+    };
+  }
+
+  match = raw.match(/^mark\s+(.+?)\s+break$/i);
+  if (match) {
+    return {
+      target_name: match[1].trim(),
+      action: "break",
+      duration_min: null,
+      time_text: null,
     };
   }
 
@@ -1583,13 +1620,30 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     return sendTwiml(res, validationError);
   }
 
+  const occurredAtIso = markCommand.time_text
+    ? parseLocalDateTimeForToday(markCommand.time_text)
+    : new Date().toISOString();
+
+  if (markCommand.time_text && !occurredAtIso) {
+    return sendTwiml(
+      res,
+      `Could not understand the time "${markCommand.time_text}". Use format like 2:30 PM.`,
+    );
+  }
+
   let note = `Marked by ${actingUser.name}`;
+
+  if (markCommand.time_text) {
+    note += ` | Effective time: ${markCommand.time_text}`;
+  }
+
+  let actualBreakMinutes = null;
 
   if (markCommand.action === "back") {
     const lastBreak = await getLatestBreakEvent(targetUser.id);
     if (lastBreak) {
-      const actualMinutes = minutesBetween(lastBreak.created_at);
-      note += ` | Actual break: ${actualMinutes} min`;
+      actualBreakMinutes = minutesBetween(lastBreak.created_at, occurredAtIso);
+      note += ` | Actual break: ${actualBreakMinutes} min`;
     }
   }
 
@@ -1599,10 +1653,10 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     acted_by_phone: actingUser.phone_number,
     action: markCommand.action,
     duration_min: markCommand.duration_min ?? null,
-    expected_duration_min:
-      markCommand.expected_duration_min ?? markCommand.duration_min ?? null,
+    expected_duration_min: markCommand.duration_min ?? null,
     reason: markCommand.reason ?? null,
     note,
+    created_at: occurredAtIso,
   };
 
   const { error } = await supabase
@@ -1638,17 +1692,15 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
   }
 
   if (markCommand.action === "back") {
-    const lastBreak = await getLatestBreakEvent(targetUser.id);
-    const actualMinutes = lastBreak ? minutesBetween(lastBreak.created_at) : 0;
     return sendTwiml(
       res,
-      `${targetUser.name}: back marked by ${actingUser.name}. Break duration was ${formatDurationMinutes(actualMinutes)}.`,
+      `${targetUser.name}: back marked by ${actingUser.name}${markCommand.time_text ? ` at ${markCommand.time_text}` : ""}. Break duration was ${formatDurationMinutes(actualBreakMinutes || 0)}.`,
     );
   }
 
   return sendTwiml(
     res,
-    `${targetUser.name}: ${markCommand.action} marked by ${actingUser.name}.`,
+    `${targetUser.name}: ${markCommand.action} marked by ${actingUser.name}${markCommand.time_text ? ` at ${markCommand.time_text}` : ""}.`,
   );
 }
 
@@ -2593,19 +2645,18 @@ async function handleHelp(res, user) {
     "logout family concern",
     "late 11:00 AM",
     "",
+    "Leave",
+    "leave today",
+    "leave tomorrow",
+    "leave 11 april",
+    "who is off today",
+    "",
     "Tasks",
     "my tasks",
     "show task 8",
     "done 8",
     "progress 8 50",
-    "block 8 waiting for Aj",
-    "unblock 8",
-    "",
-    "Leave",
-    "leave today",
-    "leave tomorrow",
-    "leave Aj tomorrow",
-    "who is off today",
+    "task Aj high test dashboard by tomorrow",
     "",
     "Team",
     "who am i",
@@ -2613,10 +2664,24 @@ async function handleHelp(res, user) {
     "who is on break",
     "now",
     "summary today",
-    "employee summary Kavita",
     "",
-    "Create task example",
-    "task Aj high test dashboard by tomorrow",
+    "Manager/Admin only",
+    "tasks Aj",
+    "show overdue",
+    "block 8 waiting for Aj",
+    "unblock 8",
+    "undo last task change",
+    "employee summary Kavita",
+    "leave Aj tomorrow",
+    "mark Aj login",
+    "mark Aj login 10:30 AM",
+    "mark Aj break",
+    "mark Aj break 15",
+    "mark Aj break 15 1:00 PM",
+    "mark Aj back",
+    "mark Aj back 2:30 PM",
+    "mark Aj logout",
+    "mark Aj logout 6:15 PM",
   ];
 
   if (isManagerOrAdmin(user)) {
