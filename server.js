@@ -38,6 +38,9 @@ const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 30;
 const rateLimitStore = new Map();
 const APP_TIMEZONE = "Asia/Kolkata";
+const APP_TIMEZONE_OFFSET = "+05:30";
+const DEFAULT_SHIFT_START_TEXT = "10:30 AM";
+const LATE_APPROVAL_NOTICE_HOURS = 3;
 
 function normalizeText(text) {
   return String(text || "")
@@ -97,16 +100,15 @@ function escapeHtml(value) {
 
 function formatDateTime(isoString) {
   if (!isoString) return "-";
-
   const d = new Date(isoString);
   if (Number.isNaN(d.getTime())) return String(isoString);
 
   return (
     d.toLocaleString("en-IN", {
       timeZone: APP_TIMEZONE,
-      day: "numeric",
-      month: "short",
       year: "numeric",
+      month: "short",
+      day: "numeric",
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
@@ -122,15 +124,14 @@ function formatDateOnly(dateString) {
 
   return d.toLocaleDateString("en-IN", {
     timeZone: APP_TIMEZONE,
-    day: "numeric",
-    month: "short",
     year: "numeric",
+    month: "short",
+    day: "numeric",
   });
 }
 
 function formatTimeOnly(isoString) {
   if (!isoString) return "-";
-
   const d = new Date(isoString);
   if (Number.isNaN(d.getTime())) return String(isoString);
 
@@ -142,34 +143,6 @@ function formatTimeOnly(isoString) {
       hour12: true,
     }) + " IST"
   );
-}
-
-function parseIstDateTimeForToday(timeText) {
-  const raw = String(timeText || "")
-    .trim()
-    .toLowerCase();
-
-  const match = raw.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
-  if (!match) return null;
-
-  let hour = Number(match[1]);
-  const minute = Number(match[2]);
-  const ampm = match[3].toLowerCase();
-
-  if (hour < 1 || hour > 12 || minute < 0 || minute > 59) {
-    return null;
-  }
-
-  if (ampm === "pm" && hour !== 12) hour += 12;
-  if (ampm === "am" && hour === 12) hour = 0;
-
-  const todayDb = getTodayDateStringInTimeZone(APP_TIMEZONE);
-  const iso = `${todayDb}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00+05:30`;
-
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-
-  return d.toISOString();
 }
 
 function badgeClass(value) {
@@ -185,71 +158,6 @@ function badgeClass(value) {
   if (["pending"].includes(v)) return "badge badge-warn";
 
   return "badge badge-muted";
-}
-
-function getPartsInTimeZone(date = new Date(), timeZone = APP_TIMEZONE) {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-
-  const parts = formatter.formatToParts(date);
-  const out = {};
-
-  for (const part of parts) {
-    if (part.type !== "literal") {
-      out[part.type] = part.value;
-    }
-  }
-
-  return {
-    year: Number(out.year),
-    month: Number(out.month),
-    day: Number(out.day),
-    hour: Number(out.hour),
-    minute: Number(out.minute),
-    second: Number(out.second),
-  };
-}
-
-function getTodayDateStringInTimeZone(timeZone = APP_TIMEZONE) {
-  const parts = getPartsInTimeZone(new Date(), timeZone);
-  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
-}
-
-function formatDateForDbFromParts(year, month, day) {
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-function addDaysToDateString(dateString, days) {
-  const base = new Date(`${dateString}T00:00:00Z`);
-  base.setUTCDate(base.getUTCDate() + days);
-
-  return formatDateForDbFromParts(
-    base.getUTCFullYear(),
-    base.getUTCMonth() + 1,
-    base.getUTCDate(),
-  );
-}
-
-function getCurrentYearInTimeZone(timeZone = APP_TIMEZONE) {
-  return getPartsInTimeZone(new Date(), timeZone).year;
-}
-
-function getUtcRangeForTodayInTimeZone(timeZone = APP_TIMEZONE) {
-  const todayDb = getTodayDateStringInTimeZone(timeZone);
-  const tomorrowDb = addDaysToDateString(todayDb, 1);
-
-  const startUtc = new Date(`${todayDb}T00:00:00+05:30`).toISOString();
-  const endUtc = new Date(`${tomorrowDb}T00:00:00+05:30`).toISOString();
-
-  return { startUtc, endUtc, todayDb };
 }
 
 function stripOrdinalSuffixes(text) {
@@ -287,13 +195,6 @@ function monthNameToNumber(monthText) {
   return months[normalizeText(monthText)] || null;
 }
 
-function buildDateForCurrentYear(month, day) {
-  const year = getCurrentYearInTimeZone(APP_TIMEZONE);
-  const d = new Date(Date.UTC(year, month - 1, day));
-
-  if (Number.isNaN(d.getTime())) return null;
-  return d;
-}
 function parseFlexibleDateText(input) {
   const text = normalizeText(stripOrdinalSuffixes(input || ""));
   const todayDb = getTodayDateStringInTimeZone(APP_TIMEZONE);
@@ -364,9 +265,66 @@ function parseDeadline(deadlineText) {
   return parseFlexibleDateText(deadlineText);
 }
 
-function formatLocalDateForDb(date) {
-  const parts = getPartsInTimeZone(date, APP_TIMEZONE);
-  return formatDateForDbFromParts(parts.year, parts.month, parts.day);
+function parseLocalDateTimeForToday(timeText) {
+  const raw = String(timeText || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+  const match = raw.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+  if (!match) return null;
+
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const ampm = match[3].toLowerCase();
+
+  if (hour < 1 || hour > 12 || minute < 0 || minute > 59) return null;
+
+  if (ampm === "pm" && hour !== 12) hour += 12;
+  if (ampm === "am" && hour === 12) hour = 0;
+
+  const todayDb = getTodayDateStringInTimeZone(APP_TIMEZONE);
+  const iso = `${todayDb}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00${APP_TIMEZONE_OFFSET}`;
+  const d = new Date(iso);
+
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function getShiftStartIsoForToday() {
+  return parseLocalDateTimeForToday(DEFAULT_SHIFT_START_TEXT);
+}
+
+function isLateApproved(informedAtIso, shiftStartIso) {
+  const informedAt = new Date(informedAtIso);
+  const shiftStartAt = new Date(shiftStartIso);
+
+  if (
+    Number.isNaN(informedAt.getTime()) ||
+    Number.isNaN(shiftStartAt.getTime())
+  ) {
+    return false;
+  }
+
+  const diffHours =
+    (shiftStartAt.getTime() - informedAt.getTime()) / (1000 * 60 * 60);
+
+  return diffHours >= LATE_APPROVAL_NOTICE_HOURS;
+}
+
+function getFirstLoginEvent(userEvents) {
+  return userEvents.find((e) => e.action === "login") || null;
+}
+
+function getOpenBreakFromEvents(events) {
+  let currentBreak = null;
+
+  for (const ev of events) {
+    if (ev.action === "break") currentBreak = ev;
+    if (ev.action === "back" || ev.action === "logout") currentBreak = null;
+  }
+
+  return currentBreak;
 }
 
 function parseMarkAttendanceCommand(text) {
@@ -400,23 +358,6 @@ function parseMarkAttendanceCommand(text) {
   }
 
   return null;
-}
-
-function parseTimedAttendanceForOtherCommand(text) {
-  const raw = String(text || "").trim();
-
-  const match = raw.match(
-    /^(login|logout|back|break)\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
-  );
-
-  if (!match) return null;
-
-  return {
-    action: match[1].toLowerCase(),
-    target_name: match[2].trim(),
-    time_text: match[3].trim().replace(/\s+/g, " "),
-    duration_min: null,
-  };
 }
 
 function parseSimpleTaskCommand(text) {
@@ -575,28 +516,91 @@ function parseOffDayForOtherCommand(text) {
 function parseAttendanceCommand(text) {
   const raw = String(text || "").trim();
 
-  if (/^login$/i.test(raw)) return { action: "login" };
-  if (/^back$/i.test(raw)) return { action: "back" };
-  if (/^logout$/i.test(raw)) return { action: "logout" };
-  if (/^break$/i.test(raw)) return { action: "break", duration_min: null };
+  if (/^login$/i.test(raw)) {
+    return {
+      action: "login",
+      expected_duration_min: null,
+      reason: null,
+    };
+  }
 
-  const breakMatch = raw.match(/^break\s+(\d+)$/i);
-  if (breakMatch) {
+  if (/^back$/i.test(raw)) {
+    return {
+      action: "back",
+      expected_duration_min: null,
+      reason: null,
+    };
+  }
+
+  if (/^logout$/i.test(raw)) {
+    return {
+      action: "logout",
+      expected_duration_min: null,
+      reason: null,
+    };
+  }
+
+  let match = raw.match(/^logout\s+(.+)$/i);
+  if (match) {
+    return {
+      action: "logout",
+      expected_duration_min: null,
+      reason: match[1].trim(),
+    };
+  }
+
+  if (/^break$/i.test(raw)) {
     return {
       action: "break",
-      duration_min: Number(breakMatch[1]),
+      expected_duration_min: null,
+      reason: null,
+    };
+  }
+
+  match = raw.match(/^break\s+(\d+)$/i);
+  if (match) {
+    return {
+      action: "break",
+      expected_duration_min: Number(match[1]),
+      reason: null,
+    };
+  }
+
+  match = raw.match(/^break\s+(\d+)\s+(.+)$/i);
+  if (match) {
+    return {
+      action: "break",
+      expected_duration_min: Number(match[1]),
+      reason: match[2].trim(),
+    };
+  }
+
+  match = raw.match(/^break\s+(.+)$/i);
+  if (match) {
+    return {
+      action: "break",
+      expected_duration_min: null,
+      reason: match[1].trim(),
     };
   }
 
   return null;
 }
 
-function formatTaskLine(task) {
-  const readableDeadline = task.deadline
-    ? formatDateOnly(task.deadline)
-    : "No deadline";
+function parseLateCommand(text) {
+  const raw = String(text || "").trim();
 
-  return `#${task.id}${task.priority ? ` | ${task.priority}` : ""} | ${task.status} | ${task.title} | due ${readableDeadline} | ${task.progress}%`;
+  const match = raw.match(/^late\s+(\d{1,2}:\d{2}\s*(?:am|pm))(?:\s+(.+))?$/i);
+  if (!match) return null;
+
+  return {
+    time_text: match[1].trim().replace(/\s+/g, " "),
+    note: match[2]?.trim() || null,
+  };
+}
+
+function formatTaskLine(task) {
+  return `#${task.id}${task.priority ? ` | ${task.priority}` : ""} | ${task.status} | ${task.title} | due ${task.deadline ?? "no deadline"} | ${task.progress}%`;
 }
 
 function validateAttendanceTransition(lastAction, nextAction, subjectName) {
@@ -800,13 +804,6 @@ Rules:
       title: String(parsed.title || "").trim(),
       deadline_text: String(parsed.deadline_text || "").trim(),
     };
-
-    return {
-      assignee_name: String(parsed.assignee_name || "").trim(),
-      priority,
-      title: String(parsed.title || "").trim(),
-      deadline_text: String(parsed.deadline_text || "").trim(),
-    };
   } catch (e) {
     console.error("AI parsing failed:", e);
     return null;
@@ -971,7 +968,9 @@ function formatDurationMinutes(totalMinutes) {
 async function getLatestAttendanceEvent(userId) {
   const { data, error } = await supabase
     .from("attendance_events")
-    .select("id, user_id, action, created_at, duration_min, note")
+    .select(
+      "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
+    )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -988,7 +987,9 @@ async function getLatestAttendanceEvent(userId) {
 async function getLatestBreakEvent(userId) {
   const { data, error } = await supabase
     .from("attendance_events")
-    .select("id, user_id, action, created_at, duration_min, note")
+    .select(
+      "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
+    )
     .eq("user_id", userId)
     .eq("action", "break")
     .order("created_at", { ascending: false })
@@ -1008,7 +1009,9 @@ async function getTodayAttendanceEventsForAllUsers() {
 
   const { data, error } = await supabase
     .from("attendance_events")
-    .select("id, user_id, action, created_at, duration_min, note")
+    .select(
+      "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
+    )
     .gte("created_at", startUtc)
     .lt("created_at", endUtc)
     .order("created_at", { ascending: true });
@@ -1120,19 +1123,9 @@ async function handleShowTask(res, user, taskId) {
   const detail = task.detail ? `\nDetail: ${task.detail}` : "";
   const blocker = task.blocker_note ? `\nBlocker: ${task.blocker_note}` : "";
 
-  const deadlineText = task.deadline
-    ? formatDateOnly(task.deadline)
-    : "No deadline";
-
   return sendTwiml(
     res,
-    `Task #${task.id}
-Assigned to: ${assignedTo}
-Priority: ${task.priority}
-Status: ${task.status}
-Progress: ${task.progress}%
-Title: ${task.title}
-Deadline: ${deadlineText}${detail}${blocker}`,
+    `Task #${task.id}\nAssigned to: ${assignedTo}\nPriority: ${task.priority}\nStatus: ${task.status}\nProgress: ${task.progress}%\nTitle: ${task.title}\nDeadline: ${task.deadline ?? "no deadline"}${detail}${blocker}`,
   );
 }
 
@@ -1261,7 +1254,7 @@ async function handleShowOverdue(res, user) {
     .slice(0, 8)
     .map(
       (task) =>
-        `#${task.id} | ${task.assigned_to ?? "Unknown"} | ${task.priority} | ${task.title} | due ${formatDateOnly(task.deadline)} | ${task.days_overdue} day(s) overdue`,
+        `#${task.id} | ${task.assigned_to ?? "Unknown"} | ${task.priority} | ${task.title} | due ${task.deadline} | ${task.days_overdue} day(s) overdue`,
     );
 
   const suffix = data.length > 8 ? `\n...and ${data.length - 8} more.` : "";
@@ -1278,54 +1271,152 @@ async function handleWhoAmI(res, user) {
 }
 
 async function handleStatus(res, user) {
-  const lastAction = await getLastAction(user.id);
-  const openTaskCount = await getTaskAssignedCount(user.id);
+  try {
+    const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
+    const { startUtc, endUtc } = getUtcRangeForTodayInTimeZone(APP_TIMEZONE);
+
+    const [latestEvent, eventsResult, lateRows] = await Promise.all([
+      getLatestAttendanceEvent(user.id),
+      supabase
+        .from("attendance_events")
+        .select(
+          "id, user_id, action, created_at, expected_duration_min, reason, note",
+        )
+        .eq("user_id", user.id)
+        .gte("created_at", startUtc)
+        .lt("created_at", endUtc)
+        .order("created_at", { ascending: true }),
+      getLateArrivalRowsForDate(today),
+    ]);
+
+    if (eventsResult.error) {
+      console.error("Status events query error:", eventsResult.error);
+      return sendTwiml(res, "Failed to fetch your status.");
+    }
+
+    const userEvents = eventsResult.data || [];
+    const workedMinutes = computeWorkedMinutesFromEvents(userEvents);
+
+    let totalBreakMinutes = 0;
+    for (let i = 0; i < userEvents.length; i += 1) {
+      const ev = userEvents[i];
+      if (ev.action !== "break") continue;
+
+      const nextEnd = userEvents
+        .slice(i + 1)
+        .find((x) => x.action === "back" || x.action === "logout");
+
+      if (nextEnd) {
+        totalBreakMinutes += minutesBetween(ev.created_at, nextEnd.created_at);
+      } else {
+        totalBreakMinutes += minutesBetween(ev.created_at);
+      }
+    }
+
+    const myLate = (lateRows || []).find((x) => x.user_id === user.id) || null;
+    const firstLogin = getFirstLoginEvent(userEvents);
+
+    const lines = [
+      `👤 ${user.name}`,
+      `Status: ${latestEvent?.action || "No update"}`,
+    ];
+
+    if (latestEvent?.created_at) {
+      lines.push(`Since: ${formatTimeOnly(latestEvent.created_at)}`);
+    }
+
+    if (latestEvent?.action === "break" && latestEvent?.expected_duration_min) {
+      lines.push(`Expected break: ${latestEvent.expected_duration_min} min`);
+    }
+
+    if (latestEvent?.action === "break" && latestEvent?.reason) {
+      lines.push(`Reason: ${latestEvent.reason}`);
+    }
+
+    if (latestEvent?.action === "logout" && latestEvent?.reason) {
+      lines.push(`Logout reason: ${latestEvent.reason}`);
+    }
+
+    if (myLate && !firstLogin) {
+      lines.push(`Expected login: ${formatTimeOnly(myLate.expected_login_at)}`);
+      lines.push(
+        `Late status: ${myLate.is_approved ? "Approved" : "Not approved"}`,
+      );
+    }
+
+    lines.push("");
+    lines.push("Today:");
+    lines.push(`Worked: ${formatDurationMinutes(workedMinutes)}`);
+    lines.push(`Break: ${formatDurationMinutes(totalBreakMinutes)}`);
+
+    return sendTwiml(res, lines.join("\n"));
+  } catch (error) {
+    console.error("Status fatal error:", error);
+    return sendTwiml(res, "Failed to fetch your status.");
+  }
+}
+
+async function handleLateCommand(res, user, lateCommand) {
+  const expectedLoginAtIso = parseLocalDateTimeForToday(lateCommand.time_text);
+
+  if (!expectedLoginAtIso) {
+    return sendTwiml(
+      res,
+      `Could not understand the time "${lateCommand.time_text}". Use format like 11:00 AM.`,
+    );
+  }
+
+  const { error, approved } = await upsertLateArrival(
+    user.id,
+    expectedLoginAtIso,
+    lateCommand.note,
+    user.id,
+  );
+
+  if (error) {
+    console.error("Late arrival upsert error:", error);
+    return sendTwiml(res, "Failed to save your late update.");
+  }
 
   return sendTwiml(
     res,
-    `${user.name} | status: ${lastAction || "unknown"} | open tasks: ${openTaskCount}`,
+    `🕒 Late marked (${approved ? "Approved" : "Not approved"})\nExpected login: ${formatTimeOnly(expectedLoginAtIso)}`,
   );
 }
+
 async function handleMarkedAttendance(res, actingUser, markCommand) {
   if (!isManagerOrAdmin(actingUser)) {
     return sendTwiml(res, "You are not allowed to mark attendance for others.");
   }
 
   const targetUser = await findUniqueUserByName(markCommand.target_name);
+
   if (!targetUser) {
     return sendTwiml(
       res,
-      `Could not find exactly one active user named "${markCommand.target_name}".`,
+      `I could not uniquely find an active user named "${markCommand.target_name}".`,
     );
   }
 
   const lastAction = await getLastAction(targetUser.id);
-  const subjectName = targetUser.name || "This user";
-
-  const transitionError = validateAttendanceTransition(
+  const validationError = validateAttendanceTransition(
     lastAction,
     markCommand.action,
-    subjectName,
+    targetUser.name,
   );
 
-  if (transitionError) {
-    return sendTwiml(res, transitionError);
+  if (validationError) {
+    return sendTwiml(res, validationError);
   }
 
   let note = `Marked by ${actingUser.name}`;
 
-  let customCreatedAt = null;
-  if (markCommand.time_text) {
-    customCreatedAt = parseIstDateTimeForToday(markCommand.time_text);
-
-    if (!customCreatedAt) {
-      return sendTwiml(
-        res,
-        `Could not understand the time "${markCommand.time_text}". Use format like 8:30 am.`,
-      );
+  if (markCommand.action === "back") {
+    const lastBreak = await getLatestBreakEvent(targetUser.id);
+    if (lastBreak) {
+      const actualMinutes = minutesBetween(lastBreak.created_at);
+      note += ` | Actual break: ${actualMinutes} min`;
     }
-
-    note += ` | Manual time: ${markCommand.time_text}`;
   }
 
   const attendanceRow = {
@@ -1334,8 +1425,10 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     acted_by_phone: actingUser.phone_number,
     action: markCommand.action,
     duration_min: markCommand.duration_min ?? null,
+    expected_duration_min:
+      markCommand.expected_duration_min ?? markCommand.duration_min ?? null,
+    reason: markCommand.reason ?? null,
     note,
-    created_at: customCreatedAt || new Date().toISOString(),
   };
 
   const { error } = await supabase
@@ -1344,28 +1437,28 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
 
   if (error) {
     console.error("Marked attendance insert error:", error);
-    return sendTwiml(res, "Failed to mark attendance.");
+    return sendTwiml(res, "Failed to save marked attendance.");
   }
-
-  const actionTimeText = formatDateTime(attendanceRow.created_at);
 
   if (markCommand.action === "break") {
     return sendTwiml(
       res,
-      `${targetUser.name}: break marked by ${actingUser.name} at ${actionTimeText}.`,
+      `${targetUser.name}: break started${markCommand.duration_min ? ` for ${markCommand.duration_min} minutes` : ""} by ${actingUser.name}.`,
     );
   }
 
   if (markCommand.action === "back") {
+    const lastBreak = await getLatestBreakEvent(targetUser.id);
+    const actualMinutes = lastBreak ? minutesBetween(lastBreak.created_at) : 0;
     return sendTwiml(
       res,
-      `${targetUser.name}: back marked by ${actingUser.name} at ${actionTimeText}.`,
+      `${targetUser.name}: back marked by ${actingUser.name}. Break duration was ${formatDurationMinutes(actualMinutes)}.`,
     );
   }
 
   return sendTwiml(
     res,
-    `${targetUser.name}: ${markCommand.action} marked by ${actingUser.name} at ${actionTimeText}.`,
+    `${targetUser.name}: ${markCommand.action} marked by ${actingUser.name}.`,
   );
 }
 
@@ -1437,23 +1530,15 @@ async function handleSelfAttendance(res, user, attendanceCommand) {
     return sendTwiml(res, validationError);
   }
 
-  let note = null;
-
-  if (attendanceCommand.action === "back") {
-    const lastBreak = await getLatestBreakEvent(user.id);
-    if (lastBreak) {
-      const actualMinutes = minutesBetween(lastBreak.created_at);
-      note = `Actual break: ${actualMinutes} min`;
-    }
-  }
-
   const attendanceRow = {
     user_id: user.id,
     target_phone: user.phone_number,
     acted_by_phone: user.phone_number,
     action: attendanceCommand.action,
-    duration_min: attendanceCommand.duration_min ?? null,
-    note,
+    duration_min: attendanceCommand.expected_duration_min ?? null,
+    expected_duration_min: attendanceCommand.expected_duration_min ?? null,
+    reason: attendanceCommand.reason ?? null,
+    note: null,
   };
 
   const { error: attendanceError } = await supabase
@@ -1469,42 +1554,63 @@ async function handleSelfAttendance(res, user, attendanceCommand) {
   }
 
   if (attendanceCommand.action === "break") {
-    if (attendanceCommand.duration_min) {
-      return sendTwiml(
-        res,
-        `☕ Break started\nPlanned duration: ${attendanceCommand.duration_min} minutes`,
-      );
+    const lines = ["☕ Break started"];
+
+    if (attendanceCommand.expected_duration_min) {
+      lines.push(`Expected: ${attendanceCommand.expected_duration_min} min`);
     }
 
-    return sendTwiml(res, "☕ Break started\nStatus updated successfully");
+    if (attendanceCommand.reason) {
+      lines.push(`Reason: ${attendanceCommand.reason}`);
+    }
+
+    return sendTwiml(res, lines.join("\n"));
   }
 
   if (attendanceCommand.action === "back") {
     const lastBreak = await getLatestBreakEvent(user.id);
     const actualMinutes = lastBreak ? minutesBetween(lastBreak.created_at) : 0;
+
     return sendTwiml(
       res,
-      `✅ Back from break\nBreak duration: ${formatDurationMinutes(actualMinutes)}`,
+      `✅ Back to work\nBreak duration: ${formatDurationMinutes(actualMinutes)}`,
     );
   }
 
   if (attendanceCommand.action === "login") {
     try {
-      const today = formatLocalDateForDb(new Date());
+      const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
       const plannedOffRows = await getPlannedOffRowsForDate(today);
-      const plannedOff = plannedOffRows || [];
-
-      const otherNames = plannedOff
+      const otherNames = (plannedOffRows || [])
         .filter((x) => x.user_id !== user.id)
         .map((x) => x.users?.name || "Unknown");
 
+      const shiftStartIso = getShiftStartIsoForToday();
+      const loginIso = new Date().toISOString();
+      const delayMin = Math.max(
+        0,
+        Math.round((new Date(loginIso) - new Date(shiftStartIso)) / 60000),
+      );
+
+      const lateRows = await getLateArrivalRowsForDate(today);
+      const myLate = lateRows.find((x) => x.user_id === user.id) || null;
+
+      let lateLine = "";
+      if (delayMin > 0) {
+        if (myLate) {
+          lateLine = `\n🕒 Joined late: ${delayMin} min (${myLate.is_approved ? "approved prior notice" : "not approved"})`;
+        } else {
+          lateLine = `\n🕒 Joined late: ${delayMin} min (no prior intimation)`;
+        }
+      }
+
       const leaveLine = otherNames.length
         ? `\n🌴 On leave today: ${otherNames.join(", ")}`
-        : "\n🌴 On leave today: None";
+        : `\n🌴 On leave today: None`;
 
       return sendTwiml(
         res,
-        `✅ Logged in successfully\nWelcome, ${user.name}${leaveLine}`,
+        `✅ Logged in successfully\nWelcome, ${user.name}${lateLine}${leaveLine}`,
       );
     } catch (error) {
       console.error("Login leave lookup error:", error);
@@ -1513,7 +1619,11 @@ async function handleSelfAttendance(res, user, attendanceCommand) {
   }
 
   if (attendanceCommand.action === "logout") {
-    return sendTwiml(res, "✅ Logged out successfully\nSee you next time");
+    const lines = ["✅ Logged out successfully\nSee you next time"];
+    if (attendanceCommand.reason) {
+      lines.push(`Reason: ${attendanceCommand.reason}`);
+    }
+    return sendTwiml(res, lines.join("\n"));
   }
 
   return sendTwiml(res, `✅ ${attendanceCommand.action} marked successfully`);
@@ -1559,6 +1669,61 @@ async function getPlannedOffRowsForDate(dateString) {
   }
 
   return data || [];
+}
+
+async function getLateArrivalRowsForDate(dateString) {
+  const { data, error } = await supabase
+    .from("late_arrivals")
+    .select(
+      `
+      id,
+      user_id,
+      late_date,
+      expected_login_at,
+      informed_at,
+      shift_start_at,
+      is_approved,
+      note,
+      users!late_arrivals_user_id_fkey(name)
+    `,
+    )
+    .eq("late_date", dateString);
+
+  if (error) {
+    throw error;
+  }
+
+  return data || [];
+}
+
+async function upsertLateArrival(
+  userId,
+  expectedLoginAtIso,
+  note = null,
+  createdByUserId = null,
+) {
+  const todayDb = getTodayDateStringInTimeZone(APP_TIMEZONE);
+  const shiftStartIso = getShiftStartIsoForToday();
+  const informedAtIso = new Date().toISOString();
+  const approved = isLateApproved(informedAtIso, shiftStartIso);
+
+  const { error } = await supabase.from("late_arrivals").upsert(
+    [
+      {
+        user_id: userId,
+        late_date: todayDb,
+        expected_login_at: expectedLoginAtIso,
+        informed_at: informedAtIso,
+        shift_start_at: shiftStartIso,
+        is_approved: approved,
+        created_by_user_id: createdByUserId,
+        note,
+      },
+    ],
+    { onConflict: "user_id,late_date" },
+  );
+
+  return { error, approved };
 }
 
 async function handleCreateTask(res, user, taskCommand) {
@@ -1859,7 +2024,7 @@ async function handleWhoIsOffToday(res, actingUser) {
   }
 
   try {
-    const today = formatLocalDateForDb(new Date());
+    const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
     const plannedOffRows = await getPlannedOffRowsForDate(today);
     const plannedOff = plannedOffRows || [];
 
@@ -1882,10 +2047,9 @@ async function handleNowSummary(res, actingUser) {
   }
 
   try {
-    const now = new Date();
-    const today = formatLocalDateForDb(now);
+    const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
 
-    const [usersResult, events, plannedOffRows] = await Promise.all([
+    const [usersResult, events, plannedOffRows, lateRows] = await Promise.all([
       supabase
         .from("users")
         .select("id, name")
@@ -1893,6 +2057,7 @@ async function handleNowSummary(res, actingUser) {
         .order("name", { ascending: true }),
       getTodayAttendanceEventsForAllUsers(),
       getPlannedOffRowsForDate(today),
+      getLateArrivalRowsForDate(today),
     ]);
 
     if (usersResult.error) {
@@ -1911,6 +2076,11 @@ async function handleNowSummary(res, actingUser) {
       eventsByUser.get(ev.user_id).push(ev);
     }
 
+    const lateByUser = new Map();
+    for (const row of lateRows || []) {
+      lateByUser.set(row.user_id, row);
+    }
+
     const plannedOffUserIds = new Set(plannedOff.map((x) => x.user_id));
 
     const workingNow = [];
@@ -1919,138 +2089,51 @@ async function handleNowSummary(res, actingUser) {
     const loggedOutToday = [];
     const noUpdateToday = [];
 
-    function formatMinutesShort(totalMinutes) {
-      const mins = Math.max(0, Math.round(Number(totalMinutes || 0)));
-      if (mins < 60) return `${mins}m`;
-
-      const h = Math.floor(mins / 60);
-      const m = mins % 60;
-      return m ? `${h}h ${m}m` : `${h}h`;
-    }
-
-    function getBreakStats(userEvents) {
-      let totalBreakMinutes = 0;
-      let currentBreakMinutes = 0;
-
-      for (let i = 0; i < userEvents.length; i += 1) {
-        const ev = userEvents[i];
-
-        if (ev.action !== "break") continue;
-
-        const breakStart = new Date(ev.created_at);
-        let matchedBack = null;
-
-        for (let j = i + 1; j < userEvents.length; j += 1) {
-          if (userEvents[j].action === "back") {
-            matchedBack = userEvents[j];
-            break;
-          }
-
-          if (
-            userEvents[j].action === "logout" ||
-            userEvents[j].action === "login"
-          ) {
-            break;
-          }
-        }
-
-        if (matchedBack) {
-          const breakEnd = new Date(matchedBack.created_at);
-          const diffMin = Math.max(
-            0,
-            Math.round((breakEnd - breakStart) / 60000),
-          );
-          totalBreakMinutes += diffMin;
-        } else {
-          const diffMin = Math.max(0, Math.round((now - breakStart) / 60000));
-          totalBreakMinutes += diffMin;
-          currentBreakMinutes = diffMin;
-        }
-      }
-
-      return {
-        totalBreakMinutes,
-        currentBreakMinutes,
-      };
-    }
-
     for (const user of users) {
-      if (plannedOffUserIds.has(user.id)) {
-        continue;
-      }
+      if (plannedOffUserIds.has(user.id)) continue;
 
       const userEvents = eventsByUser.get(user.id) || [];
       const latest = userEvents[userEvents.length - 1] || null;
 
       if (!latest) {
-        noUpdateToday.push(user.name);
+        const lateInfo = lateByUser.get(user.id);
+        if (lateInfo) {
+          noUpdateToday.push(
+            `${user.name} (late till ${formatTimeOnly(lateInfo.expected_login_at)})`,
+          );
+        } else {
+          noUpdateToday.push(user.name);
+        }
         continue;
       }
 
-      const breakStats = getBreakStats(userEvents);
-      const workedMinutes = computeWorkedMinutesFromEvents(userEvents);
-
-      const firstLoginEvent =
-        userEvents.find((e) => e.action === "login") ||
-        userEvents.find((e) => e.action === "back") ||
-        latest;
-
-      const loginTimeText = firstLoginEvent?.created_at
-        ? formatTimeOnly(firstLoginEvent.created_at)
-        : "-";
-
       if (latest.action === "break") {
-        onBreakNow.push(
-          `${user.name} — logged in ${loginTimeText} | worked ${formatMinutesShort(
-            workedMinutes,
-          )} | current break ${formatMinutesShort(
-            breakStats.currentBreakMinutes,
-          )} | total break ${formatMinutesShort(breakStats.totalBreakMinutes)}`,
-        );
+        onBreakNow.push(user.name);
         continue;
       }
 
       if (latest.action === "logout") {
-        loggedOutToday.push(
-          `${user.name} — logged in ${loginTimeText} | worked ${formatMinutesShort(
-            workedMinutes,
-          )} | break ${formatMinutesShort(breakStats.totalBreakMinutes)}`,
-        );
+        loggedOutToday.push(user.name);
         continue;
       }
 
       if (latest.action === "login" || latest.action === "back") {
-        workingNow.push(
-          `${user.name} — logged in ${loginTimeText} | worked ${formatMinutesShort(
-            workedMinutes,
-          )} | break ${formatMinutesShort(breakStats.totalBreakMinutes)}`,
-        );
+        workingNow.push(user.name);
         continue;
       }
 
       noUpdateToday.push(user.name);
     }
 
-    const totalTeam = users.length;
-
     const lines = [
       "📋 Now summary",
-      `Total team: ${totalTeam} | Working: ${workingNow.length} | Break: ${onBreakNow.length} | Leave: ${onLeaveToday.length} | Logged out: ${loggedOutToday.length} | No update: ${noUpdateToday.length}`,
+      `Total team: ${users.length} | Working: ${workingNow.length} | Break: ${onBreakNow.length} | Leave: ${onLeaveToday.length} | Logged out: ${loggedOutToday.length} | No update: ${noUpdateToday.length}`,
       "",
-      "✅ Working now:",
-      workingNow.length ? workingNow.join("\n") : "None",
-      "",
-      "☕ On break now:",
-      onBreakNow.length ? onBreakNow.join("\n") : "None",
-      "",
-      "🌴 On leave today:",
-      onLeaveToday.length ? onLeaveToday.join("\n") : "None",
-      "",
-      "🏁 Logged out today:",
-      loggedOutToday.length ? loggedOutToday.join("\n") : "None",
-      "",
-      "❓ No attendance marked today:",
-      noUpdateToday.length ? noUpdateToday.join(", ") : "None",
+      `✅ Working: ${workingNow.length ? workingNow.join(", ") : "None"}`,
+      `☕ Break: ${onBreakNow.length ? onBreakNow.join(", ") : "None"}`,
+      `🌴 Leave: ${onLeaveToday.length ? onLeaveToday.join(", ") : "None"}`,
+      `🏁 Logged out: ${loggedOutToday.length ? loggedOutToday.join(", ") : "None"}`,
+      `❓ No update: ${noUpdateToday.length ? noUpdateToday.join(", ") : "None"}`,
     ];
 
     return sendTwiml(res, lines.join("\n"));
@@ -2059,32 +2142,25 @@ async function handleNowSummary(res, actingUser) {
     return sendTwiml(res, "❌ Failed to fetch now summary.");
   }
 }
+
 async function handleSummaryToday(res, actingUser) {
   if (!isManagerOrAdmin(actingUser)) {
     return sendTwiml(res, "You are not allowed to view team summary.");
   }
 
   try {
-    const today = formatLocalDateForDb(new Date());
+    const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
+    const shiftStartIso = getShiftStartIsoForToday();
 
-    const [
-      usersResult,
-      events,
-      openTasksResult,
-      overdueResult,
-      blockedResult,
-      plannedOffRows,
-    ] = await Promise.all([
+    const [usersResult, events, plannedOffRows, lateRows] = await Promise.all([
       supabase
         .from("users")
         .select("id, name, role")
         .eq("is_active", true)
         .order("name", { ascending: true }),
       getTodayAttendanceEventsForAllUsers(),
-      supabase.from("open_tasks_view").select("*").limit(100),
-      supabase.from("overdue_tasks_view").select("*").limit(100),
-      supabase.from("blocked_tasks_view").select("*").limit(100),
       getPlannedOffRowsForDate(today),
+      getLateArrivalRowsForDate(today),
     ]);
 
     if (usersResult.error) {
@@ -2093,10 +2169,8 @@ async function handleSummaryToday(res, actingUser) {
     }
 
     const users = usersResult.data || [];
-    const openTasks = openTasksResult.data || [];
-    const overdueTasks = overdueResult.data || [];
-    const blockedTasks = blockedResult.data || [];
     const plannedOff = plannedOffRows || [];
+    const plannedOffUserIds = new Set(plannedOff.map((x) => x.user_id));
 
     const eventsByUser = new Map();
     for (const ev of events || []) {
@@ -2106,15 +2180,27 @@ async function handleSummaryToday(res, actingUser) {
       eventsByUser.get(ev.user_id).push(ev);
     }
 
-    const plannedOffUserIds = new Set(plannedOff.map((x) => x.user_id));
+    const lateByUser = new Map();
+    for (const row of lateRows || []) {
+      lateByUser.set(row.user_id, row);
+    }
 
-    const workedToday = [];
+    const approvedLate = [];
+    const unapprovedLate = [];
+    const uninformedLate = [];
+    const exceededLate = [];
     const onBreakNow = [];
-    const noLoginToday = [];
+    const loggedOutToday = [];
+    const noUpdateToday = [];
+    const workedToday = [];
 
     for (const user of users) {
+      if (plannedOffUserIds.has(user.id)) continue;
+
       const userEvents = eventsByUser.get(user.id) || [];
       const latest = userEvents[userEvents.length - 1] || null;
+      const firstLogin = getFirstLoginEvent(userEvents);
+      const lateInfo = lateByUser.get(user.id) || null;
       const workedMin = computeWorkedMinutesFromEvents(userEvents);
 
       if (workedMin > 0) {
@@ -2122,48 +2208,69 @@ async function handleSummaryToday(res, actingUser) {
       }
 
       if (latest?.action === "break") {
-        onBreakNow.push(
-          `${user.name} (${formatDurationMinutes(minutesBetween(latest.created_at))})`,
-        );
+        onBreakNow.push(user.name);
       }
 
-      const hasLoginOrBack = userEvents.some(
-        (x) => x.action === "login" || x.action === "back",
+      if (latest?.action === "logout") {
+        loggedOutToday.push(user.name);
+      }
+
+      if (!firstLogin) {
+        if (lateInfo) {
+          if (new Date() > new Date(lateInfo.expected_login_at)) {
+            exceededLate.push(
+              `${user.name} (said ${formatTimeOnly(lateInfo.expected_login_at)})`,
+            );
+          } else {
+            noUpdateToday.push(
+              `${user.name} (late till ${formatTimeOnly(lateInfo.expected_login_at)})`,
+            );
+          }
+        } else if (new Date() > new Date(shiftStartIso)) {
+          noUpdateToday.push(user.name);
+        }
+        continue;
+      }
+
+      const loginDelayMin = Math.max(
+        0,
+        Math.round(
+          (new Date(firstLogin.created_at) - new Date(shiftStartIso)) / 60000,
+        ),
       );
 
-      if (!hasLoginOrBack && !plannedOffUserIds.has(user.id)) {
-        noLoginToday.push(user.name);
+      if (loginDelayMin > 0) {
+        if (lateInfo && lateInfo.is_approved) {
+          approvedLate.push(
+            `${user.name} (${formatTimeOnly(firstLogin.created_at)}, ${loginDelayMin}m late)`,
+          );
+        } else if (lateInfo && !lateInfo.is_approved) {
+          unapprovedLate.push(
+            `${user.name} (${formatTimeOnly(firstLogin.created_at)}, ${loginDelayMin}m late)`,
+          );
+        } else {
+          uninformedLate.push(
+            `${user.name} (${formatTimeOnly(firstLogin.created_at)}, ${loginDelayMin}m late)`,
+          );
+        }
       }
     }
 
+    const leaveNames = plannedOff.map((x) => x.users?.name || "Unknown");
+
     const lines = [
-      "Today summary",
+      "📋 Today summary",
       "",
-      `Planned off today: ${plannedOff.length ? plannedOff.map((x) => x.users?.name || "Unknown").join(", ") : "None"}`,
-      `No login today: ${noLoginToday.length ? noLoginToday.join(", ") : "None"}`,
-      `Currently on break: ${onBreakNow.length ? onBreakNow.join(", ") : "None"}`,
-      `Worked today: ${workedToday.length ? workedToday.join(", ") : "None"}`,
+      `🟢 Approved late: ${approvedLate.length ? approvedLate.join(", ") : "None"}`,
+      `🟡 Late not approved: ${unapprovedLate.length ? unapprovedLate.join(", ") : "None"}`,
+      `🔴 Uninformed late: ${uninformedLate.length ? uninformedLate.join(", ") : "None"}`,
+      `⚠️ Exceeded informed late time: ${exceededLate.length ? exceededLate.join(", ") : "None"}`,
+      `☕ On break now: ${onBreakNow.length ? onBreakNow.join(", ") : "None"}`,
+      `🏁 Logged out: ${loggedOutToday.length ? loggedOutToday.join(", ") : "None"}`,
+      `🌴 Leave: ${leaveNames.length ? leaveNames.join(", ") : "None"}`,
+      `❓ No update: ${noUpdateToday.length ? noUpdateToday.join(", ") : "None"}`,
       "",
-      `Open tasks: ${openTasks.length}`,
-      `Overdue tasks: ${overdueTasks.length}`,
-      `Blocked tasks: ${blockedTasks.length}`,
-      "",
-      `Overdue by name: ${
-        overdueTasks.length
-          ? overdueTasks
-              .slice(0, 8)
-              .map((t) => `#${t.id} ${t.title} - ${t.assigned_to ?? "Unknown"}`)
-              .join(" | ")
-          : "None"
-      }`,
-      `Blocked by name: ${
-        blockedTasks.length
-          ? blockedTasks
-              .slice(0, 8)
-              .map((t) => `#${t.id} ${t.title} - ${t.assigned_to ?? "Unknown"}`)
-              .join(" | ")
-          : "None"
-      }`,
+      `⏱ Worked today: ${workedToday.length ? workedToday.join(", ") : "None"}`,
     ];
 
     return sendTwiml(res, lines.join("\n"));
@@ -2179,10 +2286,14 @@ async function handleHelp(res, user) {
     "",
     "Attendance",
     "login",
-    "logout",
     "break",
     "break 15",
+    "break personal issue",
+    "break 15 personal issue",
     "back",
+    "logout",
+    "logout early due to family concern",
+    "late 11:00 AM",
     "",
     "Tasks",
     "my tasks",
@@ -2301,9 +2412,89 @@ async function handleUndoLastTaskChange(res, user) {
   );
 }
 
-async function getLatestAttendanceByUser() {
-  const today = formatLocalDateForDb(new Date());
+function getPartsInTimeZone(date = new Date(), timeZone = APP_TIMEZONE) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
 
+  const parts = formatter.formatToParts(date);
+  const out = {};
+
+  for (const part of parts) {
+    if (part.type !== "literal") {
+      out[part.type] = part.value;
+    }
+  }
+
+  return {
+    year: Number(out.year),
+    month: Number(out.month),
+    day: Number(out.day),
+    hour: Number(out.hour),
+    minute: Number(out.minute),
+    second: Number(out.second),
+  };
+}
+
+function formatDateForDbFromParts(year, month, day) {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function formatLocalDateForDb(date) {
+  const parts = getPartsInTimeZone(date, APP_TIMEZONE);
+  return formatDateForDbFromParts(parts.year, parts.month, parts.day);
+}
+
+function getTodayDateStringInTimeZone(timeZone = APP_TIMEZONE) {
+  const parts = getPartsInTimeZone(new Date(), timeZone);
+  return formatDateForDbFromParts(parts.year, parts.month, parts.day);
+}
+
+function addDaysToDateString(dateString, days) {
+  const base = new Date(`${dateString}T00:00:00Z`);
+  base.setUTCDate(base.getUTCDate() + days);
+
+  return formatDateForDbFromParts(
+    base.getUTCFullYear(),
+    base.getUTCMonth() + 1,
+    base.getUTCDate(),
+  );
+}
+
+function getCurrentYearInTimeZone(timeZone = APP_TIMEZONE) {
+  return getPartsInTimeZone(new Date(), timeZone).year;
+}
+
+function getUtcRangeForTodayInTimeZone(timeZone = APP_TIMEZONE) {
+  const todayDb = getTodayDateStringInTimeZone(timeZone);
+  const tomorrowDb = addDaysToDateString(todayDb, 1);
+
+  const startUtc = new Date(
+    `${todayDb}T00:00:00${APP_TIMEZONE_OFFSET}`,
+  ).toISOString();
+  const endUtc = new Date(
+    `${tomorrowDb}T00:00:00${APP_TIMEZONE_OFFSET}`,
+  ).toISOString();
+
+  return { startUtc, endUtc, todayDb };
+}
+
+function buildDateForCurrentYear(month, day) {
+  const year = getCurrentYearInTimeZone(APP_TIMEZONE);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
+async function getLatestAttendanceByUser() {
+  const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
   const [usersResult, events, plannedOffRows] = await Promise.all([
     supabase
       .from("users")
@@ -2712,7 +2903,8 @@ function renderDashboardPage(data) {
         }
 
         @media (max-width: 1200px) {
-  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
 
         @media (max-width: 700px) {
           .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2836,7 +3028,10 @@ function renderDashboardPage(data) {
 }
 
 async function getDashboardSummaryData() {
-  const today = formatLocalDateForDb(new Date());
+  const { startUtc, endUtc, todayDb } =
+    getUtcRangeForTodayInTimeZone(APP_TIMEZONE);
+  const today = todayDb;
+
   const [
     openTasksResult,
     overdueTasksResult,
@@ -2864,7 +3059,8 @@ async function getDashboardSummaryData() {
     supabase
       .from("attendance_events")
       .select("user_id", { count: "exact" })
-      .gte("created_at", `${today}T00:00:00.000Z`),
+      .gte("created_at", startUtc)
+      .lt("created_at", endUtc),
 
     supabase
       .from("users")
@@ -2908,6 +3104,7 @@ async function getDashboardSummaryData() {
     on_break_now: onBreakNow,
   };
 }
+
 async function getAttendancePageData() {
   const { startUtc, endUtc } = getUtcRangeForTodayInTimeZone(APP_TIMEZONE);
 
@@ -2923,7 +3120,9 @@ async function getAttendancePageData() {
 
     supabase
       .from("attendance_events")
-      .select("id, user_id, action, duration_min, note, created_at")
+      .select(
+        "id, user_id, action, duration_min, expected_duration_min, reason, note, created_at",
+      )
       .order("created_at", { ascending: false })
       .limit(500),
   ]);
@@ -2946,6 +3145,9 @@ async function getAttendancePageData() {
       role: user.role,
       status: latest?.action || "unknown",
       last_event_at: latest?.created_at || null,
+      last_event_at_text: latest?.created_at
+        ? formatDateTime(latest.created_at)
+        : "-",
     };
   });
 
@@ -2968,12 +3170,15 @@ async function getAttendancePageData() {
       active_today_count: activeTodayUserIds.size,
     },
     current_status: currentStatus,
-    recent_events: (events || []).slice(0, 50),
+    recent_events: (events || []).slice(0, 50).map((row) => ({
+      ...row,
+      created_at_text: row.created_at ? formatDateTime(row.created_at) : "-",
+    })),
   };
 }
 
 async function getTasksPageData(filters = {}) {
-  const today = formatLocalDateForDb(new Date());
+  const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
 
   let query = supabase
     .from("tasks")
@@ -3141,6 +3346,7 @@ async function getLogsPageData() {
     body: row.message_text,
     message_sid: row.twilio_message_sid,
     created_at: row.created_at,
+    created_at_text: row.created_at ? formatDateTime(row.created_at) : "-",
   }));
 }
 
@@ -3507,13 +3713,13 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
                 <td>\${row.name || ''}</td>
                 <td>\${row.role || ''}</td>
                 <td>\${row.status || ''}</td>
-                <td>\${row.last_event_at || '-'}</td>
+                <td>\${row.last_event_at_text || '-'}</td>
               </tr>
             \`).join('');
 
             document.getElementById('recentEventRows').innerHTML = (data.recent_events || []).map(row => \`
               <tr>
-                <td>\${row.created_at || ''}</td>
+                <td>\${row.created_at_text || ''}</td>
                 <td>\${row.user_id || ''}</td>
                 <td>\${row.action || ''}</td>
                 <td>\${row.duration_min || '-'}</td>
@@ -3562,7 +3768,7 @@ app.get("/logs", requireDashboardAuth, async (_req, res) => {
 
             document.getElementById('logRows').innerHTML = (json.data || []).map(row => \`
               <tr>
-                <td>\${row.created_at || ''}</td>
+                <td>\${row.created_at_text || ''}</td>
                 <td>\${row.sender || ''}</td>
                 <td class="msg">\${row.body || ''}</td>
                 <td>\${row.message_sid || '-'}</td>
@@ -3663,7 +3869,13 @@ app.post("/whatsapp", async (req, res) => {
       return handleStatus(res, user);
     }
 
+    const lateCommand = parseLateCommand(body);
+    if (lateCommand) {
+      return handleLateCommand(res, user, lateCommand);
+    }
+
     const blockCommand = parseBlockCommand(body);
+
     if (blockCommand) {
       return handleBlockTask(
         res,
@@ -3681,10 +3893,6 @@ app.post("/whatsapp", async (req, res) => {
     const tasksByNameCommand = parseTasksByNameCommand(body);
     if (tasksByNameCommand) {
       return handleTasksByName(res, user, tasksByNameCommand.assignee_name);
-    }
-
-    if (parseWhoIsOnBreakCommand(body)) {
-      return handleWhoIsOnBreak(res, user);
     }
 
     if (parseWhoIsOnBreakCommand(body)) {
@@ -3734,12 +3942,6 @@ app.post("/whatsapp", async (req, res) => {
     const markAttendanceCommand = parseMarkAttendanceCommand(body);
     if (markAttendanceCommand) {
       return handleMarkedAttendance(res, user, markAttendanceCommand);
-    }
-
-    const timedAttendanceForOtherCommand =
-      parseTimedAttendanceForOtherCommand(body);
-    if (timedAttendanceForOtherCommand) {
-      return handleMarkedAttendance(res, user, timedAttendanceForOtherCommand);
     }
 
     const attendanceCommand = parseAttendanceCommand(body);
