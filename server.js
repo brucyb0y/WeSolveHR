@@ -1104,6 +1104,12 @@ async function handleMyTasks(res, user) {
   return sendTwiml(res, `Your open tasks:\n${lines.join("\n")}${suffix}`);
 }
 
+function canActOnTarget({ senderUser, targetUser }) {
+  if (!senderUser || !targetUser) return false;
+  if (senderUser.id === targetUser.id) return true;
+  return isManagerOrAdmin(senderUser);
+}
+
 async function handleShowTask(res, user, taskId) {
   const { task, error } = await getTaskById(taskId);
 
@@ -1485,8 +1491,8 @@ async function handleOffDayForOther(res, actingUser, offCommand) {
   if (!isManagerOrAdmin(actingUser)) {
     return sendTwiml(res, "You are not allowed to mark day off for others.");
   }
-
   const targetUser = await findUniqueUserByName(offCommand.target_name);
+
   if (!targetUser) {
     return sendTwiml(
       res,
@@ -2334,6 +2340,10 @@ async function handleHelp(res, user) {
 }
 
 async function handleUndoLastTaskChange(res, user) {
+  if (!isManagerOrAdmin(user)) {
+    return sendTwiml(res, "Undo is only available to managers/admins.");
+  }
+
   const { data: rows, error } = await supabase
     .from("task_history")
     .select(
