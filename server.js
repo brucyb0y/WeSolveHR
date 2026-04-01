@@ -535,8 +535,7 @@ function parseWhoIsOffTodayCommand(text) {
   return (
     msg === "who is off today" ||
     msg === "who all are on leave today" ||
-    msg === "off today" ||
-    msg === "leave today"
+    msg === "off today"
   );
 }
 
@@ -1202,6 +1201,270 @@ async function getAttendanceEventsForAttendanceDay(attendanceDateString) {
   return data || [];
 }
 
+async function getAttendanceEventsForUserOnAttendanceDay(
+  userId,
+  attendanceDateString,
+) {
+  const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
+
+  const { data, error } = await supabase
+    .from("attendance_events")
+    .select(
+      "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note, acted_by_phone, target_phone",
+    )
+    .eq("user_id", userId)
+    .gte("created_at", startUtc)
+    .lt("created_at", endUtc)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return data || [];
+}
+
+async function getLatestBreakEventAtOrBefore(userId, occurredAtIso = null) {
+  let query = supabase
+    .from("attendance_events")
+    .select(
+      "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
+    )
+    .eq("user_id", userId)
+    .eq("action", "break")
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (occurredAtIso) {
+    query = query.lte("created_at", occurredAtIso);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    console.error("Latest break event at or before error:", error);
+    return null;
+  }
+
+  return data || null;
+}
+
+async function getLatestAttendanceEventByAction(
+  userId,
+  action,
+  attendanceDateString = null,
+) {
+  let query = supabase
+    .from("attendance_events")
+    .select(
+      "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
+    )
+    .eq("user_id", userId)
+    .eq("action", action)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (attendanceDateString) {
+    const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
+    query = query.gte("created_at", startUtc).lt("created_at", endUtc);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    console.error("Latest attendance event by action error:", error);
+    return null;
+  }
+
+  return data || null;
+}
+
+async function deleteAttendanceEventById(eventId) {
+  const { error } = await supabase
+    .from("attendance_events")
+    .delete()
+    .eq("id", eventId);
+
+  return error;
+}
+
+async function deleteAttendanceEventsForUserOnAttendanceDay(
+  userId,
+  attendanceDateString,
+) {
+  const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
+
+  const { error } = await supabase
+    .from("attendance_events")
+    .delete()
+    .eq("user_id", userId)
+    .gte("created_at", startUtc)
+    .lt("created_at", endUtc);
+
+  return error;
+}
+
+async function deleteLateArrivalForUserOnDate(userId, attendanceDateString) {
+  const { error } = await supabase
+    .from("late_arrivals")
+    .delete()
+    .eq("user_id", userId)
+    .eq("late_date", attendanceDateString);
+
+  return error;
+}
+
+async function deletePlannedOffForUserOnDate(userId, attendanceDateString) {
+  const { error } = await supabase
+    .from("planned_time_off")
+    .delete()
+    .eq("user_id", userId)
+    .eq("off_date", attendanceDateString);
+
+  return error;
+}
+
+async function isAttendanceDayLocked(userId, attendanceDateString) {
+  const { data, error } = await supabase
+    .from("attendance_day_locks")
+    .select("id, is_locked")
+    .eq("user_id", userId)
+    .eq("attendance_date", attendanceDateString)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Attendance day lock lookup error:", error);
+    return false;
+  }
+
+  return !!data?.is_locked;
+}
+
+async function setAttendanceDayLock(
+  userId,
+  attendanceDateString,
+  isLocked,
+  actedByUserId,
+  note = null,
+) {
+  const { error } = await supabase.from("attendance_day_locks").upsert(
+    [
+      {
+        user_id: userId,
+        attendance_date: attendanceDateString,
+        is_locked: isLocked,
+        locked_by_user_id: actedByUserId,
+        note,
+        updated_at: new Date().toISOString(),
+      },
+    ],
+    { onConflict: "user_id,attendance_date" },
+  );
+
+  return error;
+}
+
+function buildAttendanceTimelineLines(events) {
+  if (!events?.length) return ["No attendance events found"];
+
+  return events.map((ev) => {
+    let line = `${formatTimeOnly(ev.created_at)} → ${ev.action}`;
+
+    if (ev.action === "break" && ev.expected_duration_min) {
+      line += ` (${ev.expected_duration_min} min expected)`;
+    }
+
+    if (ev.reason) {
+      line += ` | ${ev.reason}`;
+    }
+
+    if (ev.note) {
+      line += ` | ${ev.note}`;
+    }
+
+    return line;
+  });
+}
+
+function analyzeAttendanceIssues(events) {
+  const issues = [];
+  let loginCount = 0;
+  let breakOpen = null;
+  let hasLogout = false;
+
+  for (const ev of events || []) {
+    if (ev.action === "login") {
+      loginCount += 1;
+      if (loginCount > 1) {
+        issues.push(
+          `Multiple login entries found (latest at ${formatTimeOnly(ev.created_at)})`,
+        );
+      }
+    }
+
+    if (ev.action === "break") {
+      if (breakOpen) {
+        issues.push(
+          `Break started again without back at ${formatTimeOnly(ev.created_at)}`,
+        );
+      }
+      breakOpen = ev;
+    }
+
+    if (ev.action === "back") {
+      if (!breakOpen) {
+        issues.push(
+          `Back recorded without a matching break at ${formatTimeOnly(ev.created_at)}`,
+        );
+      } else {
+        const breakMinutes = minutesBetween(
+          breakOpen.created_at,
+          ev.created_at,
+        );
+        if (breakMinutes >= LONG_BREAK_THRESHOLD_MIN) {
+          issues.push(
+            `Long break detected: ${formatDurationMinutes(breakMinutes)} ending at ${formatTimeOnly(ev.created_at)}`,
+          );
+        }
+      }
+      breakOpen = null;
+    }
+
+    if (ev.action === "logout") {
+      hasLogout = true;
+      if (breakOpen) {
+        issues.push(
+          `Logout happened while still on break at ${formatTimeOnly(ev.created_at)}`,
+        );
+        breakOpen = null;
+      }
+    }
+  }
+
+  if (breakOpen) {
+    issues.push(
+      `Break without return since ${formatTimeOnly(breakOpen.created_at)}`,
+    );
+  }
+
+  const summary = getAttendanceSummaryFromEvents(events || []);
+  if (summary.longShiftFlag) {
+    issues.push(
+      `Long shift detected: ${formatDurationMinutes(summary.workedMinutes)}`,
+    );
+  }
+
+  const hasWorkStart = (events || []).some(
+    (x) => x.action === "login" || x.action === "back",
+  );
+
+  if (hasWorkStart && !hasLogout) {
+    issues.push("No logout recorded");
+  }
+
+  return issues;
+}
+
 async function getTodayAttendanceEventsForAllUsers() {
   const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
   return getAttendanceEventsForAttendanceDay(attendanceDate);
@@ -1403,6 +1666,653 @@ async function handleEmployeeSummary(res, actingUser, command) {
     console.error("Employee summary error:", error);
     return sendTwiml(res, "Failed to fetch employee summary.");
   }
+}
+
+async function handleTimelineAttendance(res, actingUser, command) {
+  if (!isManagerOrAdmin(actingUser)) {
+    return sendTwiml(res, "You are not allowed to view attendance timeline.");
+  }
+
+  const targetUser = await findUniqueUserByName(command.target_name);
+  if (!targetUser) {
+    return sendTwiml(
+      res,
+      `I could not uniquely find an active user named "${command.target_name}".`,
+    );
+  }
+
+  const attendanceDate = parseFlexibleDateText(command.date_text);
+  if (!attendanceDate) {
+    return sendTwiml(
+      res,
+      `I could not understand the date "${command.date_text}".`,
+    );
+  }
+
+  try {
+    const events = await getAttendanceEventsForUserOnAttendanceDay(
+      targetUser.id,
+      attendanceDate,
+    );
+
+    const lines = [
+      `🧾 Timeline: ${targetUser.name}`,
+      `Date: ${attendanceDate}`,
+      "",
+      ...buildAttendanceTimelineLines(events),
+    ];
+
+    return sendTwiml(res, lines.join("\n"));
+  } catch (error) {
+    console.error("Timeline attendance error:", error);
+    return sendTwiml(res, "Failed to fetch attendance timeline.");
+  }
+}
+
+async function handleAuditAttendance(res, actingUser, command) {
+  if (!isManagerOrAdmin(actingUser)) {
+    return sendTwiml(res, "You are not allowed to audit attendance.");
+  }
+
+  const targetUser = await findUniqueUserByName(command.target_name);
+  if (!targetUser) {
+    return sendTwiml(
+      res,
+      `I could not uniquely find an active user named "${command.target_name}".`,
+    );
+  }
+
+  const attendanceDate = parseFlexibleDateText(command.date_text);
+  if (!attendanceDate) {
+    return sendTwiml(
+      res,
+      `I could not understand the date "${command.date_text}".`,
+    );
+  }
+
+  try {
+    const events = await getAttendanceEventsForUserOnAttendanceDay(
+      targetUser.id,
+      attendanceDate,
+    );
+
+    const issues = analyzeAttendanceIssues(events);
+
+    const lines = [
+      `🔍 Attendance audit: ${targetUser.name}`,
+      `Date: ${attendanceDate}`,
+      "",
+      issues.length
+        ? issues.map((x) => `• ${x}`).join("\n")
+        : "✅ No obvious attendance issues found",
+    ];
+
+    return sendTwiml(res, lines.join("\n"));
+  } catch (error) {
+    console.error("Audit attendance error:", error);
+    return sendTwiml(res, "Failed to audit attendance.");
+  }
+}
+
+async function handleUndoAttendance(res, actingUser, command) {
+  const isSelf = command.mode === "self";
+  const targetUser = isSelf
+    ? actingUser
+    : await findUniqueUserByName(command.target_name);
+
+  if (!isSelf && !isManagerOrAdmin(actingUser)) {
+    return sendTwiml(
+      res,
+      "You are not allowed to undo other people's attendance.",
+    );
+  }
+
+  if (!targetUser) {
+    return sendTwiml(
+      res,
+      `I could not uniquely find an active user named "${command.target_name}".`,
+    );
+  }
+
+  try {
+    const latestEvent = await getLatestAttendanceEvent(targetUser.id);
+    if (!latestEvent) {
+      return sendTwiml(
+        res,
+        `No attendance event found to undo for ${targetUser.name}.`,
+      );
+    }
+
+    const attendanceDate = getAttendanceDayDateStringFromDate(
+      new Date(latestEvent.created_at),
+    );
+    const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+
+    if (locked) {
+      return sendTwiml(
+        res,
+        `❌ Attendance is locked for ${targetUser.name} on ${attendanceDate}`,
+      );
+    }
+
+    const deleteError = await deleteAttendanceEventById(latestEvent.id);
+    if (deleteError) {
+      console.error("Undo attendance delete error:", deleteError);
+      return sendTwiml(res, "Failed to undo attendance.");
+    }
+
+    await insertAttendanceAudit(
+      targetUser.id,
+      actingUser.id,
+      "undo_attendance",
+      latestEvent,
+      null,
+      `Deleted latest attendance event (${latestEvent.action})`,
+    );
+
+    return sendTwiml(
+      res,
+      `↩ Attendance undone for ${targetUser.name}\nRemoved: ${latestEvent.action} at ${formatTimeOnly(latestEvent.created_at)}`,
+    );
+  } catch (error) {
+    console.error("Undo attendance error:", error);
+    return sendTwiml(res, "Failed to undo attendance.");
+  }
+}
+
+async function handleResetAttendance(res, actingUser, command) {
+  if (!isManagerOrAdmin(actingUser)) {
+    return sendTwiml(res, "You are not allowed to reset attendance.");
+  }
+
+  const targetUser = await findUniqueUserByName(command.target_name);
+  if (!targetUser) {
+    return sendTwiml(
+      res,
+      `I could not uniquely find an active user named "${command.target_name}".`,
+    );
+  }
+
+  const attendanceDate = parseFlexibleDateText(command.date_text);
+  if (!attendanceDate) {
+    return sendTwiml(
+      res,
+      `I could not understand the date "${command.date_text}".`,
+    );
+  }
+
+  const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+  if (locked) {
+    return sendTwiml(
+      res,
+      `❌ Attendance is locked for ${targetUser.name} on ${attendanceDate}`,
+    );
+  }
+
+  try {
+    const oldEvents = await getAttendanceEventsForUserOnAttendanceDay(
+      targetUser.id,
+      attendanceDate,
+    );
+
+    const [attendanceError, lateError, offError] = await Promise.all([
+      deleteAttendanceEventsForUserOnAttendanceDay(
+        targetUser.id,
+        attendanceDate,
+      ),
+      deleteLateArrivalForUserOnDate(targetUser.id, attendanceDate),
+      deletePlannedOffForUserOnDate(targetUser.id, attendanceDate),
+    ]);
+
+    if (attendanceError || lateError || offError) {
+      console.error("Reset attendance errors:", {
+        attendanceError,
+        lateError,
+        offError,
+      });
+      return sendTwiml(res, "Failed to reset attendance.");
+    }
+
+    await insertAttendanceAudit(
+      targetUser.id,
+      actingUser.id,
+      "reset_attendance_day",
+      {
+        attendance_date: attendanceDate,
+        old_events: oldEvents,
+      },
+      {
+        attendance_date: attendanceDate,
+        reset: true,
+      },
+      `Attendance reset by ${actingUser.name}`,
+    );
+
+    return sendTwiml(
+      res,
+      `⚠ Attendance reset for ${targetUser.name}\nDate: ${attendanceDate}\nAll attendance + late + leave entries cleared for that date`,
+    );
+  } catch (error) {
+    console.error("Reset attendance fatal error:", error);
+    return sendTwiml(res, "Failed to reset attendance.");
+  }
+}
+
+async function handleForceAttendance(res, actingUser, command) {
+  if (!isManagerOrAdmin(actingUser)) {
+    return sendTwiml(res, "You are not allowed to force attendance changes.");
+  }
+
+  const targetUser = await findUniqueUserByName(command.target_name);
+  if (!targetUser) {
+    return sendTwiml(
+      res,
+      `I could not uniquely find an active user named "${command.target_name}".`,
+    );
+  }
+
+  const occurredAtIso = command.time_text
+    ? parseLocalDateTimeForToday(command.time_text)
+    : new Date().toISOString();
+
+  if (command.time_text && !occurredAtIso) {
+    return sendTwiml(
+      res,
+      `Could not understand the time "${command.time_text}". Use format like 2:30 PM.`,
+    );
+  }
+
+  if (new Date(occurredAtIso) > new Date()) {
+    return sendTwiml(res, "❌ Future attendance corrections are not allowed");
+  }
+
+  const attendanceDate = getAttendanceDayDateStringFromDate(
+    new Date(occurredAtIso),
+  );
+  const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+
+  if (locked) {
+    return sendTwiml(
+      res,
+      `❌ Attendance is locked for ${targetUser.name} on ${attendanceDate}`,
+    );
+  }
+
+  let durationMin = null;
+  let note = `Force ${command.action} by ${actingUser.name}`;
+
+  if (command.action === "back") {
+    const lastBreak = await getLatestBreakEventAtOrBefore(
+      targetUser.id,
+      occurredAtIso,
+    );
+    if (lastBreak) {
+      durationMin = minutesBetween(lastBreak.created_at, occurredAtIso);
+      note += ` | Actual break: ${durationMin} min`;
+    }
+  }
+
+  const attendanceRow = {
+    user_id: targetUser.id,
+    target_phone: targetUser.phone_number,
+    acted_by_phone: actingUser.phone_number,
+    action: command.action,
+    duration_min: durationMin,
+    expected_duration_min: null,
+    reason: null,
+    note,
+    created_at: occurredAtIso,
+  };
+
+  const { error } = await supabase
+    .from("attendance_events")
+    .insert([attendanceRow]);
+
+  if (error) {
+    console.error("Force attendance insert error:", error);
+    return sendTwiml(res, "Failed to force attendance change.");
+  }
+
+  await insertAttendanceAudit(
+    targetUser.id,
+    actingUser.id,
+    `force_${command.action}`,
+    null,
+    attendanceRow,
+    note,
+  );
+
+  return sendTwiml(
+    res,
+    `⚠ Forced ${command.action} for ${targetUser.name}${command.time_text ? ` at ${command.time_text}` : ""}`,
+  );
+}
+
+async function handleFixAttendance(res, actingUser, command) {
+  if (!isManagerOrAdmin(actingUser)) {
+    return sendTwiml(res, "You are not allowed to fix attendance.");
+  }
+
+  const targetUser = await findUniqueUserByName(command.target_name);
+  if (!targetUser) {
+    return sendTwiml(
+      res,
+      `I could not uniquely find an active user named "${command.target_name}".`,
+    );
+  }
+
+  const correctedIso = parseLocalDateTimeForToday(command.time_text);
+  if (!correctedIso) {
+    return sendTwiml(
+      res,
+      `Could not understand the time "${command.time_text}". Use format like 2:30 PM.`,
+    );
+  }
+
+  if (new Date(correctedIso) > new Date()) {
+    return sendTwiml(res, "❌ Future attendance corrections are not allowed");
+  }
+
+  const attendanceDate = getAttendanceDayDateStringFromDate(
+    new Date(correctedIso),
+  );
+  const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+
+  if (locked) {
+    return sendTwiml(
+      res,
+      `❌ Attendance is locked for ${targetUser.name} on ${attendanceDate}`,
+    );
+  }
+
+  const latestActionEvent = await getLatestAttendanceEventByAction(
+    targetUser.id,
+    command.action,
+    attendanceDate,
+  );
+
+  if (!latestActionEvent) {
+    return sendTwiml(
+      res,
+      `No ${command.action} event found for ${targetUser.name} on ${attendanceDate}.`,
+    );
+  }
+
+  const oldValue = { ...latestActionEvent };
+
+  const patch = {
+    created_at: correctedIso,
+    note: `${latestActionEvent.note ? latestActionEvent.note + " | " : ""}Fixed by ${actingUser.name}`,
+  };
+
+  let durationMin = latestActionEvent.duration_min;
+
+  if (command.action === "back") {
+    const lastBreak = await getLatestBreakEventAtOrBefore(
+      targetUser.id,
+      correctedIso,
+    );
+    if (lastBreak) {
+      durationMin = minutesBetween(lastBreak.created_at, correctedIso);
+      patch.duration_min = durationMin;
+    }
+  }
+
+  const { error } = await supabase
+    .from("attendance_events")
+    .update(patch)
+    .eq("id", latestActionEvent.id);
+
+  if (error) {
+    console.error("Fix attendance update error:", error);
+    return sendTwiml(res, "Failed to fix attendance.");
+  }
+
+  await insertAttendanceAudit(
+    targetUser.id,
+    actingUser.id,
+    `fix_${command.action}`,
+    oldValue,
+    {
+      ...oldValue,
+      ...patch,
+    },
+    `Fixed ${command.action} time by ${actingUser.name}`,
+  );
+
+  return sendTwiml(
+    res,
+    `🛠 Fixed ${command.action} for ${targetUser.name}\nNew time: ${command.time_text}`,
+  );
+}
+
+async function handleRemoveAttendance(res, actingUser, command) {
+  if (!isManagerOrAdmin(actingUser)) {
+    return sendTwiml(res, "You are not allowed to remove attendance events.");
+  }
+
+  const targetUser = await findUniqueUserByName(command.target_name);
+  if (!targetUser) {
+    return sendTwiml(
+      res,
+      `I could not uniquely find an active user named "${command.target_name}".`,
+    );
+  }
+
+  const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
+  const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+
+  if (locked) {
+    return sendTwiml(
+      res,
+      `❌ Attendance is locked for ${targetUser.name} on ${attendanceDate}`,
+    );
+  }
+
+  const latestActionEvent = await getLatestAttendanceEventByAction(
+    targetUser.id,
+    command.action,
+    attendanceDate,
+  );
+
+  if (!latestActionEvent) {
+    return sendTwiml(
+      res,
+      `No ${command.action} event found for ${targetUser.name} today.`,
+    );
+  }
+
+  const deleteError = await deleteAttendanceEventById(latestActionEvent.id);
+  if (deleteError) {
+    console.error("Remove attendance delete error:", deleteError);
+    return sendTwiml(res, "Failed to remove attendance event.");
+  }
+
+  await insertAttendanceAudit(
+    targetUser.id,
+    actingUser.id,
+    `remove_${command.action}`,
+    latestActionEvent,
+    null,
+    `Removed latest ${command.action} event by ${actingUser.name}`,
+  );
+
+  return sendTwiml(
+    res,
+    `🧹 Removed latest ${command.action} for ${targetUser.name}\nWas at: ${formatTimeOnly(latestActionEvent.created_at)}`,
+  );
+}
+
+async function handleAutoFixAttendance(res, actingUser, command) {
+  if (!isManagerOrAdmin(actingUser)) {
+    return sendTwiml(res, "You are not allowed to auto-fix attendance.");
+  }
+
+  const targetUser = await findUniqueUserByName(command.target_name);
+  if (!targetUser) {
+    return sendTwiml(
+      res,
+      `I could not uniquely find an active user named "${command.target_name}".`,
+    );
+  }
+
+  const attendanceDate = parseFlexibleDateText(command.date_text);
+  if (!attendanceDate) {
+    return sendTwiml(
+      res,
+      `I could not understand the date "${command.date_text}".`,
+    );
+  }
+
+  const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+  if (locked) {
+    return sendTwiml(
+      res,
+      `❌ Attendance is locked for ${targetUser.name} on ${attendanceDate}`,
+    );
+  }
+
+  try {
+    const events = await getAttendanceEventsForUserOnAttendanceDay(
+      targetUser.id,
+      attendanceDate,
+    );
+
+    if (!events.length) {
+      return sendTwiml(
+        res,
+        `No attendance events found for ${targetUser.name} on ${attendanceDate}.`,
+      );
+    }
+
+    const latest = events[events.length - 1];
+    const applied = [];
+
+    if (latest.action === "break") {
+      const forcedBackRow = {
+        user_id: targetUser.id,
+        target_phone: targetUser.phone_number,
+        acted_by_phone: actingUser.phone_number,
+        action: "back",
+        duration_min: minutesBetween(latest.created_at),
+        expected_duration_min: null,
+        reason: null,
+        note: `Auto-fix back by ${actingUser.name}`,
+      };
+
+      const { error: insertBackError } = await supabase
+        .from("attendance_events")
+        .insert([forcedBackRow]);
+
+      if (!insertBackError) {
+        applied.push("closed open break with back");
+      }
+    }
+
+    const refreshedEvents = await getAttendanceEventsForUserOnAttendanceDay(
+      targetUser.id,
+      attendanceDate,
+    );
+    const refreshedLatest = refreshedEvents[refreshedEvents.length - 1];
+
+    if (
+      refreshedLatest &&
+      (refreshedLatest.action === "login" || refreshedLatest.action === "back")
+    ) {
+      const forcedLogoutRow = {
+        user_id: targetUser.id,
+        target_phone: targetUser.phone_number,
+        acted_by_phone: actingUser.phone_number,
+        action: "logout",
+        duration_min: null,
+        expected_duration_min: null,
+        reason: null,
+        note: `Auto-fix logout by ${actingUser.name}`,
+      };
+
+      const { error: insertLogoutError } = await supabase
+        .from("attendance_events")
+        .insert([forcedLogoutRow]);
+
+      if (!insertLogoutError) {
+        applied.push("closed open session with logout");
+      }
+    }
+
+    await insertAttendanceAudit(
+      targetUser.id,
+      actingUser.id,
+      "auto_fix_attendance_day",
+      { attendance_date: attendanceDate, before: events },
+      { attendance_date: attendanceDate, actions_applied: applied },
+      `Auto-fix by ${actingUser.name}`,
+    );
+
+    return sendTwiml(
+      res,
+      `🛠 Auto-fix complete for ${targetUser.name}\nDate: ${attendanceDate}\n${
+        applied.length
+          ? applied.map((x) => `• ${x}`).join("\n")
+          : "No changes were needed"
+      }`,
+    );
+  } catch (error) {
+    console.error("Auto-fix attendance error:", error);
+    return sendTwiml(res, "Failed to auto-fix attendance.");
+  }
+}
+
+async function handleLockAttendanceDay(res, actingUser, command) {
+  if (!isManagerOrAdmin(actingUser)) {
+    return sendTwiml(res, "You are not allowed to lock or unlock attendance.");
+  }
+
+  const targetUser = await findUniqueUserByName(command.target_name);
+  if (!targetUser) {
+    return sendTwiml(
+      res,
+      `I could not uniquely find an active user named "${command.target_name}".`,
+    );
+  }
+
+  const attendanceDate = parseFlexibleDateText(command.date_text);
+  if (!attendanceDate) {
+    return sendTwiml(
+      res,
+      `I could not understand the date "${command.date_text}".`,
+    );
+  }
+
+  const isLock = command.mode === "lock";
+  const error = await setAttendanceDayLock(
+    targetUser.id,
+    attendanceDate,
+    isLock,
+    actingUser.id,
+    `${command.mode} by ${actingUser.name}`,
+  );
+
+  if (error) {
+    console.error("Attendance day lock error:", error);
+    return sendTwiml(res, `Failed to ${command.mode} attendance day.`);
+  }
+
+  await insertAttendanceAudit(
+    targetUser.id,
+    actingUser.id,
+    `${command.mode}_attendance_day`,
+    null,
+    {
+      attendance_date: attendanceDate,
+      is_locked: isLock,
+    },
+    `${command.mode} attendance by ${actingUser.name}`,
+  );
+
+  return sendTwiml(
+    res,
+    `${isLock ? "🔒" : "🔓"} Attendance ${isLock ? "locked" : "unlocked"} for ${targetUser.name}\nDate: ${attendanceDate}`,
+  );
 }
 
 async function handleMyTasks(res, user) {
@@ -1687,6 +2597,16 @@ async function handleLateCommand(res, user, lateCommand) {
     );
   }
 
+  const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
+  const locked = await isAttendanceDayLocked(user.id, attendanceDate);
+
+  if (locked) {
+    return sendTwiml(
+      res,
+      `❌ Your attendance is locked for ${attendanceDate}\nPlease contact admin`,
+    );
+  }
+
   const { error, approved } = await upsertLateArrival(
     user.id,
     expectedLoginAtIso,
@@ -1737,13 +2657,28 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     );
   }
 
+  const attendanceDate = getAttendanceDayDateStringFromDate(
+    new Date(occurredAtIso),
+  );
+
+  const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+  if (locked) {
+    return sendTwiml(
+      res,
+      `❌ Attendance is locked for ${targetUser.name} on ${attendanceDate}`,
+    );
+  }
+
   const lastAction = await getLastActionAtOrBefore(
     targetUser.id,
     occurredAtIso,
   );
+
   const oldValue = {
     last_action: lastAction,
+    attendance_date: attendanceDate,
   };
+
   const validationError = validateAttendanceTransition(
     lastAction,
     markCommand.action,
@@ -1763,7 +2698,11 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
   let actualBreakMinutes = null;
 
   if (markCommand.action === "back") {
-    const lastBreak = await getLatestBreakEvent(targetUser.id);
+    const lastBreak = await getLatestBreakEventAtOrBefore(
+      targetUser.id,
+      occurredAtIso,
+    );
+
     if (lastBreak) {
       actualBreakMinutes = minutesBetween(lastBreak.created_at, occurredAtIso);
       note += ` | Actual break: ${actualBreakMinutes} min`;
@@ -1775,7 +2714,10 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     target_phone: targetUser.phone_number,
     acted_by_phone: actingUser.phone_number,
     action: markCommand.action,
-    duration_min: markCommand.duration_min ?? null,
+    duration_min:
+      markCommand.action === "back"
+        ? actualBreakMinutes
+        : (markCommand.duration_min ?? null),
     expected_duration_min: markCommand.duration_min ?? null,
     reason: markCommand.reason ?? null,
     note,
@@ -1798,11 +2740,12 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     oldValue,
     {
       action: markCommand.action,
-      duration_min: markCommand.duration_min ?? null,
-      expected_duration_min:
-        markCommand.expected_duration_min ?? markCommand.duration_min ?? null,
-      reason: markCommand.reason ?? null,
+      attendance_date: attendanceDate,
+      duration_min: attendanceRow.duration_min,
+      expected_duration_min: attendanceRow.expected_duration_min,
+      reason: attendanceRow.reason,
       note,
+      created_at: occurredAtIso,
     },
     `Marked by ${actingUser.name}`,
   );
@@ -1810,20 +2753,30 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
   if (markCommand.action === "break") {
     return sendTwiml(
       res,
-      `${targetUser.name}: break started${markCommand.duration_min ? ` for ${markCommand.duration_min} minutes` : ""} by ${actingUser.name}.`,
+      `${targetUser.name}: break started${
+        markCommand.duration_min
+          ? ` for ${markCommand.duration_min} minutes`
+          : ""
+      } by ${actingUser.name}${
+        markCommand.time_text ? ` at ${markCommand.time_text}` : ""
+      }.`,
     );
   }
 
   if (markCommand.action === "back") {
     return sendTwiml(
       res,
-      `${targetUser.name}: back marked by ${actingUser.name}${markCommand.time_text ? ` at ${markCommand.time_text}` : ""}. Break duration was ${formatDurationMinutes(actualBreakMinutes || 0)}.`,
+      `${targetUser.name}: back marked by ${actingUser.name}${
+        markCommand.time_text ? ` at ${markCommand.time_text}` : ""
+      }. Break duration was ${formatDurationMinutes(actualBreakMinutes || 0)}.`,
     );
   }
 
   return sendTwiml(
     res,
-    `${targetUser.name}: ${markCommand.action} marked by ${actingUser.name}${markCommand.time_text ? ` at ${markCommand.time_text}` : ""}.`,
+    `${targetUser.name}: ${markCommand.action} marked by ${actingUser.name}${
+      markCommand.time_text ? ` at ${markCommand.time_text}` : ""
+    }.`,
   );
 }
 
@@ -1836,7 +2789,13 @@ async function handleSelfOffDay(res, user, offCommand) {
       `I could not understand the off date "${offCommand.off_date_text}". Use today, tomorrow, 11 april, or april 11.`,
     );
   }
-
+  const locked = await isAttendanceDayLocked(user.id, offDate);
+  if (locked) {
+    return sendTwiml(
+      res,
+      `❌ Leave could not be changed because ${offDate} is locked`,
+    );
+  }
   const error = await createPlannedOffDay(user.id, offDate, user.id);
   if (error) {
     console.error("Create self off day error:", error);
@@ -1865,6 +2824,14 @@ async function handleOffDayForOther(res, actingUser, offCommand) {
     return sendTwiml(
       res,
       `I could not understand the off date "${offCommand.off_date_text}". Use today, tomorrow, 11 april, or april 11.`,
+    );
+  }
+
+  const locked = await isAttendanceDayLocked(targetUser.id, offDate);
+  if (locked) {
+    return sendTwiml(
+      res,
+      `❌ Leave could not be changed because ${offDate} is locked for ${targetUser.name}`,
     );
   }
 
@@ -1905,6 +2872,16 @@ async function handleSelfAttendance(res, user, attendanceCommand) {
 
   if (validationError) {
     return sendTwiml(res, validationError);
+  }
+
+  const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
+  const locked = await isAttendanceDayLocked(user.id, attendanceDate);
+
+  if (locked) {
+    return sendTwiml(
+      res,
+      `❌ Your attendance is locked for ${attendanceDate}\nPlease contact admin`,
+    );
   }
 
   const attendanceRow = {
@@ -2805,6 +3782,23 @@ async function handleHelp(res, user) {
     "mark Aj back 2:30 PM",
     "mark Aj logout",
     "mark Aj logout 6:15 PM",
+    "timeline Aj",
+    "timeline Aj today",
+    "audit Aj",
+    "audit Aj today",
+    "undo attendance Aj",
+    "undo my attendance",
+    "reset Aj today",
+    "reset Aj 11 april",
+    "force logout Aj",
+    "force back Aj",
+    "fix Aj logout 6:30 PM",
+    "fix Aj back 2:15 PM",
+    "remove Aj break",
+    "remove Aj logout",
+    "auto fix Aj today",
+    "lock Aj today",
+    "unlock Aj today",
   ];
 
   if (isManagerOrAdmin(user)) {
@@ -2980,6 +3974,171 @@ function parseEmployeeSummaryCommand(text) {
 
   return {
     target_name: match[1].trim(),
+  };
+}
+
+function parseTimelineCommand(text) {
+  const raw = String(text || "").trim();
+  let match = raw.match(
+    /^timeline\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
+  );
+
+  if (match) {
+    return {
+      target_name: match[1].trim(),
+      date_text: match[2].trim(),
+    };
+  }
+
+  match = raw.match(/^timeline\s+(.+)$/i);
+  if (!match) return null;
+
+  return {
+    target_name: match[1].trim(),
+    date_text: "today",
+  };
+}
+
+function parseAuditAttendanceCommand(text) {
+  const raw = String(text || "").trim();
+  let match = raw.match(
+    /^audit\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
+  );
+
+  if (match) {
+    return {
+      target_name: match[1].trim(),
+      date_text: match[2].trim(),
+    };
+  }
+
+  match = raw.match(/^audit\s+(.+)$/i);
+  if (!match) return null;
+
+  return {
+    target_name: match[1].trim(),
+    date_text: "today",
+  };
+}
+
+function parseUndoAttendanceCommand(text) {
+  const raw = String(text || "").trim();
+
+  if (/^undo\s+my\s+attendance$/i.test(raw)) {
+    return {
+      mode: "self",
+      target_name: null,
+    };
+  }
+
+  const match = raw.match(/^undo\s+attendance\s+(.+)$/i);
+  if (!match) return null;
+
+  return {
+    mode: "other",
+    target_name: match[1].trim(),
+  };
+}
+
+function parseResetAttendanceCommand(text) {
+  const raw = String(text || "").trim();
+
+  let match = raw.match(
+    /^reset\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
+  );
+  if (!match) return null;
+
+  return {
+    target_name: match[1].trim(),
+    date_text: match[2].trim(),
+  };
+}
+
+function parseForceAttendanceCommand(text) {
+  const raw = String(text || "").trim();
+
+  let match = raw.match(
+    /^force\s+(logout|back)\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
+  );
+  if (match) {
+    return {
+      action: match[1].toLowerCase(),
+      target_name: match[2].trim(),
+      time_text: match[3].trim().replace(/\s+/g, " "),
+    };
+  }
+
+  match = raw.match(/^force\s+(logout|back)\s+(.+)$/i);
+  if (!match) return null;
+
+  return {
+    action: match[1].toLowerCase(),
+    target_name: match[2].trim(),
+    time_text: null,
+  };
+}
+
+function parseFixAttendanceCommand(text) {
+  const raw = String(text || "").trim();
+
+  const match = raw.match(
+    /^fix\s+(.+?)\s+(login|logout|break|back)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
+  );
+  if (!match) return null;
+
+  return {
+    target_name: match[1].trim(),
+    action: match[2].toLowerCase(),
+    time_text: match[3].trim().replace(/\s+/g, " "),
+  };
+}
+
+function parseRemoveAttendanceCommand(text) {
+  const raw = String(text || "").trim();
+
+  const match = raw.match(/^remove\s+(.+?)\s+(login|logout|break|back)$/i);
+  if (!match) return null;
+
+  return {
+    target_name: match[1].trim(),
+    action: match[2].toLowerCase(),
+  };
+}
+
+function parseAutoFixAttendanceCommand(text) {
+  const raw = String(text || "").trim();
+
+  let match = raw.match(
+    /^auto\s+fix\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
+  );
+  if (match) {
+    return {
+      target_name: match[1].trim(),
+      date_text: match[2].trim(),
+    };
+  }
+
+  match = raw.match(/^auto\s+fix\s+(.+)$/i);
+  if (!match) return null;
+
+  return {
+    target_name: match[1].trim(),
+    date_text: "today",
+  };
+}
+
+function parseLockAttendanceCommand(text) {
+  const raw = String(text || "").trim();
+
+  let match = raw.match(
+    /^(lock|unlock)\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
+  );
+  if (!match) return null;
+
+  return {
+    mode: match[1].toLowerCase(),
+    target_name: match[2].trim(),
+    date_text: match[3].trim(),
   };
 }
 
@@ -4546,6 +5705,9 @@ app.post("/whatsapp", async (req, res) => {
 
     console.log(`Mapped sender to user: ${user.name} (${user.role})`);
 
+    // ------------------------------------------------------------------
+    // Basic / utility commands
+    // ------------------------------------------------------------------
     if (normalizedBody === "help" || normalizedBody === "commands") {
       return handleHelp(res, user);
     }
@@ -4572,6 +5734,59 @@ app.post("/whatsapp", async (req, res) => {
     if (employeeSummaryCommand) {
       return handleEmployeeSummary(res, user, employeeSummaryCommand);
     }
+
+    // ------------------------------------------------------------------
+    // Admin cleanup / correction commands
+    // Keep these EARLY so they do not get misrouted by task/attendance parsers
+    // ------------------------------------------------------------------
+    const timelineCommand = parseTimelineCommand(body);
+    if (timelineCommand) {
+      return handleTimelineAttendance(res, user, timelineCommand);
+    }
+
+    const auditAttendanceCommand = parseAuditAttendanceCommand(body);
+    if (auditAttendanceCommand) {
+      return handleAuditAttendance(res, user, auditAttendanceCommand);
+    }
+
+    const undoAttendanceCommand = parseUndoAttendanceCommand(body);
+    if (undoAttendanceCommand) {
+      return handleUndoAttendance(res, user, undoAttendanceCommand);
+    }
+
+    const resetAttendanceCommand = parseResetAttendanceCommand(body);
+    if (resetAttendanceCommand) {
+      return handleResetAttendance(res, user, resetAttendanceCommand);
+    }
+
+    const forceAttendanceCommand = parseForceAttendanceCommand(body);
+    if (forceAttendanceCommand) {
+      return handleForceAttendance(res, user, forceAttendanceCommand);
+    }
+
+    const fixAttendanceCommand = parseFixAttendanceCommand(body);
+    if (fixAttendanceCommand) {
+      return handleFixAttendance(res, user, fixAttendanceCommand);
+    }
+
+    const removeAttendanceCommand = parseRemoveAttendanceCommand(body);
+    if (removeAttendanceCommand) {
+      return handleRemoveAttendance(res, user, removeAttendanceCommand);
+    }
+
+    const autoFixAttendanceCommand = parseAutoFixAttendanceCommand(body);
+    if (autoFixAttendanceCommand) {
+      return handleAutoFixAttendance(res, user, autoFixAttendanceCommand);
+    }
+
+    const lockAttendanceCommand = parseLockAttendanceCommand(body);
+    if (lockAttendanceCommand) {
+      return handleLockAttendanceDay(res, user, lockAttendanceCommand);
+    }
+
+    // ------------------------------------------------------------------
+    // Task progress / identity / status
+    // ------------------------------------------------------------------
     const progressCommand = parseProgressCommand(body);
     if (progressCommand) {
       return handleProgressTask(
@@ -4595,8 +5810,10 @@ app.post("/whatsapp", async (req, res) => {
       return handleLateCommand(res, user, lateCommand);
     }
 
+    // ------------------------------------------------------------------
+    // Task blocking / team visibility
+    // ------------------------------------------------------------------
     const blockCommand = parseBlockCommand(body);
-
     if (blockCommand) {
       return handleBlockTask(
         res,
@@ -4632,16 +5849,21 @@ app.post("/whatsapp", async (req, res) => {
       return handleUndoLastTaskChange(res, user);
     }
 
+    if (parseWhoIsOffTodayCommand(body)) {
+      return handleWhoIsOffToday(res, user);
+    }
+
+    // ------------------------------------------------------------------
+    // Leave commands
+    // ------------------------------------------------------------------
     const offDayCommand = parseOffDayCommand(body);
     if (offDayCommand) {
       const normalizedRaw = String(body || "").trim();
 
-      // If it starts with "leave on " or "off on ", treat it as self leave
       if (/^(leave|off)\s+on\s+/i.test(normalizedRaw)) {
         return handleSelfOffDay(res, user, offDayCommand);
       }
 
-      // If it is clearly just leave + date, also treat as self leave
       if (
         /^(leave|off)\s+(today|tomorrow|on\s+today|on\s+tomorrow|on\s+[a-z]+\s+\d{1,2}|on\s+\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i.test(
           normalizedRaw,
@@ -4660,15 +5882,32 @@ app.post("/whatsapp", async (req, res) => {
       return handleSelfOffDay(res, user, offDayCommand);
     }
 
+    // ------------------------------------------------------------------
+    // Attendance commands
+    // ------------------------------------------------------------------
     const markAttendanceCommand = parseMarkAttendanceCommand(body);
     if (markAttendanceCommand) {
       return handleMarkedAttendance(res, user, markAttendanceCommand);
     }
 
+    // Manager shorthand should only execute if target user really exists.
+    // Otherwise let self-attendance parsing handle commands like:
+    // "logout family concern" or "break personal issue"
     const directManagerAttendanceCommand =
       parseDirectManagerAttendanceCommand(body);
+
     if (directManagerAttendanceCommand && isManagerOrAdmin(user)) {
-      return handleMarkedAttendance(res, user, directManagerAttendanceCommand);
+      const directTargetUser = await findUniqueUserByName(
+        directManagerAttendanceCommand.target_name,
+      );
+
+      if (directTargetUser) {
+        return handleMarkedAttendance(
+          res,
+          user,
+          directManagerAttendanceCommand,
+        );
+      }
     }
 
     const attendanceCommand = parseAttendanceCommand(body);
@@ -4676,6 +5915,9 @@ app.post("/whatsapp", async (req, res) => {
       return handleSelfAttendance(res, user, attendanceCommand);
     }
 
+    // ------------------------------------------------------------------
+    // Task creation
+    // ------------------------------------------------------------------
     let taskCommand = parseSimpleTaskCommand(body);
     let aiParsingAttempted = false;
 
