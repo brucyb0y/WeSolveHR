@@ -2242,7 +2242,6 @@ async function handleWhoIsOffToday(res, actingUser) {
     return sendTwiml(res, "❌ Failed to fetch today's leave list");
   }
 }
-
 async function handleNowSummary(res, actingUser) {
   if (!isManagerOrAdmin(actingUser)) {
     return sendTwiml(res, "❌ You are not allowed to view team summary.");
@@ -2287,12 +2286,12 @@ async function handleNowSummary(res, actingUser) {
 
     const workingNow = [];
     const onBreakNow = [];
-    const breakOverdue = [];
-    const plannedLate = [];
+    const expectedLater = [];
     const onLeaveToday = plannedOff.map((x) => x.users?.name || "Unknown");
     const loggedOutToday = [];
-    const noUpdateToday = [];
-    const longShiftUsers = [];
+    const noUpdateYet = [];
+    const quickCheckIns = [];
+    const workingLongerThanUsual = [];
 
     for (const user of users) {
       if (plannedOffUserIds.has(user.id)) continue;
@@ -2302,7 +2301,7 @@ async function handleNowSummary(res, actingUser) {
       const summary = getAttendanceSummaryFromEvents(userEvents);
 
       if (summary.longShiftFlag) {
-        longShiftUsers.push(
+        workingLongerThanUsual.push(
           `${user.name} (${formatDurationMinutes(summary.workedMinutes)})`,
         );
       }
@@ -2311,11 +2310,17 @@ async function handleNowSummary(res, actingUser) {
         const lateInfo = lateByUser.get(user.id);
 
         if (lateInfo) {
-          plannedLate.push(
+          expectedLater.push(
             `${user.name} (till ${formatTimeOnly(lateInfo.expected_login_at)})`,
           );
+
+          if (new Date() > new Date(lateInfo.expected_login_at)) {
+            quickCheckIns.push(
+              `${user.name} has not logged in yet after the informed time (${formatTimeOnly(lateInfo.expected_login_at)})`,
+            );
+          }
         } else {
-          noUpdateToday.push(user.name);
+          noUpdateYet.push(user.name);
         }
 
         continue;
@@ -2327,19 +2332,19 @@ async function handleNowSummary(res, actingUser) {
         const totalBreakMinSoFar = getTotalBreakMinutesSoFar(userEvents);
         const breakAgeMin = minutesBetween(latest.created_at);
 
-        let label = `${user.name} (since ${breakTime})`;
+        let label = `${user.name} (since ${breakTime} | ${formatDurationMinutes(breakAgeMin)}`;
 
         if (expectedMin) {
-          label += ` | expected ${expectedMin}m`;
+          label += ` | expected ${expectedMin} min`;
         }
 
-        label += ` | total break today ${totalBreakMinSoFar}m`;
+        label += ` | total today ${formatDurationMinutes(totalBreakMinSoFar)})`;
 
         onBreakNow.push(label);
 
-        if (expectedMin && breakAgeMin > expectedMin) {
-          breakOverdue.push(
-            `${user.name} (away ${breakAgeMin}m, expected ${expectedMin}m)`,
+        if (expectedMin && breakAgeMin > expectedMin + 15) {
+          quickCheckIns.push(
+            `${user.name} has been on break longer than expected (${breakAgeMin} min vs expected ${expectedMin} min)`,
           );
         }
 
@@ -2366,34 +2371,43 @@ async function handleNowSummary(res, actingUser) {
         continue;
       }
 
-      noUpdateToday.push(user.name);
+      noUpdateYet.push(user.name);
+    }
+
+    for (const userName of noUpdateYet) {
+      quickCheckIns.push(`${userName} has not updated attendance yet`);
     }
 
     const lines = [
-      "📋 Now summary",
-      `Total team: ${users.length} | Working: ${workingNow.length} | Break: ${onBreakNow.length} | Planned late: ${plannedLate.length} | Leave: ${onLeaveToday.length} | Logged out: ${loggedOutToday.length} | No update: ${noUpdateToday.length}`,
+      "📋 Live team snapshot",
       "",
-      `✅ Working:\n${workingNow.length ? workingNow.join("\n") : "None"}`,
+      `Total team: ${users.length} | Working: ${workingNow.length} | Break: ${onBreakNow.length} | Leave: ${onLeaveToday.length} | Logged out: ${loggedOutToday.length} | Expected later: ${expectedLater.length} | No update yet: ${noUpdateYet.length}`,
       "",
-      `☕ On break:\n${onBreakNow.length ? onBreakNow.join("\n") : "None"}`,
+      `✅ Working now\n${workingNow.length ? workingNow.join("\n") : "None"}`,
       "",
-      `🕒 Planned late:\n${plannedLate.length ? plannedLate.join("\n") : "None"}`,
+      `☕ On break\n${onBreakNow.length ? onBreakNow.join("\n") : "None"}`,
       "",
-      `🌴 On leave today:\n${onLeaveToday.length ? onLeaveToday.join("\n") : "None"}`,
+      `🕒 Expected later\n${expectedLater.length ? expectedLater.join("\n") : "None"}`,
       "",
-      `🏁 Logged out today:\n${loggedOutToday.length ? loggedOutToday.join("\n") : "None"}`,
+      `🌴 On leave today\n${onLeaveToday.length ? onLeaveToday.join("\n") : "None"}`,
       "",
-      `❓ No update:\n${noUpdateToday.length ? noUpdateToday.join("\n") : "None"}`,
+      `🏁 Logged out today\n${loggedOutToday.length ? loggedOutToday.join("\n") : "None"}`,
+      "",
+      `❓ No update yet\n${noUpdateYet.length ? noUpdateYet.join("\n") : "None"}`,
     ];
 
-    if (breakOverdue.length) {
+    if (quickCheckIns.length) {
       lines.push("");
-      lines.push(`⚠ Break overdue:\n${breakOverdue.join("\n")}`);
+      lines.push(
+        `💬 Quick check-ins\n${quickCheckIns.map((x) => `• ${x}`).join("\n")}`,
+      );
     }
 
-    if (longShiftUsers.length) {
+    if (workingLongerThanUsual.length) {
       lines.push("");
-      lines.push(`⚠ Long shift:\n${longShiftUsers.join("\n")}`);
+      lines.push(
+        `⏱ Working longer than usual\n${workingLongerThanUsual.join("\n")}`,
+      );
     }
 
     return sendTwiml(res, lines.join("\n"));
