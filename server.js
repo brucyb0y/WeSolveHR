@@ -403,6 +403,97 @@ function parseMarkAttendanceCommand(text) {
   return null;
 }
 
+function parseDirectManagerAttendanceCommand(text) {
+  const raw = String(text || "").trim();
+
+  let match = raw.match(
+    /^(login|logout|back)\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
+  );
+  if (match) {
+    return {
+      target_name: match[2].trim(),
+      action: match[1].toLowerCase(),
+      duration_min: null,
+      time_text: match[3].trim().replace(/\s+/g, " "),
+      reason: null,
+    };
+  }
+
+  match = raw.match(/^(login|logout|back)\s+(.+)$/i);
+  if (match) {
+    const maybeName = match[2].trim();
+
+    if (
+      !/^(today|tomorrow|\d{1,2}:\d{2}\s*(?:am|pm)|for\b|because\b)/i.test(
+        maybeName,
+      )
+    ) {
+      return {
+        target_name: maybeName,
+        action: match[1].toLowerCase(),
+        duration_min: null,
+        time_text: null,
+        reason: null,
+      };
+    }
+  }
+
+  match = raw.match(/^break\s+(.+?)\s+(\d+)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
+  if (match) {
+    return {
+      target_name: match[1].trim(),
+      action: "break",
+      duration_min: Number(match[2]),
+      time_text: match[3].trim().replace(/\s+/g, " "),
+      reason: null,
+    };
+  }
+
+  match = raw.match(/^break\s+(.+?)\s+(\d+)$/i);
+  if (match) {
+    return {
+      target_name: match[1].trim(),
+      action: "break",
+      duration_min: Number(match[2]),
+      time_text: null,
+      reason: null,
+    };
+  }
+
+  match = raw.match(/^break\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
+  if (match) {
+    return {
+      target_name: match[1].trim(),
+      action: "break",
+      duration_min: null,
+      time_text: match[2].trim().replace(/\s+/g, " "),
+      reason: null,
+    };
+  }
+
+  match = raw.match(/^break\s+(.+)$/i);
+  if (match) {
+    const maybeName = match[1].trim();
+
+    if (
+      !/^\d+$/.test(maybeName) &&
+      !/^(personal|lunch|tea|coffee|washroom|restroom|urgent|family|meeting)\b/i.test(
+        maybeName,
+      )
+    ) {
+      return {
+        target_name: maybeName,
+        action: "break",
+        duration_min: null,
+        time_text: null,
+        reason: null,
+      };
+    }
+  }
+
+  return null;
+}
+
 function parseSimpleTaskCommand(text) {
   const raw = String(text || "").trim();
 
@@ -880,6 +971,28 @@ async function getLastAction(userId) {
 
   if (error) {
     console.error("Error fetching last action:", error);
+    return null;
+  }
+
+  return data?.action || null;
+}
+
+async function getLastActionAtOrBefore(userId, occurredAtIso = null) {
+  let query = supabase
+    .from("attendance_events")
+    .select("action, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (occurredAtIso) {
+    query = query.lte("created_at", occurredAtIso);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    console.error("Error fetching last action at time:", error);
     return null;
   }
 
@@ -1606,7 +1719,28 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     );
   }
 
-  const lastAction = await getLastAction(targetUser.id);
+  const occurredAtIso = markCommand.time_text
+    ? parseLocalDateTimeForToday(markCommand.time_text)
+    : new Date().toISOString();
+
+  if (markCommand.time_text && !occurredAtIso) {
+    return sendTwiml(
+      res,
+      `Could not understand the time "${markCommand.time_text}". Use format like 2:30 PM.`,
+    );
+  }
+
+  if (new Date(occurredAtIso) > new Date()) {
+    return sendTwiml(
+      res,
+      "❌ Future attendance corrections are not allowed\nPlease mark it after that time happens",
+    );
+  }
+
+  const lastAction = await getLastActionAtOrBefore(
+    targetUser.id,
+    occurredAtIso,
+  );
   const oldValue = {
     last_action: lastAction,
   };
@@ -1618,17 +1752,6 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
 
   if (validationError) {
     return sendTwiml(res, validationError);
-  }
-
-  const occurredAtIso = markCommand.time_text
-    ? parseLocalDateTimeForToday(markCommand.time_text)
-    : new Date().toISOString();
-
-  if (markCommand.time_text && !occurredAtIso) {
-    return sendTwiml(
-      res,
-      `Could not understand the time "${markCommand.time_text}". Use format like 2:30 PM.`,
-    );
   }
 
   let note = `Marked by ${actingUser.name}`;
@@ -4540,6 +4663,12 @@ app.post("/whatsapp", async (req, res) => {
     const markAttendanceCommand = parseMarkAttendanceCommand(body);
     if (markAttendanceCommand) {
       return handleMarkedAttendance(res, user, markAttendanceCommand);
+    }
+
+    const directManagerAttendanceCommand =
+      parseDirectManagerAttendanceCommand(body);
+    if (directManagerAttendanceCommand && isManagerOrAdmin(user)) {
+      return handleMarkedAttendance(res, user, directManagerAttendanceCommand);
     }
 
     const attendanceCommand = parseAttendanceCommand(body);
