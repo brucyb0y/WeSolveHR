@@ -370,9 +370,7 @@ function parseMarkAttendanceCommand(text) {
     };
   }
 
-  match = raw.match(
-    /^mark\s+(.+?)\s+break\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
-  );
+  match = raw.match(/^mark\s+(.+?)\s+break\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
   if (match) {
     return {
       target_name: match[1].trim(),
@@ -440,9 +438,7 @@ function parseDirectManagerAttendanceCommand(text) {
     }
   }
 
-  match = raw.match(
-    /^break\s+(.+?)\s+(\d+)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
-  );
+  match = raw.match(/^break\s+(.+?)\s+(\d+)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
   if (match) {
     return {
       target_name: match[1].trim(),
@@ -464,9 +460,7 @@ function parseDirectManagerAttendanceCommand(text) {
     };
   }
 
-  match = raw.match(
-    /^break\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
-  );
+  match = raw.match(/^break\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
   if (match) {
     return {
       target_name: match[1].trim(),
@@ -1207,7 +1201,10 @@ async function getAttendanceEventsForAttendanceDay(attendanceDateString) {
   return data || [];
 }
 
-async function getAttendanceEventsForUserOnAttendanceDay(userId, attendanceDateString) {
+async function getAttendanceEventsForUserOnAttendanceDay(
+  userId,
+  attendanceDateString,
+) {
   const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
 
   const { data, error } = await supabase
@@ -1252,7 +1249,11 @@ async function getLatestBreakEventAtOrBefore(userId, occurredAtIso = null) {
   return data || null;
 }
 
-async function getLatestAttendanceEventByAction(userId, action, attendanceDateString = null) {
+async function getLatestAttendanceEventByAction(
+  userId,
+  action,
+  attendanceDateString = null,
+) {
   let query = supabase
     .from("attendance_events")
     .select(
@@ -1287,7 +1288,10 @@ async function deleteAttendanceEventById(eventId) {
   return error;
 }
 
-async function deleteAttendanceEventsForUserOnAttendanceDay(userId, attendanceDateString) {
+async function deleteAttendanceEventsForUserOnAttendanceDay(
+  userId,
+  attendanceDateString,
+) {
   const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
 
   const { error } = await supabase
@@ -1336,22 +1340,26 @@ async function isAttendanceDayLocked(userId, attendanceDateString) {
   return !!data?.is_locked;
 }
 
-async function setAttendanceDayLock(userId, attendanceDateString, isLocked, actedByUserId, note = null) {
-  const { error } = await supabase
-    .from("attendance_day_locks")
-    .upsert(
-      [
-        {
-          user_id: userId,
-          attendance_date: attendanceDateString,
-          is_locked: isLocked,
-          locked_by_user_id: actedByUserId,
-          note,
-          updated_at: new Date().toISOString(),
-        },
-      ],
-      { onConflict: "user_id,attendance_date" },
-    );
+async function setAttendanceDayLock(
+  userId,
+  attendanceDateString,
+  isLocked,
+  actedByUserId,
+  note = null,
+) {
+  const { error } = await supabase.from("attendance_day_locks").upsert(
+    [
+      {
+        user_id: userId,
+        attendance_date: attendanceDateString,
+        is_locked: isLocked,
+        locked_by_user_id: actedByUserId,
+        note,
+        updated_at: new Date().toISOString(),
+      },
+    ],
+    { onConflict: "user_id,attendance_date" },
+  );
 
   return error;
 }
@@ -1388,24 +1396,35 @@ function analyzeAttendanceIssues(events) {
     if (ev.action === "login") {
       loginCount += 1;
       if (loginCount > 1) {
-        issues.push(`Multiple login entries found (latest at ${formatTimeOnly(ev.created_at)})`);
+        issues.push(
+          `Multiple login entries found (latest at ${formatTimeOnly(ev.created_at)})`,
+        );
       }
     }
 
     if (ev.action === "break") {
       if (breakOpen) {
-        issues.push(`Break started again without back at ${formatTimeOnly(ev.created_at)}`);
+        issues.push(
+          `Break started again without back at ${formatTimeOnly(ev.created_at)}`,
+        );
       }
       breakOpen = ev;
     }
 
     if (ev.action === "back") {
       if (!breakOpen) {
-        issues.push(`Back recorded without a matching break at ${formatTimeOnly(ev.created_at)}`);
+        issues.push(
+          `Back recorded without a matching break at ${formatTimeOnly(ev.created_at)}`,
+        );
       } else {
-        const breakMinutes = minutesBetween(breakOpen.created_at, ev.created_at);
+        const breakMinutes = minutesBetween(
+          breakOpen.created_at,
+          ev.created_at,
+        );
         if (breakMinutes >= LONG_BREAK_THRESHOLD_MIN) {
-          issues.push(`Long break detected: ${formatDurationMinutes(breakMinutes)} ending at ${formatTimeOnly(ev.created_at)}`);
+          issues.push(
+            `Long break detected: ${formatDurationMinutes(breakMinutes)} ending at ${formatTimeOnly(ev.created_at)}`,
+          );
         }
       }
       breakOpen = null;
@@ -1414,19 +1433,25 @@ function analyzeAttendanceIssues(events) {
     if (ev.action === "logout") {
       hasLogout = true;
       if (breakOpen) {
-        issues.push(`Logout happened while still on break at ${formatTimeOnly(ev.created_at)}`);
+        issues.push(
+          `Logout happened while still on break at ${formatTimeOnly(ev.created_at)}`,
+        );
         breakOpen = null;
       }
     }
   }
 
   if (breakOpen) {
-    issues.push(`Break without return since ${formatTimeOnly(breakOpen.created_at)}`);
+    issues.push(
+      `Break without return since ${formatTimeOnly(breakOpen.created_at)}`,
+    );
   }
 
   const summary = getAttendanceSummaryFromEvents(events || []);
   if (summary.longShiftFlag) {
-    issues.push(`Long shift detected: ${formatDurationMinutes(summary.workedMinutes)}`);
+    issues.push(
+      `Long shift detected: ${formatDurationMinutes(summary.workedMinutes)}`,
+    );
   }
 
   const hasWorkStart = (events || []).some(
@@ -1736,7 +1761,10 @@ async function handleUndoAttendance(res, actingUser, command) {
     : await findUniqueUserByName(command.target_name);
 
   if (!isSelf && !isManagerOrAdmin(actingUser)) {
-    return sendTwiml(res, "You are not allowed to undo other people's attendance.");
+    return sendTwiml(
+      res,
+      "You are not allowed to undo other people's attendance.",
+    );
   }
 
   if (!targetUser) {
@@ -1749,7 +1777,10 @@ async function handleUndoAttendance(res, actingUser, command) {
   try {
     const latestEvent = await getLatestAttendanceEvent(targetUser.id);
     if (!latestEvent) {
-      return sendTwiml(res, `No attendance event found to undo for ${targetUser.name}.`);
+      return sendTwiml(
+        res,
+        `No attendance event found to undo for ${targetUser.name}.`,
+      );
     }
 
     const attendanceDate = getAttendanceDayDateStringFromDate(
@@ -1825,7 +1856,10 @@ async function handleResetAttendance(res, actingUser, command) {
     );
 
     const [attendanceError, lateError, offError] = await Promise.all([
-      deleteAttendanceEventsForUserOnAttendanceDay(targetUser.id, attendanceDate),
+      deleteAttendanceEventsForUserOnAttendanceDay(
+        targetUser.id,
+        attendanceDate,
+      ),
       deleteLateArrivalForUserOnDate(targetUser.id, attendanceDate),
       deletePlannedOffForUserOnDate(targetUser.id, attendanceDate),
     ]);
@@ -1889,13 +1923,12 @@ async function handleForceAttendance(res, actingUser, command) {
   }
 
   if (new Date(occurredAtIso) > new Date()) {
-    return sendTwiml(
-      res,
-      "❌ Future attendance corrections are not allowed",
-    );
+    return sendTwiml(res, "❌ Future attendance corrections are not allowed");
   }
 
-  const attendanceDate = getAttendanceDayDateStringFromDate(new Date(occurredAtIso));
+  const attendanceDate = getAttendanceDayDateStringFromDate(
+    new Date(occurredAtIso),
+  );
   const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
 
   if (locked) {
@@ -1909,7 +1942,10 @@ async function handleForceAttendance(res, actingUser, command) {
   let note = `Force ${command.action} by ${actingUser.name}`;
 
   if (command.action === "back") {
-    const lastBreak = await getLatestBreakEventAtOrBefore(targetUser.id, occurredAtIso);
+    const lastBreak = await getLatestBreakEventAtOrBefore(
+      targetUser.id,
+      occurredAtIso,
+    );
     if (lastBreak) {
       durationMin = minutesBetween(lastBreak.created_at, occurredAtIso);
       note += ` | Actual break: ${durationMin} min`;
@@ -1974,13 +2010,12 @@ async function handleFixAttendance(res, actingUser, command) {
   }
 
   if (new Date(correctedIso) > new Date()) {
-    return sendTwiml(
-      res,
-      "❌ Future attendance corrections are not allowed",
-    );
+    return sendTwiml(res, "❌ Future attendance corrections are not allowed");
   }
 
-  const attendanceDate = getAttendanceDayDateStringFromDate(new Date(correctedIso));
+  const attendanceDate = getAttendanceDayDateStringFromDate(
+    new Date(correctedIso),
+  );
   const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
 
   if (locked) {
@@ -2013,7 +2048,10 @@ async function handleFixAttendance(res, actingUser, command) {
   let durationMin = latestActionEvent.duration_min;
 
   if (command.action === "back") {
-    const lastBreak = await getLatestBreakEventAtOrBefore(targetUser.id, correctedIso);
+    const lastBreak = await getLatestBreakEventAtOrBefore(
+      targetUser.id,
+      correctedIso,
+    );
     if (lastBreak) {
       durationMin = minutesBetween(lastBreak.created_at, correctedIso);
       patch.duration_min = durationMin;
@@ -2213,7 +2251,9 @@ async function handleAutoFixAttendance(res, actingUser, command) {
     return sendTwiml(
       res,
       `🛠 Auto-fix complete for ${targetUser.name}\nDate: ${attendanceDate}\n${
-        applied.length ? applied.map((x) => `• ${x}`).join("\n") : "No changes were needed"
+        applied.length
+          ? applied.map((x) => `• ${x}`).join("\n")
+          : "No changes were needed"
       }`,
     );
   } catch (error) {
@@ -2585,7 +2625,6 @@ async function handleLateCommand(res, user, lateCommand) {
   );
 }
 
-
 async function handleMarkedAttendance(res, actingUser, markCommand) {
   if (!isManagerOrAdmin(actingUser)) {
     return sendTwiml(res, "You are not allowed to mark attendance for others.");
@@ -2630,7 +2669,10 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     );
   }
 
-  const lastAction = await getLastActionAtOrBefore(targetUser.id, occurredAtIso);
+  const lastAction = await getLastActionAtOrBefore(
+    targetUser.id,
+    occurredAtIso,
+  );
 
   const oldValue = {
     last_action: lastAction,
@@ -2675,7 +2717,7 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     duration_min:
       markCommand.action === "back"
         ? actualBreakMinutes
-        : markCommand.duration_min ?? null,
+        : (markCommand.duration_min ?? null),
     expected_duration_min: markCommand.duration_min ?? null,
     reason: markCommand.reason ?? null,
     note,
@@ -2712,7 +2754,9 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     return sendTwiml(
       res,
       `${targetUser.name}: break started${
-        markCommand.duration_min ? ` for ${markCommand.duration_min} minutes` : ""
+        markCommand.duration_min
+          ? ` for ${markCommand.duration_min} minutes`
+          : ""
       } by ${actingUser.name}${
         markCommand.time_text ? ` at ${markCommand.time_text}` : ""
       }.`,
@@ -3935,7 +3979,9 @@ function parseEmployeeSummaryCommand(text) {
 
 function parseTimelineCommand(text) {
   const raw = String(text || "").trim();
-  let match = raw.match(/^timeline\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i);
+  let match = raw.match(
+    /^timeline\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
+  );
 
   if (match) {
     return {
@@ -3955,7 +4001,9 @@ function parseTimelineCommand(text) {
 
 function parseAuditAttendanceCommand(text) {
   const raw = String(text || "").trim();
-  let match = raw.match(/^audit\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i);
+  let match = raw.match(
+    /^audit\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
+  );
 
   if (match) {
     return {
@@ -4009,7 +4057,9 @@ function parseResetAttendanceCommand(text) {
 function parseForceAttendanceCommand(text) {
   const raw = String(text || "").trim();
 
-  let match = raw.match(/^force\s+(logout|back)\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
+  let match = raw.match(
+    /^force\s+(logout|back)\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
+  );
   if (match) {
     return {
       action: match[1].toLowerCase(),
@@ -4431,12 +4481,28 @@ app.use("/api", requireDashboardAuth);
 function renderDashboardPage(data) {
   const summaryCards = [
     { label: "Open Tasks", value: data.summary.openTasks, tone: "warn" },
-    { label: "Overdue Tasks", value: data.summary.overdueTasks, tone: "danger" },
-    { label: "Blocked Tasks", value: data.summary.blockedTasks, tone: "danger" },
+    {
+      label: "Overdue Tasks",
+      value: data.summary.overdueTasks,
+      tone: "danger",
+    },
+    {
+      label: "Blocked Tasks",
+      value: data.summary.blockedTasks,
+      tone: "danger",
+    },
     { label: "Logged In Now", value: data.summary.loggedInCount, tone: "ok" },
     { label: "On Break Now", value: data.summary.onBreakCount, tone: "info" },
-    { label: "Planned Off Today", value: data.summary.plannedOffCount, tone: "cyan" },
-    { label: "No Login Today", value: data.summary.noLoginCount, tone: "muted" },
+    {
+      label: "Planned Off Today",
+      value: data.summary.plannedOffCount,
+      tone: "cyan",
+    },
+    {
+      label: "No Login Today",
+      value: data.summary.noLoginCount,
+      tone: "muted",
+    },
     { label: "Active Team", value: data.summary.teamCount, tone: "ok" },
   ]
     .map(
@@ -6173,7 +6239,6 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
   `);
 });
 
-
 app.get("/logs", requireDashboardAuth, async (_req, res) => {
   res.status(200).send(`
     <html>
@@ -6380,8 +6445,6 @@ app.get("/logs", requireDashboardAuth, async (_req, res) => {
     </html>
   `);
 });
-
-
 
 app.post("/whatsapp", async (req, res) => {
   try {
