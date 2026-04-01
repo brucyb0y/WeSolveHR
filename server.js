@@ -1422,6 +1422,9 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
   }
 
   const lastAction = await getLastAction(targetUser.id);
+  const oldValue = {
+    last_action: lastAction,
+  };
   const validationError = validateAttendanceTransition(
     lastAction,
     markCommand.action,
@@ -1462,6 +1465,22 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     console.error("Marked attendance insert error:", error);
     return sendTwiml(res, "Failed to save marked attendance.");
   }
+
+  await insertAttendanceAudit(
+    targetUser.id,
+    actingUser.id,
+    `mark_attendance_${markCommand.action}`,
+    oldValue,
+    {
+      action: markCommand.action,
+      duration_min: markCommand.duration_min ?? null,
+      expected_duration_min:
+        markCommand.expected_duration_min ?? markCommand.duration_min ?? null,
+      reason: markCommand.reason ?? null,
+      note,
+    },
+    `Marked by ${actingUser.name}`,
+  );
 
   if (markCommand.action === "break") {
     return sendTwiml(
@@ -1535,6 +1554,17 @@ async function handleOffDayForOther(res, actingUser, offCommand) {
     console.error("Create off day for other error:", error);
     return sendTwiml(res, "Failed to save day off.");
   }
+
+  await insertAttendanceAudit(
+    targetUser.id,
+    actingUser.id,
+    "mark_leave_for_other",
+    null,
+    {
+      off_date: offDate,
+    },
+    `Leave marked by ${actingUser.name}`,
+  );
 
   return sendTwiml(
     res,
@@ -2357,6 +2387,30 @@ async function handleSummaryToday(res, actingUser) {
   } catch (error) {
     console.error("Summary today fatal error:", error);
     return sendTwiml(res, "Failed to fetch today's summary.");
+  }
+}
+
+async function insertAttendanceAudit(
+  targetUserId,
+  actedByUserId,
+  actionType,
+  oldValue,
+  newValue,
+  note = null,
+) {
+  const { error } = await supabase.from("attendance_audit").insert([
+    {
+      target_user_id: targetUserId,
+      acted_by_user_id: actedByUserId,
+      action_type: actionType,
+      old_value: oldValue,
+      new_value: newValue,
+      note,
+    },
+  ]);
+
+  if (error) {
+    console.error("Attendance audit insert error:", error);
   }
 }
 
