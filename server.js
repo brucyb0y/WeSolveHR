@@ -370,7 +370,9 @@ function parseMarkAttendanceCommand(text) {
     };
   }
 
-  match = raw.match(/^mark\s+(.+?)\s+break\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
+  match = raw.match(
+    /^mark\s+(.+?)\s+break\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
+  );
   if (match) {
     return {
       target_name: match[1].trim(),
@@ -438,7 +440,9 @@ function parseDirectManagerAttendanceCommand(text) {
     }
   }
 
-  match = raw.match(/^break\s+(.+?)\s+(\d+)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
+  match = raw.match(
+    /^break\s+(.+?)\s+(\d+)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
+  );
   if (match) {
     return {
       target_name: match[1].trim(),
@@ -460,7 +464,9 @@ function parseDirectManagerAttendanceCommand(text) {
     };
   }
 
-  match = raw.match(/^break\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
+  match = raw.match(
+    /^break\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
+  );
   if (match) {
     return {
       target_name: match[1].trim(),
@@ -1201,10 +1207,7 @@ async function getAttendanceEventsForAttendanceDay(attendanceDateString) {
   return data || [];
 }
 
-async function getAttendanceEventsForUserOnAttendanceDay(
-  userId,
-  attendanceDateString,
-) {
+async function getAttendanceEventsForUserOnAttendanceDay(userId, attendanceDateString) {
   const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
 
   const { data, error } = await supabase
@@ -1249,11 +1252,7 @@ async function getLatestBreakEventAtOrBefore(userId, occurredAtIso = null) {
   return data || null;
 }
 
-async function getLatestAttendanceEventByAction(
-  userId,
-  action,
-  attendanceDateString = null,
-) {
+async function getLatestAttendanceEventByAction(userId, action, attendanceDateString = null) {
   let query = supabase
     .from("attendance_events")
     .select(
@@ -1288,10 +1287,7 @@ async function deleteAttendanceEventById(eventId) {
   return error;
 }
 
-async function deleteAttendanceEventsForUserOnAttendanceDay(
-  userId,
-  attendanceDateString,
-) {
+async function deleteAttendanceEventsForUserOnAttendanceDay(userId, attendanceDateString) {
   const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
 
   const { error } = await supabase
@@ -1340,26 +1336,22 @@ async function isAttendanceDayLocked(userId, attendanceDateString) {
   return !!data?.is_locked;
 }
 
-async function setAttendanceDayLock(
-  userId,
-  attendanceDateString,
-  isLocked,
-  actedByUserId,
-  note = null,
-) {
-  const { error } = await supabase.from("attendance_day_locks").upsert(
-    [
-      {
-        user_id: userId,
-        attendance_date: attendanceDateString,
-        is_locked: isLocked,
-        locked_by_user_id: actedByUserId,
-        note,
-        updated_at: new Date().toISOString(),
-      },
-    ],
-    { onConflict: "user_id,attendance_date" },
-  );
+async function setAttendanceDayLock(userId, attendanceDateString, isLocked, actedByUserId, note = null) {
+  const { error } = await supabase
+    .from("attendance_day_locks")
+    .upsert(
+      [
+        {
+          user_id: userId,
+          attendance_date: attendanceDateString,
+          is_locked: isLocked,
+          locked_by_user_id: actedByUserId,
+          note,
+          updated_at: new Date().toISOString(),
+        },
+      ],
+      { onConflict: "user_id,attendance_date" },
+    );
 
   return error;
 }
@@ -1396,35 +1388,24 @@ function analyzeAttendanceIssues(events) {
     if (ev.action === "login") {
       loginCount += 1;
       if (loginCount > 1) {
-        issues.push(
-          `Multiple login entries found (latest at ${formatTimeOnly(ev.created_at)})`,
-        );
+        issues.push(`Multiple login entries found (latest at ${formatTimeOnly(ev.created_at)})`);
       }
     }
 
     if (ev.action === "break") {
       if (breakOpen) {
-        issues.push(
-          `Break started again without back at ${formatTimeOnly(ev.created_at)}`,
-        );
+        issues.push(`Break started again without back at ${formatTimeOnly(ev.created_at)}`);
       }
       breakOpen = ev;
     }
 
     if (ev.action === "back") {
       if (!breakOpen) {
-        issues.push(
-          `Back recorded without a matching break at ${formatTimeOnly(ev.created_at)}`,
-        );
+        issues.push(`Back recorded without a matching break at ${formatTimeOnly(ev.created_at)}`);
       } else {
-        const breakMinutes = minutesBetween(
-          breakOpen.created_at,
-          ev.created_at,
-        );
+        const breakMinutes = minutesBetween(breakOpen.created_at, ev.created_at);
         if (breakMinutes >= LONG_BREAK_THRESHOLD_MIN) {
-          issues.push(
-            `Long break detected: ${formatDurationMinutes(breakMinutes)} ending at ${formatTimeOnly(ev.created_at)}`,
-          );
+          issues.push(`Long break detected: ${formatDurationMinutes(breakMinutes)} ending at ${formatTimeOnly(ev.created_at)}`);
         }
       }
       breakOpen = null;
@@ -1433,25 +1414,19 @@ function analyzeAttendanceIssues(events) {
     if (ev.action === "logout") {
       hasLogout = true;
       if (breakOpen) {
-        issues.push(
-          `Logout happened while still on break at ${formatTimeOnly(ev.created_at)}`,
-        );
+        issues.push(`Logout happened while still on break at ${formatTimeOnly(ev.created_at)}`);
         breakOpen = null;
       }
     }
   }
 
   if (breakOpen) {
-    issues.push(
-      `Break without return since ${formatTimeOnly(breakOpen.created_at)}`,
-    );
+    issues.push(`Break without return since ${formatTimeOnly(breakOpen.created_at)}`);
   }
 
   const summary = getAttendanceSummaryFromEvents(events || []);
   if (summary.longShiftFlag) {
-    issues.push(
-      `Long shift detected: ${formatDurationMinutes(summary.workedMinutes)}`,
-    );
+    issues.push(`Long shift detected: ${formatDurationMinutes(summary.workedMinutes)}`);
   }
 
   const hasWorkStart = (events || []).some(
@@ -1761,10 +1736,7 @@ async function handleUndoAttendance(res, actingUser, command) {
     : await findUniqueUserByName(command.target_name);
 
   if (!isSelf && !isManagerOrAdmin(actingUser)) {
-    return sendTwiml(
-      res,
-      "You are not allowed to undo other people's attendance.",
-    );
+    return sendTwiml(res, "You are not allowed to undo other people's attendance.");
   }
 
   if (!targetUser) {
@@ -1777,10 +1749,7 @@ async function handleUndoAttendance(res, actingUser, command) {
   try {
     const latestEvent = await getLatestAttendanceEvent(targetUser.id);
     if (!latestEvent) {
-      return sendTwiml(
-        res,
-        `No attendance event found to undo for ${targetUser.name}.`,
-      );
+      return sendTwiml(res, `No attendance event found to undo for ${targetUser.name}.`);
     }
 
     const attendanceDate = getAttendanceDayDateStringFromDate(
@@ -1856,10 +1825,7 @@ async function handleResetAttendance(res, actingUser, command) {
     );
 
     const [attendanceError, lateError, offError] = await Promise.all([
-      deleteAttendanceEventsForUserOnAttendanceDay(
-        targetUser.id,
-        attendanceDate,
-      ),
+      deleteAttendanceEventsForUserOnAttendanceDay(targetUser.id, attendanceDate),
       deleteLateArrivalForUserOnDate(targetUser.id, attendanceDate),
       deletePlannedOffForUserOnDate(targetUser.id, attendanceDate),
     ]);
@@ -1923,12 +1889,13 @@ async function handleForceAttendance(res, actingUser, command) {
   }
 
   if (new Date(occurredAtIso) > new Date()) {
-    return sendTwiml(res, "❌ Future attendance corrections are not allowed");
+    return sendTwiml(
+      res,
+      "❌ Future attendance corrections are not allowed",
+    );
   }
 
-  const attendanceDate = getAttendanceDayDateStringFromDate(
-    new Date(occurredAtIso),
-  );
+  const attendanceDate = getAttendanceDayDateStringFromDate(new Date(occurredAtIso));
   const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
 
   if (locked) {
@@ -1942,10 +1909,7 @@ async function handleForceAttendance(res, actingUser, command) {
   let note = `Force ${command.action} by ${actingUser.name}`;
 
   if (command.action === "back") {
-    const lastBreak = await getLatestBreakEventAtOrBefore(
-      targetUser.id,
-      occurredAtIso,
-    );
+    const lastBreak = await getLatestBreakEventAtOrBefore(targetUser.id, occurredAtIso);
     if (lastBreak) {
       durationMin = minutesBetween(lastBreak.created_at, occurredAtIso);
       note += ` | Actual break: ${durationMin} min`;
@@ -2010,12 +1974,13 @@ async function handleFixAttendance(res, actingUser, command) {
   }
 
   if (new Date(correctedIso) > new Date()) {
-    return sendTwiml(res, "❌ Future attendance corrections are not allowed");
+    return sendTwiml(
+      res,
+      "❌ Future attendance corrections are not allowed",
+    );
   }
 
-  const attendanceDate = getAttendanceDayDateStringFromDate(
-    new Date(correctedIso),
-  );
+  const attendanceDate = getAttendanceDayDateStringFromDate(new Date(correctedIso));
   const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
 
   if (locked) {
@@ -2048,10 +2013,7 @@ async function handleFixAttendance(res, actingUser, command) {
   let durationMin = latestActionEvent.duration_min;
 
   if (command.action === "back") {
-    const lastBreak = await getLatestBreakEventAtOrBefore(
-      targetUser.id,
-      correctedIso,
-    );
+    const lastBreak = await getLatestBreakEventAtOrBefore(targetUser.id, correctedIso);
     if (lastBreak) {
       durationMin = minutesBetween(lastBreak.created_at, correctedIso);
       patch.duration_min = durationMin;
@@ -2251,9 +2213,7 @@ async function handleAutoFixAttendance(res, actingUser, command) {
     return sendTwiml(
       res,
       `🛠 Auto-fix complete for ${targetUser.name}\nDate: ${attendanceDate}\n${
-        applied.length
-          ? applied.map((x) => `• ${x}`).join("\n")
-          : "No changes were needed"
+        applied.length ? applied.map((x) => `• ${x}`).join("\n") : "No changes were needed"
       }`,
     );
   } catch (error) {
@@ -2625,6 +2585,7 @@ async function handleLateCommand(res, user, lateCommand) {
   );
 }
 
+
 async function handleMarkedAttendance(res, actingUser, markCommand) {
   if (!isManagerOrAdmin(actingUser)) {
     return sendTwiml(res, "You are not allowed to mark attendance for others.");
@@ -2669,10 +2630,7 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     );
   }
 
-  const lastAction = await getLastActionAtOrBefore(
-    targetUser.id,
-    occurredAtIso,
-  );
+  const lastAction = await getLastActionAtOrBefore(targetUser.id, occurredAtIso);
 
   const oldValue = {
     last_action: lastAction,
@@ -2717,7 +2675,7 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     duration_min:
       markCommand.action === "back"
         ? actualBreakMinutes
-        : (markCommand.duration_min ?? null),
+        : markCommand.duration_min ?? null,
     expected_duration_min: markCommand.duration_min ?? null,
     reason: markCommand.reason ?? null,
     note,
@@ -2754,9 +2712,7 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     return sendTwiml(
       res,
       `${targetUser.name}: break started${
-        markCommand.duration_min
-          ? ` for ${markCommand.duration_min} minutes`
-          : ""
+        markCommand.duration_min ? ` for ${markCommand.duration_min} minutes` : ""
       } by ${actingUser.name}${
         markCommand.time_text ? ` at ${markCommand.time_text}` : ""
       }.`,
@@ -3979,9 +3935,7 @@ function parseEmployeeSummaryCommand(text) {
 
 function parseTimelineCommand(text) {
   const raw = String(text || "").trim();
-  let match = raw.match(
-    /^timeline\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
-  );
+  let match = raw.match(/^timeline\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i);
 
   if (match) {
     return {
@@ -4001,9 +3955,7 @@ function parseTimelineCommand(text) {
 
 function parseAuditAttendanceCommand(text) {
   const raw = String(text || "").trim();
-  let match = raw.match(
-    /^audit\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
-  );
+  let match = raw.match(/^audit\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i);
 
   if (match) {
     return {
@@ -4057,9 +4009,7 @@ function parseResetAttendanceCommand(text) {
 function parseForceAttendanceCommand(text) {
   const raw = String(text || "").trim();
 
-  let match = raw.match(
-    /^force\s+(logout|back)\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
-  );
+  let match = raw.match(/^force\s+(logout|back)\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
   if (match) {
     return {
       action: match[1].toLowerCase(),
@@ -4480,19 +4430,22 @@ app.use("/api", requireDashboardAuth);
 
 function renderDashboardPage(data) {
   const summaryCards = [
-    { label: "Open Tasks", value: data.summary.openTasks },
-    { label: "Overdue Tasks", value: data.summary.overdueTasks },
-    { label: "Blocked Tasks", value: data.summary.blockedTasks },
-    { label: "Logged In Now", value: data.summary.loggedInCount },
-    { label: "On Break Now", value: data.summary.onBreakCount },
-    { label: "Planned Off Today", value: data.summary.plannedOffCount },
-    { label: "No Login Today", value: data.summary.noLoginCount },
-    { label: "Active Team", value: data.summary.teamCount },
+    { label: "Open Tasks", value: data.summary.openTasks, tone: "warn" },
+    { label: "Overdue Tasks", value: data.summary.overdueTasks, tone: "danger" },
+    { label: "Blocked Tasks", value: data.summary.blockedTasks, tone: "danger" },
+    { label: "Logged In Now", value: data.summary.loggedInCount, tone: "ok" },
+    { label: "On Break Now", value: data.summary.onBreakCount, tone: "info" },
+    { label: "Planned Off Today", value: data.summary.plannedOffCount, tone: "cyan" },
+    { label: "No Login Today", value: data.summary.noLoginCount, tone: "muted" },
+    { label: "Active Team", value: data.summary.teamCount, tone: "ok" },
   ]
     .map(
       (card) => `
-        <div class="card stat-card">
-          <div class="stat-label">${escapeHtml(card.label)}</div>
+        <div class="card stat-card tone-${escapeHtml(card.tone)}">
+          <div class="stat-top">
+            <div class="stat-label">${escapeHtml(card.label)}</div>
+            <div class="stat-dot"></div>
+          </div>
           <div class="stat-value">${escapeHtml(card.value)}</div>
         </div>
       `,
@@ -4577,33 +4530,73 @@ function renderDashboardPage(data) {
       <title>WeSolveHR Dashboard</title>
       <style>
         :root {
-          --bg: #0b1020;
-          --panel: #121933;
-          --panel-2: #182140;
-          --text: #eef3ff;
-          --muted: #9db0d5;
-          --line: rgba(255, 255, 255, 0.08);
-          --good: #1f9d55;
-          --warn: #d69e2e;
-          --bad: #e53e3e;
-          --info: #3182ce;
-          --shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+          --bg: #07110d;
+          --bg-2: #0a1813;
+          --panel: rgba(7, 20, 16, 0.88);
+          --panel-2: rgba(10, 27, 21, 0.92);
+          --panel-3: rgba(9, 34, 24, 0.95);
+          --line: rgba(74, 222, 128, 0.14);
+          --line-strong: rgba(74, 222, 128, 0.3);
+          --text: #e8fff2;
+          --muted: #8db6a0;
+          --neon: #61ffa1;
+          --neon-soft: #2ee68a;
+          --cyan: #67e8f9;
+          --warn: #facc15;
+          --danger: #fb7185;
+          --info: #38bdf8;
+          --shadow: 0 0 0 1px rgba(74, 222, 128, 0.08), 0 14px 40px rgba(0,0,0,0.45);
+          --glow: 0 0 24px rgba(97,255,161,0.12);
         }
 
         * { box-sizing: border-box; }
 
-        body {
+        html, body {
           margin: 0;
+          min-height: 100%;
           background:
-            radial-gradient(circle at top left, rgba(49,130,206,0.18), transparent 25%),
-            radial-gradient(circle at top right, rgba(229,62,62,0.12), transparent 22%),
-            linear-gradient(180deg, #0a1020 0%, #10172d 100%);
+            radial-gradient(circle at top left, rgba(46,230,138,0.12), transparent 28%),
+            radial-gradient(circle at top right, rgba(56,189,248,0.08), transparent 20%),
+            linear-gradient(180deg, #040b08 0%, #06110d 42%, #081510 100%);
           color: var(--text);
           font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          overflow-x: hidden;
+        }
+
+        body::before {
+          content: "";
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          background:
+            linear-gradient(
+              to bottom,
+              rgba(255,255,255,0.025) 0px,
+              rgba(255,255,255,0.025) 1px,
+              transparent 1px,
+              transparent 4px
+            );
+          background-size: 100% 4px;
+          opacity: 0.08;
+          mix-blend-mode: soft-light;
+        }
+
+        body::after {
+          content: "";
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          background:
+            radial-gradient(circle at 20% 20%, rgba(97,255,161,0.06), transparent 18%),
+            radial-gradient(circle at 80% 30%, rgba(56,189,248,0.04), transparent 16%),
+            radial-gradient(circle at 50% 80%, rgba(97,255,161,0.03), transparent 20%);
+          filter: blur(18px);
         }
 
         .wrap {
-          max-width: 1400px;
+          position: relative;
+          z-index: 1;
+          max-width: 1460px;
           margin: 0 auto;
           padding: 28px 20px 40px;
         }
@@ -4613,20 +4606,58 @@ function renderDashboardPage(data) {
           justify-content: space-between;
           align-items: center;
           gap: 16px;
-          margin-bottom: 24px;
+          margin-bottom: 22px;
           flex-wrap: wrap;
+          padding: 18px 20px;
+          border: 1px solid var(--line);
+          border-radius: 18px;
+          background:
+            linear-gradient(180deg, rgba(10,27,21,0.9), rgba(5,16,12,0.92));
+          box-shadow: var(--shadow), var(--glow);
+          backdrop-filter: blur(10px);
+        }
+
+        .eyebrow {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 11px;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          color: var(--neon);
+          margin-bottom: 8px;
+          font-weight: 700;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+
+        .eyebrow::before {
+          content: "";
+          width: 8px;
+          height: 8px;
+          border-radius: 999px;
+          background: var(--neon);
+          box-shadow: 0 0 14px rgba(97,255,161,0.75);
+          animation: pulseDot 1.8s infinite ease-in-out;
         }
 
         .title {
-          font-size: 30px;
-          font-weight: 800;
-          letter-spacing: -0.03em;
           margin: 0;
+          font-size: 32px;
+          font-weight: 800;
+          line-height: 1;
+          letter-spacing: -0.04em;
+          color: var(--text);
+          text-shadow: 0 0 18px rgba(97,255,161,0.08);
+        }
+
+        .title-accent {
+          color: var(--neon);
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         }
 
         .subtitle {
           color: var(--muted);
-          margin-top: 6px;
+          margin-top: 8px;
           font-size: 14px;
         }
 
@@ -4637,45 +4668,98 @@ function renderDashboardPage(data) {
         }
 
         .link-btn {
-          display: inline-block;
-          padding: 10px 14px;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 11px 14px;
           border-radius: 12px;
-          background: rgba(255,255,255,0.06);
+          background: rgba(8, 24, 19, 0.85);
           color: var(--text);
           text-decoration: none;
           border: 1px solid var(--line);
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+          transition: all 0.18s ease;
+          font-weight: 600;
+        }
+
+        .link-btn:hover {
+          border-color: var(--line-strong);
+          color: var(--neon);
+          transform: translateY(-1px);
+          box-shadow: 0 0 18px rgba(97,255,161,0.08);
         }
 
         .stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 22px;
-}
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
+          margin-bottom: 22px;
+        }
 
         .card {
-          background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+          background:
+            linear-gradient(180deg, rgba(11,29,22,0.92), rgba(6,17,13,0.95));
           border: 1px solid var(--line);
           border-radius: 18px;
           box-shadow: var(--shadow);
+          backdrop-filter: blur(8px);
+          position: relative;
+          overflow: hidden;
+        }
+
+        .card::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          background: linear-gradient(135deg, rgba(97,255,161,0.04), transparent 30%, transparent 70%, rgba(56,189,248,0.03));
         }
 
         .stat-card {
-          padding: 18px;
+          padding: 16px 16px 18px;
+          min-height: 116px;
+        }
+
+        .stat-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 14px;
         }
 
         .stat-label {
           color: var(--muted);
-          font-size: 13px;
-          margin-bottom: 8px;
+          font-size: 12px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          font-weight: 700;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+
+        .stat-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          background: currentColor;
+          opacity: 0.9;
+          box-shadow: 0 0 14px currentColor;
         }
 
         .stat-value {
-          font-size: 30px;
+          font-size: 34px;
           font-weight: 800;
+          letter-spacing: -0.05em;
           line-height: 1;
-          letter-spacing: -0.04em;
+          color: var(--text);
         }
+
+        .tone-ok { color: var(--neon); }
+        .tone-warn { color: var(--warn); }
+        .tone-danger { color: var(--danger); }
+        .tone-info { color: var(--info); }
+        .tone-cyan { color: var(--cyan); }
+        .tone-muted { color: #93a39a; }
 
         .grid {
           display: grid;
@@ -4683,21 +4767,49 @@ function renderDashboardPage(data) {
           gap: 18px;
         }
 
+        .stack {
+          display: grid;
+          gap: 18px;
+        }
+
         .section {
           padding: 18px;
-          overflow: hidden;
+        }
+
+        .section-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 14px;
         }
 
         .section-title {
-          margin: 0 0 14px;
+          margin: 0;
           font-size: 18px;
-          font-weight: 700;
+          font-weight: 800;
+          letter-spacing: -0.02em;
+          color: var(--text);
+        }
+
+        .section-title span {
+          color: var(--neon);
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          font-size: 13px;
+          margin-right: 8px;
         }
 
         .section-subtitle {
           color: var(--muted);
           font-size: 13px;
-          margin-bottom: 14px;
+          margin-bottom: 12px;
+        }
+
+        .table-wrap {
+          overflow-x: auto;
+          border: 1px solid rgba(74, 222, 128, 0.08);
+          border-radius: 14px;
+          background: rgba(5, 14, 11, 0.65);
         }
 
         table {
@@ -4709,16 +4821,29 @@ function renderDashboardPage(data) {
         th, td {
           text-align: left;
           padding: 12px 10px;
-          border-bottom: 1px solid var(--line);
+          border-bottom: 1px solid rgba(74, 222, 128, 0.08);
           vertical-align: top;
         }
 
         th {
-          color: var(--muted);
-          font-size: 12px;
-          font-weight: 700;
+          color: #9fdab7;
+          font-size: 11px;
+          font-weight: 800;
           text-transform: uppercase;
-          letter-spacing: 0.04em;
+          letter-spacing: 0.1em;
+          position: sticky;
+          top: 0;
+          background: rgba(8, 22, 17, 0.98);
+          z-index: 1;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+
+        tbody tr {
+          transition: background 0.18s ease, transform 0.18s ease;
+        }
+
+        tbody tr:hover {
+          background: rgba(97,255,161,0.045);
         }
 
         .empty {
@@ -4733,61 +4858,74 @@ function renderDashboardPage(data) {
           padding: 5px 10px;
           border-radius: 999px;
           font-size: 12px;
-          font-weight: 700;
+          font-weight: 800;
           border: 1px solid transparent;
           text-transform: capitalize;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          letter-spacing: 0.02em;
         }
 
         .badge-danger {
-          background: rgba(229, 62, 62, 0.14);
-          color: #ffb3b3;
-          border-color: rgba(229, 62, 62, 0.25);
+          background: rgba(251, 113, 133, 0.12);
+          color: #ff9eb0;
+          border-color: rgba(251, 113, 133, 0.28);
+          box-shadow: 0 0 14px rgba(251,113,133,0.08);
         }
 
         .badge-warn {
-          background: rgba(214, 158, 46, 0.14);
-          color: #f8d68a;
-          border-color: rgba(214, 158, 46, 0.25);
+          background: rgba(250, 204, 21, 0.1);
+          color: #ffe47d;
+          border-color: rgba(250, 204, 21, 0.24);
+          box-shadow: 0 0 14px rgba(250,204,21,0.06);
         }
 
         .badge-ok {
-          background: rgba(31, 157, 85, 0.14);
-          color: #9ae6b4;
-          border-color: rgba(31, 157, 85, 0.25);
+          background: rgba(97, 255, 161, 0.12);
+          color: #9effc7;
+          border-color: rgba(97, 255, 161, 0.26);
+          box-shadow: 0 0 14px rgba(97,255,161,0.06);
         }
 
         .badge-info {
-          background: rgba(49, 130, 206, 0.14);
-          color: #90cdf4;
-          border-color: rgba(49, 130, 206, 0.25);
+          background: rgba(56, 189, 248, 0.12);
+          color: #8ee3ff;
+          border-color: rgba(56, 189, 248, 0.26);
+          box-shadow: 0 0 14px rgba(56,189,248,0.06);
         }
 
         .badge-muted {
-          background: rgba(255,255,255,0.08);
-          color: #d8e3ff;
-          border-color: rgba(255,255,255,0.12);
-        }
-
-        .stack {
-          display: grid;
-          gap: 18px;
+          background: rgba(255,255,255,0.06);
+          color: #d7efe0;
+          border-color: rgba(255,255,255,0.08);
         }
 
         .footer-note {
-          margin-top: 20px;
+          margin-top: 18px;
+          padding: 14px 16px;
+          border-radius: 14px;
+          border: 1px solid var(--line);
+          background: rgba(7, 18, 14, 0.82);
           color: var(--muted);
           font-size: 12px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+
+        @keyframes pulseDot {
+          0%, 100% { opacity: 0.55; transform: scale(0.95); }
+          50% { opacity: 1; transform: scale(1.08); }
         }
 
         @media (max-width: 1200px) {
           .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .grid { grid-template-columns: 1fr; }
         }
 
         @media (max-width: 700px) {
           .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          .wrap { padding: 18px 12px 30px; }
+          .wrap { padding: 16px 12px 28px; }
           .title { font-size: 24px; }
           th, td { padding: 10px 8px; font-size: 13px; }
+          .topbar { padding: 16px; }
         }
       </style>
     </head>
@@ -4795,15 +4933,16 @@ function renderDashboardPage(data) {
       <div class="wrap">
         <div class="topbar">
           <div>
-            <h1 class="title">WeSolveHR Dashboard</h1>
-            <div class="subtitle">Live operations view for tasks, attendance, blockers, and overdue work</div>
+            <div class="eyebrow">Live Operations Console</div>
+            <h1 class="title"><span class="title-accent">WeSolveHR //</span> Cyber Command Center</h1>
+            <div class="subtitle">Real-time view of tasks, attendance, blockers, and operational risk</div>
           </div>
-<div class="links">
-  <a class="link-btn" href="/dashboard">Dashboard</a>
-  <a class="link-btn" href="/tasks">Tasks</a>
-  <a class="link-btn" href="/attendance">Attendance</a>
-  <a class="link-btn" href="/logs">Logs</a>
-</div>
+          <div class="links">
+            <a class="link-btn" href="/dashboard">Dashboard</a>
+            <a class="link-btn" href="/tasks">Tasks</a>
+            <a class="link-btn" href="/attendance">Attendance</a>
+            <a class="link-btn" href="/logs">Logs</a>
+          </div>
         </div>
 
         <div class="stats-grid">
@@ -4812,63 +4951,75 @@ function renderDashboardPage(data) {
 
         <div class="grid">
           <div class="card section">
-            <h2 class="section-title">Open Tasks</h2>
-            <div class="section-subtitle">Current active work across the team</div>
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Title</th>
-                  <th>Assignee</th>
-                  <th>Priority</th>
-                  <th>Status</th>
-                  <th>Progress</th>
-                  <th>Deadline</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${openTaskRows}
-              </tbody>
-            </table>
-          </div>
-
-          <div class="stack">
-            <div class="card section">
-              <h2 class="section-title">Latest Attendance</h2>
-              <div class="section-subtitle">Most recent state for each active user</div>
-              <table>
-                <thead>
-<tr>
-  <th>Name</th>
-  <th>Role</th>
-  <th>Status</th>
-  <th>Last Action</th>
-  <th>Break Duration</th>
-  <th>Worked Today</th>
-</tr>
-                </thead>
-                <tbody>
-                  ${attendanceRows}
-                </tbody>
-              </table>
+            <div class="section-header">
+              <h2 class="section-title"><span>[TASKS]</span> Open Tasks</h2>
             </div>
-
-            <div class="card section">
-              <h2 class="section-title">Blocked Tasks</h2>
-              <div class="section-subtitle">Tasks that need intervention</div>
+            <div class="section-subtitle">Current active work across the team</div>
+            <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
                     <th>ID</th>
                     <th>Title</th>
                     <th>Assignee</th>
-                    <th>Reason</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Deadline</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${blockedRows}
+                  ${openTaskRows}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          <div class="stack">
+            <div class="card section">
+              <div class="section-header">
+                <h2 class="section-title"><span>[OPS]</span> Latest Attendance</h2>
+              </div>
+              <div class="section-subtitle">Most recent state for each active user</div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Role</th>
+                      <th>Status</th>
+                      <th>Last Action</th>
+                      <th>Break Duration</th>
+                      <th>Worked Today</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${attendanceRows}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card section">
+              <div class="section-header">
+                <h2 class="section-title"><span>[ALERT]</span> Blocked Tasks</h2>
+              </div>
+              <div class="section-subtitle">Items needing intervention or unblock support</div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Title</th>
+                      <th>Assignee</th>
+                      <th>Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${blockedRows}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -4876,27 +5027,31 @@ function renderDashboardPage(data) {
         <div style="height:18px"></div>
 
         <div class="card section">
-          <h2 class="section-title">Overdue Tasks</h2>
-          <div class="section-subtitle">Work past deadline, sorted by urgency in your view</div>
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Title</th>
-                <th>Assignee</th>
-                <th>Priority</th>
-                <th>Deadline</th>
-                <th>Overdue</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${overdueRows}
-            </tbody>
-          </table>
+          <div class="section-header">
+            <h2 class="section-title"><span>[RISK]</span> Overdue Tasks</h2>
+          </div>
+          <div class="section-subtitle">Past-deadline items sorted for visibility and escalation</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Title</th>
+                  <th>Assignee</th>
+                  <th>Priority</th>
+                  <th>Deadline</th>
+                  <th>Overdue</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${overdueRows}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div class="footer-note">
-          Hardened build: task permissions, dashboard auth support, webhook signature validation, and rate limiting added.
+          SYSTEM NOTE // Secure operations build active: task permissions, dashboard auth, webhook signature validation, and rate limiting enabled.
         </div>
       </div>
     </body>
@@ -5406,21 +5561,229 @@ app.get("/tasks", requireDashboardAuth, async (_req, res) => {
       <head>
         <title>Tasks</title>
         <style>
-          body { font-family: Arial, sans-serif; background:#0b1020; color:#fff; margin:0; }
-          .wrap { max-width: 1200px; margin: 0 auto; padding: 24px; }
-          .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
-          .controls { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px; }
-          input, select { padding:10px; border-radius:8px; border:1px solid #334; background:#121933; color:#fff; }
-          table { width:100%; border-collapse:collapse; background:#121933; border-radius:12px; overflow:hidden; }
-          th, td { padding:12px; border-bottom:1px solid #24304f; text-align:left; }
-          a { color:#9cc3ff; text-decoration:none; }
-          .actions a { margin-right:12px; }
+          :root {
+            --bg: #07110d;
+            --panel: rgba(7, 20, 16, 0.9);
+            --panel-2: rgba(10, 27, 21, 0.94);
+            --line: rgba(74, 222, 128, 0.14);
+            --line-strong: rgba(74, 222, 128, 0.3);
+            --text: #e8fff2;
+            --muted: #8db6a0;
+            --neon: #61ffa1;
+            --cyan: #67e8f9;
+            --warn: #facc15;
+            --danger: #fb7185;
+            --info: #38bdf8;
+            --shadow: 0 0 0 1px rgba(74, 222, 128, 0.08), 0 14px 40px rgba(0,0,0,0.45);
+          }
+
+          * { box-sizing: border-box; }
+
+          body {
+            margin: 0;
+            background:
+              radial-gradient(circle at top left, rgba(46,230,138,0.12), transparent 28%),
+              radial-gradient(circle at top right, rgba(56,189,248,0.08), transparent 20%),
+              linear-gradient(180deg, #040b08 0%, #06110d 42%, #081510 100%);
+            color: var(--text);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          }
+
+          body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background:
+              linear-gradient(
+                to bottom,
+                rgba(255,255,255,0.025) 0px,
+                rgba(255,255,255,0.025) 1px,
+                transparent 1px,
+                transparent 4px
+              );
+            background-size: 100% 4px;
+            opacity: 0.08;
+            mix-blend-mode: soft-light;
+          }
+
+          .wrap {
+            max-width: 1380px;
+            margin: 0 auto;
+            padding: 24px 18px 36px;
+            position: relative;
+            z-index: 1;
+          }
+
+          .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 18px 20px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: linear-gradient(180deg, rgba(10,27,21,0.9), rgba(5,16,12,0.92));
+            box-shadow: var(--shadow);
+          }
+
+          .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--neon);
+            font-weight: 700;
+            margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 30px;
+            letter-spacing: -0.04em;
+          }
+
+          .subtitle {
+            color: var(--muted);
+            margin-top: 8px;
+            font-size: 14px;
+          }
+
+          .actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+          }
+
+          .actions a {
+            color: var(--text);
+            text-decoration: none;
+            padding: 10px 14px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(8, 24, 19, 0.85);
+            font-weight: 600;
+          }
+
+          .actions a:hover {
+            color: var(--neon);
+            border-color: var(--line-strong);
+          }
+
+          .panel {
+            background: linear-gradient(180deg, rgba(11,29,22,0.92), rgba(6,17,13,0.95));
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            box-shadow: var(--shadow);
+            padding: 18px;
+            margin-bottom: 18px;
+          }
+
+          .controls {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr 1fr 1fr auto auto auto;
+            gap: 10px;
+            align-items: center;
+          }
+
+          input, select, button {
+            padding: 11px 12px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(9, 24, 18, 0.95);
+            color: var(--text);
+            font-size: 14px;
+          }
+
+          input::placeholder {
+            color: #86a997;
+          }
+
+          button {
+            cursor: pointer;
+            font-weight: 700;
+            color: var(--neon);
+          }
+
+          button:hover {
+            border-color: var(--line-strong);
+          }
+
+          label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--muted);
+            font-size: 14px;
+            white-space: nowrap;
+          }
+
+          #statusText {
+            color: var(--muted);
+            margin: 8px 2px 14px;
+            font-size: 14px;
+          }
+
+          .table-wrap {
+            overflow-x: auto;
+            border: 1px solid rgba(74, 222, 128, 0.08);
+            border-radius: 14px;
+            background: rgba(5, 14, 11, 0.65);
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+
+          th, td {
+            padding: 12px 10px;
+            border-bottom: 1px solid rgba(74, 222, 128, 0.08);
+            text-align: left;
+          }
+
+          th {
+            color: #9fdab7;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            background: rgba(8, 22, 17, 0.98);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          tbody tr {
+            cursor: pointer;
+            transition: background 0.18s ease;
+          }
+
+          tbody tr:hover {
+            background: rgba(97,255,161,0.045);
+          }
+
+          @media (max-width: 1100px) {
+            .controls {
+              grid-template-columns: 1fr 1fr;
+            }
+          }
+
+          @media (max-width: 700px) {
+            .wrap { padding: 16px 12px 28px; }
+            h1 { font-size: 24px; }
+            .controls { grid-template-columns: 1fr; }
+          }
         </style>
       </head>
       <body>
         <div class="wrap">
           <div class="topbar">
-            <h1>Tasks</h1>
+            <div>
+              <div class="eyebrow">Task Operations</div>
+              <h1>WeSolveHR // Tasks Console</h1>
+              <div class="subtitle">Filter and inspect work across the team without changing backend behavior</div>
+            </div>
             <div class="actions">
               <a href="/dashboard">Dashboard</a>
               <a href="/attendance">Attendance</a>
@@ -5428,45 +5791,50 @@ app.get("/tasks", requireDashboardAuth, async (_req, res) => {
             </div>
           </div>
 
-          <div class="controls">
-            <input id="search" placeholder="Search task title or ID" />
-            <select id="assignee"><option value="">All assignees</option></select>
-            <select id="status">
-              <option value="">All status</option>
-              <option value="pending">Pending</option>
-              <option value="in_progress">In progress</option>
-              <option value="blocked">Blocked</option>
-              <option value="done">Done</option>
-            </select>
-            <select id="priority">
-              <option value="">All priority</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-              <option value="urgent">Urgent</option>
-            </select>
-            <label><input type="checkbox" id="blocked" /> Blocked only</label>
-            <label><input type="checkbox" id="overdue" /> Overdue only</label>
-            <button onclick="loadTasks()">Apply</button>
+          <div class="panel">
+            <div class="controls">
+              <input id="search" placeholder="Search task title or ID" />
+              <select id="assignee"><option value="">All assignees</option></select>
+              <select id="status">
+                <option value="">All status</option>
+                <option value="pending">Pending</option>
+                <option value="in_progress">In progress</option>
+                <option value="blocked">Blocked</option>
+                <option value="done">Done</option>
+              </select>
+              <select id="priority">
+                <option value="">All priority</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+              <label><input type="checkbox" id="blocked" /> Blocked only</label>
+              <label><input type="checkbox" id="overdue" /> Overdue only</label>
+              <button onclick="loadTasks()">Apply</button>
+            </div>
           </div>
 
-          <div id="statusText">Loading tasks...</div>
-
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Title</th>
-                <th>Assignee</th>
-                <th>Status</th>
-                <th>Progress</th>
-                <th>Priority</th>
-                <th>Deadline</th>
-                <th>Blocker</th>
-              </tr>
-            </thead>
-            <tbody id="taskRows"></tbody>
-          </table>
+          <div class="panel">
+            <div id="statusText">Loading tasks...</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Title</th>
+                    <th>Assignee</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Priority</th>
+                    <th>Deadline</th>
+                    <th>Blocker</th>
+                  </tr>
+                </thead>
+                <tbody id="taskRows"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <script>
@@ -5540,37 +5908,231 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
       <head>
         <title>Attendance</title>
         <style>
-          body { font-family: Arial, sans-serif; background:#0b1020; color:#fff; margin:0; }
-          .wrap { max-width: 1200px; margin: 0 auto; padding: 24px; }
-          .cards { display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:24px; }
-          .card { background:#121933; padding:16px; border-radius:12px; }
-          table { width:100%; border-collapse:collapse; background:#121933; margin-top:16px; }
-          th, td { padding:12px; border-bottom:1px solid #24304f; text-align:left; }
-          a { color:#9cc3ff; text-decoration:none; margin-right:12px; }
+          :root {
+            --line: rgba(74, 222, 128, 0.14);
+            --line-strong: rgba(74, 222, 128, 0.3);
+            --text: #e8fff2;
+            --muted: #8db6a0;
+            --neon: #61ffa1;
+            --info: #38bdf8;
+            --shadow: 0 0 0 1px rgba(74, 222, 128, 0.08), 0 14px 40px rgba(0,0,0,0.45);
+          }
+
+          * { box-sizing: border-box; }
+
+          body {
+            margin: 0;
+            background:
+              radial-gradient(circle at top left, rgba(46,230,138,0.12), transparent 28%),
+              radial-gradient(circle at top right, rgba(56,189,248,0.08), transparent 20%),
+              linear-gradient(180deg, #040b08 0%, #06110d 42%, #081510 100%);
+            color: var(--text);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          }
+
+          body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background:
+              linear-gradient(
+                to bottom,
+                rgba(255,255,255,0.025) 0px,
+                rgba(255,255,255,0.025) 1px,
+                transparent 1px,
+                transparent 4px
+              );
+            background-size: 100% 4px;
+            opacity: 0.08;
+          }
+
+          .wrap {
+            max-width: 1320px;
+            margin: 0 auto;
+            padding: 24px 18px 36px;
+            position: relative;
+            z-index: 1;
+          }
+
+          .topbar, .panel, .card {
+            background: linear-gradient(180deg, rgba(11,29,22,0.92), rgba(6,17,13,0.95));
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            box-shadow: var(--shadow);
+          }
+
+          .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 18px 20px;
+          }
+
+          .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--neon);
+            font-weight: 700;
+            margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 30px;
+            letter-spacing: -0.04em;
+          }
+
+          .subtitle {
+            color: var(--muted);
+            margin-top: 8px;
+            font-size: 14px;
+          }
+
+          .links {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+          }
+
+          .links a {
+            color: var(--text);
+            text-decoration: none;
+            padding: 10px 14px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(8, 24, 19, 0.85);
+            font-weight: 600;
+          }
+
+          .links a:hover {
+            color: var(--neon);
+            border-color: var(--line-strong);
+          }
+
+          .cards {
+            display:grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap:16px;
+            margin-bottom:18px;
+          }
+
+          .card {
+            padding:16px;
+          }
+
+          .card-label {
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 700;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          .card h2 {
+            margin: 10px 0 0;
+            font-size: 34px;
+            color: var(--neon);
+          }
+
+          .panel {
+            padding: 18px;
+            margin-bottom: 18px;
+          }
+
+          h2 {
+            margin: 0 0 12px;
+            font-size: 19px;
+          }
+
+          .table-wrap {
+            overflow-x: auto;
+            border: 1px solid rgba(74, 222, 128, 0.08);
+            border-radius: 14px;
+            background: rgba(5, 14, 11, 0.65);
+          }
+
+          table {
+            width:100%;
+            border-collapse:collapse;
+          }
+
+          th, td {
+            padding:12px;
+            border-bottom:1px solid rgba(74, 222, 128, 0.08);
+            text-align:left;
+          }
+
+          th {
+            color: #9fdab7;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            background: rgba(8, 22, 17, 0.98);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          tbody tr:hover {
+            background: rgba(97,255,161,0.045);
+          }
+
+          @media (max-width: 900px) {
+            .cards { grid-template-columns: 1fr; }
+          }
+
+          @media (max-width: 700px) {
+            .wrap { padding: 16px 12px 28px; }
+            h1 { font-size: 24px; }
+          }
         </style>
       </head>
       <body>
         <div class="wrap">
-          <h1>Attendance</h1>
-          <p><a href="/dashboard">Dashboard</a><a href="/tasks">Tasks</a><a href="/logs">Logs</a></p>
-
-          <div class="cards">
-            <div class="card"><div>Logged In</div><h2 id="loggedIn">-</h2></div>
-            <div class="card"><div>On Break</div><h2 id="onBreak">-</h2></div>
-            <div class="card"><div>Active Today</div><h2 id="activeToday">-</h2></div>
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Attendance Monitoring</div>
+              <h1>WeSolveHR // Attendance Console</h1>
+              <div class="subtitle">Live attendance state, recent activity, and operational visibility</div>
+            </div>
+            <div class="links">
+              <a href="/dashboard">Dashboard</a>
+              <a href="/tasks">Tasks</a>
+              <a href="/logs">Logs</a>
+            </div>
           </div>
 
-          <h2>Current Status</h2>
-          <table>
-            <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Last Activity</th></tr></thead>
-            <tbody id="currentStatusRows"></tbody>
-          </table>
+          <div class="cards">
+            <div class="card"><div class="card-label">Logged In</div><h2 id="loggedIn">-</h2></div>
+            <div class="card"><div class="card-label">On Break</div><h2 id="onBreak">-</h2></div>
+            <div class="card"><div class="card-label">Active Today</div><h2 id="activeToday">-</h2></div>
+          </div>
 
-          <h2>Recent Events</h2>
-          <table>
-            <thead><tr><th>Time</th><th>User ID</th><th>Action</th><th>Duration</th><th>Note</th></tr></thead>
-            <tbody id="recentEventRows"></tbody>
-          </table>
+          <div class="panel">
+            <h2>Current Status</h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Last Activity</th></tr></thead>
+                <tbody id="currentStatusRows"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>Recent Events</h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Time</th><th>User ID</th><th>Action</th><th>Duration</th><th>Note</th></tr></thead>
+                <tbody id="recentEventRows"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <script>
@@ -5611,29 +6173,189 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
   `);
 });
 
+
 app.get("/logs", requireDashboardAuth, async (_req, res) => {
   res.status(200).send(`
     <html>
       <head>
         <title>Logs</title>
         <style>
-          body { font-family: Arial, sans-serif; background:#0b1020; color:#fff; margin:0; }
-          .wrap { max-width: 1200px; margin: 0 auto; padding: 24px; }
-          table { width:100%; border-collapse:collapse; background:#121933; margin-top:16px; }
-          th, td { padding:12px; border-bottom:1px solid #24304f; text-align:left; vertical-align:top; }
-          a { color:#9cc3ff; text-decoration:none; margin-right:12px; }
-          .msg { white-space:pre-wrap; }
+          :root {
+            --line: rgba(74, 222, 128, 0.14);
+            --line-strong: rgba(74, 222, 128, 0.3);
+            --text: #e8fff2;
+            --muted: #8db6a0;
+            --neon: #61ffa1;
+            --shadow: 0 0 0 1px rgba(74, 222, 128, 0.08), 0 14px 40px rgba(0,0,0,0.45);
+          }
+
+          * { box-sizing: border-box; }
+
+          body {
+            margin: 0;
+            background:
+              radial-gradient(circle at top left, rgba(46,230,138,0.12), transparent 28%),
+              radial-gradient(circle at top right, rgba(56,189,248,0.08), transparent 20%),
+              linear-gradient(180deg, #040b08 0%, #06110d 42%, #081510 100%);
+            color: var(--text);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          }
+
+          body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background:
+              linear-gradient(
+                to bottom,
+                rgba(255,255,255,0.025) 0px,
+                rgba(255,255,255,0.025) 1px,
+                transparent 1px,
+                transparent 4px
+              );
+            background-size: 100% 4px;
+            opacity: 0.08;
+          }
+
+          .wrap {
+            max-width: 1320px;
+            margin: 0 auto;
+            padding: 24px 18px 36px;
+            position: relative;
+            z-index: 1;
+          }
+
+          .topbar, .panel {
+            background: linear-gradient(180deg, rgba(11,29,22,0.92), rgba(6,17,13,0.95));
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            box-shadow: var(--shadow);
+          }
+
+          .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 18px 20px;
+          }
+
+          .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--neon);
+            font-weight: 700;
+            margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 30px;
+            letter-spacing: -0.04em;
+          }
+
+          .subtitle {
+            color: var(--muted);
+            margin-top: 8px;
+            font-size: 14px;
+          }
+
+          .links {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+          }
+
+          .links a {
+            color: var(--text);
+            text-decoration: none;
+            padding: 10px 14px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(8, 24, 19, 0.85);
+            font-weight: 600;
+          }
+
+          .links a:hover {
+            color: var(--neon);
+            border-color: var(--line-strong);
+          }
+
+          .panel {
+            padding: 18px;
+          }
+
+          .table-wrap {
+            overflow-x: auto;
+            border: 1px solid rgba(74, 222, 128, 0.08);
+            border-radius: 14px;
+            background: rgba(5, 14, 11, 0.65);
+          }
+
+          table {
+            width:100%;
+            border-collapse:collapse;
+          }
+
+          th, td {
+            padding:12px;
+            border-bottom:1px solid rgba(74, 222, 128, 0.08);
+            text-align:left;
+            vertical-align:top;
+          }
+
+          th {
+            color: #9fdab7;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            background: rgba(8, 22, 17, 0.98);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          tbody tr:hover {
+            background: rgba(97,255,161,0.045);
+          }
+
+          .msg {
+            white-space: pre-wrap;
+          }
+
+          @media (max-width: 700px) {
+            .wrap { padding: 16px 12px 28px; }
+            h1 { font-size: 24px; }
+          }
         </style>
       </head>
       <body>
         <div class="wrap">
-          <h1>Logs</h1>
-          <p><a href="/dashboard">Dashboard</a><a href="/tasks">Tasks</a><a href="/attendance">Attendance</a></p>
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Message Logging</div>
+              <h1>WeSolveHR // Logs Console</h1>
+              <div class="subtitle">Inbound command visibility for tracing, debugging, and audit review</div>
+            </div>
+            <div class="links">
+              <a href="/dashboard">Dashboard</a>
+              <a href="/tasks">Tasks</a>
+              <a href="/attendance">Attendance</a>
+            </div>
+          </div>
 
-          <table>
-            <thead><tr><th>Time</th><th>Sender</th><th>Message</th><th>Message SID</th></tr></thead>
-            <tbody id="logRows"></tbody>
-          </table>
+          <div class="panel">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Time</th><th>Sender</th><th>Message</th><th>Message SID</th></tr></thead>
+                <tbody id="logRows"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <script>
@@ -5658,6 +6380,8 @@ app.get("/logs", requireDashboardAuth, async (_req, res) => {
     </html>
   `);
 });
+
+
 
 app.post("/whatsapp", async (req, res) => {
   try {
