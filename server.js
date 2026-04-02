@@ -176,7 +176,7 @@ function badgeClass(value) {
   if (["done", "logout"].includes(v)) return "badge badge-muted";
   if (["blocked", "break"].includes(v)) return "badge badge-danger";
   if (["in_progress", "back", "login"].includes(v)) return "badge badge-info";
-  if (["pending"].includes(v)) return "badge badge-warn";
+  if (["open", "pending"].includes(v)) return "badge badge-warn";
   if (["cancelled"].includes(v)) return "badge badge-muted";
 
   return "badge badge-muted";
@@ -2365,6 +2365,7 @@ async function handleLockAttendanceDay(res, actingUser, command) {
 }
 
 async function handleHelp(res, user) {
+  console.log("handleHelp called for", user?.name);
   return sendTwiml(
     res,
     [
@@ -2619,7 +2620,7 @@ async function handleProgressTask(res, user, taskId, progressValue) {
   const newStatus =
     progressValue === 100
       ? "done"
-      : task.status === "pending"
+      : task.status === "open" || task.status === "pending"
         ? "in_progress"
         : task.status;
 
@@ -3314,7 +3315,7 @@ async function handleCreateTask(res, user, taskCommand) {
     title: taskCommand.title,
     detail: null,
     priority: taskCommand.priority || "medium",
-    status: "pending",
+    status: "open",
     progress: 0,
     deadline,
     blocker_note: null,
@@ -3442,7 +3443,7 @@ async function handleUnblockTask(res, user, taskId) {
     return sendTwiml(res, `Task #${taskId} is not blocked.`);
   }
 
-  const nextStatus = task.progress > 0 ? "in_progress" : "pending";
+  const nextStatus = task.progress > 0 ? "in_progress" : "open";
 
   const { error: updateError } = await supabase
     .from("tasks")
@@ -6830,10 +6831,12 @@ app.get("/tasks", requireDashboardAuth, async (_req, res) => {
               <select id="assignee"><option value="">All assignees</option></select>
               <select id="status">
                 <option value="">All status</option>
-                <option value="pending">Pending</option>
-                <option value="in_progress">In progress</option>
-                <option value="blocked">Blocked</option>
-                <option value="done">Done</option>
+<option value="open">Open</option>
+<option value="in_progress">In progress</option>
+<option value="blocked">Blocked</option>
+<option value="done">Done</option>
+<option value="cancelled">Cancelled</option>
+<option value="archived">Archived</option>
               </select>
               <select id="priority">
                 <option value="">All priority</option>
@@ -7517,6 +7520,12 @@ app.post("/whatsapp", async (req, res) => {
     // Basic / utility commands
     // ------------------------------------------------------------------
     if (normalizedBody === "help" || normalizedBody === "commands") {
+      console.log("HELP matched", {
+        rawBody: body,
+        normalizedBody,
+        user: user?.name,
+        from,
+      });
       return handleHelp(res, user);
     }
 
@@ -7857,6 +7866,13 @@ app.post("/whatsapp", async (req, res) => {
         "I could not parse that task automatically right now. Please use this format: task Ruhab high VPN testing by tomorrow",
       );
     }
+
+    console.log("Unknown command fallback", {
+      rawBody: body,
+      normalizedBody,
+      user: user?.name,
+      from,
+    });
 
     return sendTwiml(
       res,
