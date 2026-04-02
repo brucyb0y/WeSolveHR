@@ -7248,15 +7248,6 @@ async function loadAttendance() {
 
   window.location.href = "/attendance/" + id;
 });
-          document.getElementById("currentStatusRows").addEventListener("click", function (e) {
-  const tr = e.target.closest("tr[data-id]");
-  if (!tr) return;
-
-  const id = tr.getAttribute("data-id");
-  if (!id) return;
-
-  window.location.href = "/attendance/" + id;
-});
             setInterval(() => {
     window.location.reload();
   }, 60000);
