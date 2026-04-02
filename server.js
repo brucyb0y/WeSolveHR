@@ -104,6 +104,21 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function formatDateListForHumans(dateList) {
+  if (!dateList || !dateList.length) return "None";
+
+  return dateList
+    .map((dateStr) => {
+      const date = new Date(`${dateStr}T00:00:00${APP_TIMEZONE_OFFSET}`);
+      return date.toLocaleDateString("en-IN", {
+        timeZone: APP_TIMEZONE,
+        day: "numeric",
+        month: "short",
+      });
+    })
+    .join(", ");
+}
+
 function formatDateTime(isoString) {
   if (!isoString) return "-";
   const d = new Date(isoString);
@@ -1662,11 +1677,9 @@ async function logIncomingMessage(user, reqBody, body, from) {
 }
 
 async function handleEmployeeSummary(res, actingUser, command) {
-  if (!isManagerOrAdmin(actingUser)) {
-    return sendTwiml(res, "You are not allowed to view employee summary.");
-  }
-
-  const targetUser = await findUniqueUserByName(command.target_name);
+  const targetUser = command.target_name
+    ? await findUniqueUserByName(command.target_name)
+    : actingUser;
 
   if (!targetUser) {
     return sendTwiml(
@@ -1675,22 +1688,31 @@ async function handleEmployeeSummary(res, actingUser, command) {
     );
   }
 
+  const isSelf = targetUser.id === actingUser.id;
+
+  if (!isSelf && !isManagerOrAdmin(actingUser)) {
+    return sendTwiml(
+      res,
+      "You can only view your own summary. Managers/admin can view others.",
+    );
+  }
+
   try {
-    const currentEvent = await getLatestAttendanceEvent(targetUser.id);
     const monthly = await getEmployeeMonthlyAttendanceSummary(targetUser.id);
 
     const lines = [
       `📊 Employee summary: ${targetUser.name}`,
       "",
       `Present days this month: ${monthly.presentDays}`,
-      `Leave days this month: ${monthly.leaveDays}`,
+      `Total leave entries this month: ${monthly.leaveDays}`,
+      `Past leave dates: ${formatDateListForHumans(monthly.pastLeaveDates)}`,
+      `Upcoming planned leave dates: ${formatDateListForHumans(monthly.upcomingLeaveDates)}`,
       `Late joins this month: ${monthly.lateJoins}`,
       `Approved late: ${monthly.approvedLate}`,
-      `Late not approved: ${monthly.unapprovedLate}`,
+      `Late with prior info but not approved: ${monthly.unapprovedLate}`,
       `Late without prior info: ${monthly.uninformedLate}`,
       `Average login time/day: ${monthly.avgLoginTimeText}`,
       `Average break time/day: ${formatDurationMinutes(monthly.avgBreakMin)}`,
-      `Current status: ${currentEvent?.action || "No update"}`,
       `Long shift flags: ${monthly.longShiftCount}`,
       `Long break flags: ${monthly.longBreakCount}`,
       `Possible half days: ${monthly.possibleHalfDays}`,
@@ -4007,6 +4029,13 @@ function getCurrentAttendanceDayRange() {
 
 function parseEmployeeSummaryCommand(text) {
   const raw = String(text || "").trim();
+
+  if (/^employee\s+summary$/i.test(raw)) {
+    return {
+      target_name: null,
+    };
+  }
+
   const match = raw.match(/^employee\s+summary\s+(.+)$/i);
   if (!match) return null;
 
@@ -4324,6 +4353,8 @@ async function getEmployeeMonthlyAttendanceSummary(userId) {
   );
   const LATE_GRACE_MIN = 10;
 
+  const todayAttendanceDate = getAttendanceDayDateStringFromDate(new Date());
+
   const startUtc = new Date(
     `${startDate}T${String(ATTENDANCE_DAY_START_HOUR).padStart(2, "0")}:00:00${APP_TIMEZONE_OFFSET}`,
   ).toISOString();
@@ -4349,14 +4380,15 @@ async function getEmployeeMonthlyAttendanceSummary(userId) {
         .select("id, off_date")
         .eq("user_id", userId)
         .gte("off_date", startDate)
-        .lt("off_date", endDateExclusive),
+        .lt("off_date", endDateExclusive)
+        .order("off_date", { ascending: true }),
 
       supabase
         .from("late_arrivals")
         .select("id, late_date, is_approved")
         .eq("user_id", userId)
         .gte("late_date", startDate)
-        .lt("late_date", endDateExclusive),
+        .lte("late_date", todayAttendanceDate),
 
       supabase
         .from("attendance_audit")
@@ -4381,6 +4413,8 @@ async function getEmployeeMonthlyAttendanceSummary(userId) {
   for (const ev of events) {
     const attendanceDate = parseIsoToAttendanceDateString(ev.created_at);
     if (!attendanceDate) continue;
+
+    if (attendanceDate > todayAttendanceDate) continue;
 
     if (!eventsByAttendanceDay.has(attendanceDate)) {
       eventsByAttendanceDay.set(attendanceDate, []);
@@ -4443,6 +4477,7 @@ async function getEmployeeMonthlyAttendanceSummary(userId) {
   const avgLoginMin = loginDaysCount
     ? Math.round(totalLoginMinuteOfDay / loginDaysCount)
     : null;
+
   const avgBreakMin = breakDaysCount
     ? Math.round(totalBreakMinutes / breakDaysCount)
     : 0;
@@ -4450,15 +4485,26 @@ async function getEmployeeMonthlyAttendanceSummary(userId) {
   const avgLoginTimeText =
     avgLoginMin == null
       ? "-"
-      : formatTimeOnly(
-          new Date(
-            `${startDate}T${String(Math.floor(avgLoginMin / 60)).padStart(2, "0")}:${String(avgLoginMin % 60).padStart(2, "0")}:00${APP_TIMEZONE_OFFSET}`,
-          ).toISOString(),
-        );
+      : `${String(((Math.floor(avgLoginMin / 60) + 11) % 12) + 1)}:${String(
+          avgLoginMin % 60,
+        ).padStart(
+          2,
+          "0",
+        )} ${Math.floor(avgLoginMin / 60) >= 12 ? "PM" : "AM"} IST`;
+
+  const pastLeaveDates = leaveRows
+    .filter((x) => x.off_date <= todayAttendanceDate)
+    .map((x) => x.off_date);
+
+  const upcomingLeaveDates = leaveRows
+    .filter((x) => x.off_date > todayAttendanceDate)
+    .map((x) => x.off_date);
 
   return {
     presentDays,
     leaveDays: leaveRows.length,
+    pastLeaveDates,
+    upcomingLeaveDates,
     lateJoins,
     approvedLate,
     unapprovedLate,
