@@ -4767,6 +4767,46 @@ function renderDashboardPage(data) {
           color: var(--text-strong);
         }
 
+.top-nav {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.top-nav a {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-strong);
+  background: rgba(88,255,149,0.08);
+  border: 1px solid rgba(88,255,149,0.18);
+  box-shadow: 0 0 0 1px rgba(88,255,149,0.04);
+  transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+}
+
+.top-nav a:hover {
+  transform: translateY(-1px);
+  background: rgba(88,255,149,0.14);
+  border-color: rgba(88,255,149,0.30);
+}
+
+.top-nav a.secondary {
+  background: rgba(89,243,255,0.08);
+  border-color: rgba(89,243,255,0.20);
+}
+
+.top-nav a.secondary:hover {
+  background: rgba(89,243,255,0.14);
+  border-color: rgba(89,243,255,0.30);
+}
+
         .stats-grid {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -5087,18 +5127,26 @@ function renderDashboardPage(data) {
     </head>
     <body>
       <div class="page-shell">
-        <div class="hero">
-          <div>
-            <h1 class="hero-title">WeSolveHR Command Center</h1>
-            <div class="hero-subtitle">
-              Real-time task execution, attendance flow, risks, support load, and live team pulse
-            </div>
-          </div>
-          <div class="hero-meta">
-            <div><strong>Secure dashboard</strong></div>
-            <div>Live operations overview</div>
-          </div>
-        </div>
+<div class="hero">
+  <div>
+    <h1 class="hero-title">WeSolveHR Command Center</h1>
+    <div class="hero-subtitle">
+      Real-time task execution, attendance flow, risks, support load, and live team pulse
+    </div>
+
+    <div class="top-nav">
+      <a href="/dashboard">Dashboard</a>
+      <a href="/tasks" class="secondary">Tasks</a>
+      <a href="/logs">Logs</a>
+      <a href="/attendance">Attendance</a>
+    </div>
+  </div>
+
+  <div class="hero-meta">
+    <div><strong>Secure dashboard</strong></div>
+    <div>Live operations overview</div>
+  </div>
+</div>
 
         <div class="stats-grid">
           ${summaryCardsHtml}
