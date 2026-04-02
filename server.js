@@ -3700,8 +3700,8 @@ async function handleSummaryToday(res, actingUser) {
           (new Date(firstLogin.created_at) - new Date(shiftStartIso)) / 60000,
         ),
       );
-
-      if (loginDelayMin > 0) {
+      const LATE_GRACE_MIN = 10;
+      if (loginDelayMin > LATE_GRACE_MIN) {
         if (lateInfo && lateInfo.is_approved) {
           approvedLate.push(
             `${user.name} (${formatTimeOnly(firstLogin.created_at)}, ${loginDelayMin}m late)`,
@@ -4322,6 +4322,7 @@ async function getEmployeeMonthlyAttendanceSummary(userId) {
     new Date(),
     APP_TIMEZONE,
   );
+  const LATE_GRACE_MIN = 10;
 
   const startUtc = new Date(
     `${startDate}T${String(ATTENDANCE_DAY_START_HOUR).padStart(2, "0")}:00:00${APP_TIMEZONE_OFFSET}`,
@@ -4422,7 +4423,7 @@ async function getEmployeeMonthlyAttendanceSummary(userId) {
       breakDaysCount += 1;
     }
 
-    if (summary.lateMinutes > 0) {
+    if (summary.lateMinutes > LATE_GRACE_MIN) {
       lateJoins += 1;
 
       if (lateInfo && lateInfo.is_approved) {
