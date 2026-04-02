@@ -3779,91 +3779,156 @@ async function insertAttendanceAudit(
   }
 }
 
-async function handleHelp(res, user) {
-  const lines = [
-    "📘 WeSolveHR Commands",
+return sendTwiml(
+  res,
+  [
+    "👋 WeSolve HR Assistant — Complete Guide",
     "",
-    "Attendance",
-    "login",
-    "break",
-    "break 15",
-    "break personal issue",
-    "break 15 personal issue",
-    "back",
-    "logout",
-    "logout family concern",
-    "late 11:00 AM",
+    "This system helps track attendance in a simple and transparent way.",
     "",
-    "Leave",
-    "leave today",
-    "leave tomorrow",
-    "leave 11 april",
-    "who is off today",
+    "━━━━━━━━━━━━━━━━━━━",
+    "🟢 BASIC DAILY USE (MOST IMPORTANT)",
+    "━━━━━━━━━━━━━━━━━━━",
     "",
-    "Tasks",
-    "my tasks",
-    "show task 8",
-    "done 8",
-    "progress 8 50",
-    "task Aj high test dashboard by tomorrow",
+    "Just remember these 4 commands:",
     "",
-    "Team",
-    "who am i",
-    "status",
-    "who is on break",
-    "now",
-    "summary today",
+    "👉 login  → Start your work day",
+    "👉 break  → When you step away",
+    "👉 back   → When you return",
+    "👉 logout → End your work day",
     "",
-    "Manager/Admin only",
-    "tasks Aj",
-    "show overdue",
-    "block 8 waiting for Aj",
-    "unblock 8",
-    "undo last task change",
-    "employee summary Kavita",
-    "leave Aj tomorrow",
-    "mark Aj login",
-    "mark Aj login 10:30 AM",
-    "mark Aj break",
-    "mark Aj break 15",
-    "mark Aj break 15 1:00 PM",
-    "mark Aj back",
-    "mark Aj back 2:30 PM",
-    "mark Aj logout",
-    "mark Aj logout 6:15 PM",
-    "timeline Aj",
-    "timeline Aj today",
-    "audit Aj",
-    "cancel task 12",
-    "delete task 12",
-    "audit Aj today",
-    "undo attendance Aj",
-    "undo my attendance",
-    "reset Aj today",
-    "reset Aj 11 april",
-    "force logout Aj",
-    "force back Aj",
-    "fix Aj logout 6:30 PM",
-    "fix Aj back 2:15 PM",
-    "remove Aj break",
-    "remove Aj logout",
-    "auto fix Aj today",
-    "lock Aj today",
-    "unlock Aj today",
-  ];
-
-  if (isManagerOrAdmin(user)) {
-    lines.splice(
-      1,
-      0,
-      `Role: ${user.role}`,
-      "Manager/Admin commands included below.",
-      "",
-    );
-  }
-
-  return sendTwiml(res, lines.join("\n"));
-}
+    "💡 Example flow:",
+    "login → break → back → logout",
+    "",
+    "━━━━━━━━━━━━━━━━━━━",
+    "⏰ LATE LOGIN",
+    "━━━━━━━━━━━━━━━━━━━",
+    "",
+    "If you're going to be late, inform in advance:",
+    "",
+    "👉 late 30 min",
+    "👉 late 1 hour",
+    "",
+    "If you don’t inform → marked as uninformed late",
+    "",
+    "━━━━━━━━━━━━━━━━━━━",
+    "📊 VIEW STATUS",
+    "━━━━━━━━━━━━━━━━━━━",
+    "",
+    "👉 status",
+    "Full team status",
+    "",
+    "👉 now",
+    "Quick snapshot of current activity",
+    "",
+    "👉 summary today",
+    "Detailed breakdown of today",
+    "",
+    "👉 who is on break",
+    "See active breaks",
+    "",
+    "━━━━━━━━━━━━━━━━━━━",
+    "📅 LEAVE MANAGEMENT",
+    "━━━━━━━━━━━━━━━━━━━",
+    "",
+    "👉 leave tomorrow",
+    "👉 leave 5 April",
+    "👉 leave 10 April",
+    "",
+    "💡 Works for future dates also",
+    "",
+    "━━━━━━━━━━━━━━━━━━━",
+    "👤 EMPLOYEE REPORTS",
+    "━━━━━━━━━━━━━━━━━━━",
+    "",
+    "👉 employee summary",
+    "Your monthly report",
+    "",
+    "👉 employee summary Aj",
+    "Report for someone else",
+    "",
+    "Includes:",
+    "• Present days",
+    "• Leave dates (past + upcoming)",
+    "• Late counts (approved / not / uninformed)",
+    "• Average login time",
+    "• Break time",
+    "• Flags (long shift / long break / half day)",
+    "• Manager corrections",
+    "",
+    "━━━━━━━━━━━━━━━━━━━",
+    "🧠 ADVANCED (TIME CORRECTIONS)",
+    "━━━━━━━━━━━━━━━━━━━",
+    "",
+    "Managers/Admin can fix entries:",
+    "",
+    "👉 login Aj 8:30 am",
+    "👉 logout Aj 6:00 pm",
+    "👉 break Aj 1:00 pm",
+    "👉 back Aj 1:30 pm",
+    "",
+    "💡 Use when someone forgets to mark",
+    "",
+    "━━━━━━━━━━━━━━━━━━━",
+    "📅 MANAGER ACTIONS",
+    "━━━━━━━━━━━━━━━━━━━",
+    "",
+    "👉 leave Aj tomorrow",
+    "Mark leave for someone else",
+    "",
+    "━━━━━━━━━━━━━━━━━━━",
+    "🛠 TASK SYSTEM (IF ENABLED)",
+    "━━━━━━━━━━━━━━━━━━━",
+    "",
+    "👉 create task",
+    "Create a new task",
+    "",
+    "👉 tasks",
+    "View your tasks",
+    "",
+    "👉 tasks Aj",
+    "View tasks of someone else (manager)",
+    "",
+    "👉 show overdue",
+    "See overdue tasks",
+    "",
+    "👉 block 8 waiting for Aj",
+    "Mark task blocked",
+    "",
+    "👉 unblock 8",
+    "Unblock task",
+    "",
+    "👉 undo last task change",
+    "Undo last action",
+    "",
+    "━━━━━━━━━━━━━━━━━━━",
+    "👤 IDENTITY",
+    "━━━━━━━━━━━━━━━━━━━",
+    "",
+    "👉 who am i",
+    "Check your registered identity",
+    "",
+    "━━━━━━━━━━━━━━━━━━━",
+    "⚠️ IMPORTANT GUIDELINES",
+    "━━━━━━━━━━━━━━━━━━━",
+    "",
+    "• Always mark break and back",
+    "• Always logout at end of day",
+    "• Inform before being late",
+    "• Managers can fix mistakes",
+    "",
+    "💡 This system is for visibility, not policing 🙂",
+    "",
+    "━━━━━━━━━━━━━━━━━━━",
+    "💬 QUICK TIP",
+    "━━━━━━━━━━━━━━━━━━━",
+    "",
+    "If confused, just remember:",
+    "👉 login, break, back, logout",
+    "",
+    "Everything else is optional 👍",
+  ].join("\n"),
+);
 
 async function handleUndoLastTaskChange(res, user) {
   if (!isManagerOrAdmin(user)) {
@@ -4507,6 +4572,659 @@ async function getEmployeeMonthlyAttendanceSummary(userId) {
     possibleHalfDays,
     managerCorrectionCount: auditRows.length,
   };
+}
+
+async function getEmployeeAttendanceOverview(userId) {
+  const todayAttendanceDate = getAttendanceDayDateStringFromDate(new Date());
+  const { startUtc, endUtc } = getCurrentAttendanceDayRange();
+  const { startDate, endDateExclusive } = getMonthDateRangeForTimeZone(
+    new Date(),
+    APP_TIMEZONE,
+  );
+
+  const [
+    userResult,
+    todayEventsResult,
+    monthlyEventsResult,
+    leaveResult,
+    lateResult,
+    auditResult,
+    monthlySummary,
+  ] = await Promise.all([
+    supabase
+      .from("users")
+      .select("id, name, role, phone_number")
+      .eq("id", userId)
+      .eq("is_active", true)
+      .maybeSingle(),
+
+    supabase
+      .from("attendance_events")
+      .select(
+        "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
+      )
+      .eq("user_id", userId)
+      .gte("created_at", startUtc)
+      .lt("created_at", endUtc)
+      .order("created_at", { ascending: true }),
+
+    supabase
+      .from("attendance_events")
+      .select(
+        "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
+      )
+      .eq("user_id", userId)
+      .gte(
+        "created_at",
+        new Date(
+          `${startDate}T${String(ATTENDANCE_DAY_START_HOUR).padStart(2, "0")}:00:00${APP_TIMEZONE_OFFSET}`,
+        ).toISOString(),
+      )
+      .lt(
+        "created_at",
+        new Date(
+          `${endDateExclusive}T${String(ATTENDANCE_DAY_START_HOUR).padStart(2, "0")}:00:00${APP_TIMEZONE_OFFSET}`,
+        ).toISOString(),
+      )
+      .order("created_at", { ascending: true }),
+
+    supabase
+      .from("planned_time_off")
+      .select("id, off_date, note")
+      .eq("user_id", userId)
+      .gte("off_date", startDate)
+      .lt("off_date", endDateExclusive)
+      .order("off_date", { ascending: true }),
+
+    supabase
+      .from("late_arrivals")
+      .select(
+        "id, late_date, expected_login_at, informed_at, shift_start_at, is_approved, note",
+      )
+      .eq("user_id", userId)
+      .gte("late_date", startDate)
+      .lt("late_date", endDateExclusive)
+      .order("late_date", { ascending: true }),
+
+    supabase
+      .from("attendance_audit")
+      .select(
+        "id, action_type, old_value, new_value, note, created_at, acted_by_user_id",
+      )
+      .eq("target_user_id", userId)
+      .gte(
+        "created_at",
+        new Date(
+          `${startDate}T${String(ATTENDANCE_DAY_START_HOUR).padStart(2, "0")}:00:00${APP_TIMEZONE_OFFSET}`,
+        ).toISOString(),
+      )
+      .lt(
+        "created_at",
+        new Date(
+          `${endDateExclusive}T${String(ATTENDANCE_DAY_START_HOUR).padStart(2, "0")}:00:00${APP_TIMEZONE_OFFSET}`,
+        ).toISOString(),
+      )
+      .order("created_at", { ascending: false }),
+    getEmployeeMonthlyAttendanceSummary(userId),
+  ]);
+
+  if (userResult.error) throw userResult.error;
+  if (todayEventsResult.error) throw todayEventsResult.error;
+  if (monthlyEventsResult.error) throw monthlyEventsResult.error;
+  if (leaveResult.error) throw leaveResult.error;
+  if (lateResult.error) throw lateResult.error;
+  if (auditResult.error) throw auditResult.error;
+
+  const user = userResult.data;
+  if (!user) {
+    throw new Error("Employee not found");
+  }
+
+  const todayEvents = todayEventsResult.data || [];
+  const monthlyEvents = monthlyEventsResult.data || [];
+  const leaveRows = leaveResult.data || [];
+  const lateRows = lateResult.data || [];
+  const auditRows = auditResult.data || [];
+
+  const todaySummary = getAttendanceSummaryFromEvents(todayEvents);
+  const leaveToday =
+    leaveRows.find((x) => x.off_date === todayAttendanceDate) || null;
+  const lateToday =
+    lateRows.find((x) => x.late_date === todayAttendanceDate) || null;
+
+  const eventsByAttendanceDay = new Map();
+
+  for (const ev of monthlyEvents) {
+    const attendanceDate = parseIsoToAttendanceDateString(ev.created_at);
+    if (!attendanceDate) continue;
+
+    if (!eventsByAttendanceDay.has(attendanceDate)) {
+      eventsByAttendanceDay.set(attendanceDate, []);
+    }
+    eventsByAttendanceDay.get(attendanceDate).push(ev);
+  }
+
+  const history = [];
+
+  const allAttendanceDates = new Set([
+    ...Array.from(eventsByAttendanceDay.keys()),
+    ...leaveRows.map((x) => x.off_date),
+  ]);
+
+  const sortedAttendanceDates = Array.from(allAttendanceDates).sort((a, b) =>
+    a < b ? 1 : -1,
+  );
+
+  for (const attendanceDate of sortedAttendanceDates) {
+    const dayEvents = eventsByAttendanceDay.get(attendanceDate) || [];
+    const daySummary = getAttendanceSummaryFromEvents(dayEvents);
+    const dayLate =
+      lateRows.find((x) => x.late_date === attendanceDate) || null;
+    const dayLeave =
+      leaveRows.find((x) => x.off_date === attendanceDate) || null;
+    const dayAuditCount = auditRows.filter((x) => {
+      const auditDate = parseIsoToAttendanceDateString(x.created_at);
+      return auditDate === attendanceDate;
+    }).length;
+
+    history.push({
+      attendance_date: attendanceDate,
+      status: dayLeave ? "leave" : daySummary.currentStatus,
+      first_login_text: daySummary.firstLogin
+        ? formatTimeOnly(daySummary.firstLogin.created_at)
+        : "-",
+      last_logout_text: daySummary.lastLogout
+        ? formatTimeOnly(daySummary.lastLogout.created_at)
+        : "-",
+      worked_text: formatDurationMinutes(daySummary.workedMinutes),
+      break_text: formatDurationMinutes(daySummary.breakMinutes),
+      late_text:
+        daySummary.lateMinutes > 10 ? `${daySummary.lateMinutes} min` : "No",
+      late_approved:
+        daySummary.lateMinutes > 10
+          ? dayLate
+            ? dayLate.is_approved
+              ? "approved"
+              : "not approved"
+            : "no prior info"
+          : "-",
+      leave_text: dayLeave ? "Yes" : "No",
+      flags:
+        [
+          daySummary.longShiftFlag ? "Long shift" : null,
+          daySummary.longBreakFlag ? "Long break" : null,
+          daySummary.possibleHalfDay ? "Half day" : null,
+        ]
+          .filter(Boolean)
+          .join(", ") || "-",
+      corrections: dayAuditCount,
+      timeline: dayEvents.map((ev) => ({
+        id: ev.id,
+        action: ev.action,
+        created_at: ev.created_at,
+        time_text: formatTimeOnly(ev.created_at),
+        reason: ev.reason || null,
+        note: ev.note || null,
+        expected_duration_min: ev.expected_duration_min || null,
+      })),
+    });
+  }
+  return {
+    employee: user,
+    today: {
+      attendance_date: todayAttendanceDate,
+      current_status: leaveToday ? "leave" : todaySummary.currentStatus,
+      first_login_text: todaySummary.firstLogin
+        ? formatTimeOnly(todaySummary.firstLogin.created_at)
+        : "-",
+      last_logout_text: todaySummary.lastLogout
+        ? formatTimeOnly(todaySummary.lastLogout.created_at)
+        : "-",
+      worked_text: formatDurationMinutes(todaySummary.workedMinutes),
+      break_text: formatDurationMinutes(todaySummary.breakMinutes),
+      break_count: todaySummary.breakCount,
+      late_text:
+        todaySummary.lateMinutes > 10
+          ? `${todaySummary.lateMinutes} min`
+          : "No",
+      late_status:
+        todaySummary.lateMinutes > 10
+          ? lateToday
+            ? lateToday.is_approved
+              ? "approved"
+              : "not approved"
+            : "no prior info"
+          : "-",
+      leave_today: !!leaveToday,
+      long_shift_flag: todaySummary.longShiftFlag,
+      long_break_flag: todaySummary.longBreakFlag,
+      possible_half_day: todaySummary.possibleHalfDay,
+      events: todayEvents.map((ev) => ({
+        id: ev.id,
+        action: ev.action,
+        time_text: formatTimeOnly(ev.created_at),
+        reason: ev.reason || null,
+        note: ev.note || null,
+        expected_duration_min: ev.expected_duration_min || null,
+      })),
+    },
+    monthly: monthlySummary,
+    recent_audit: auditRows.slice(0, 20).map((row) => ({
+      id: row.id,
+      action_type: row.action_type,
+      note: row.note || "-",
+      created_at_text: row.created_at ? formatDateTime(row.created_at) : "-",
+    })),
+    history,
+  };
+}
+
+function renderEmployeeAttendancePage(data) {
+  const employee = data?.employee || {};
+  const today = data?.today || {};
+  const monthly = data?.monthly || {};
+  const history = data?.history || [];
+  const recentAudit = data?.recent_audit || [];
+
+  const todayTimelineRows = (today.events || []).length
+    ? today.events
+        .map(
+          (ev) => `
+            <tr>
+              <td>${escapeHtml(ev.time_text || "-")}</td>
+              <td>${escapeHtml(ev.action || "-")}</td>
+              <td>${escapeHtml(
+                ev.expected_duration_min
+                  ? `${ev.expected_duration_min} min`
+                  : "-",
+              )}</td>
+              <td>${escapeHtml(ev.reason || "-")}</td>
+              <td>${escapeHtml(ev.note || "-")}</td>
+            </tr>
+          `,
+        )
+        .join("")
+    : `
+      <tr>
+        <td colspan="5" class="empty-cell">No attendance events today.</td>
+      </tr>
+    `;
+
+  const historyRows = history.length
+    ? history
+        .map(
+          (row) => `
+            <tr>
+              <td>${escapeHtml(row.attendance_date)}</td>
+              <td>${escapeHtml(row.status)}</td>
+              <td>${escapeHtml(row.first_login_text)}</td>
+              <td>${escapeHtml(row.last_logout_text)}</td>
+              <td>${escapeHtml(row.worked_text)}</td>
+              <td>${escapeHtml(row.break_text)}</td>
+              <td>${escapeHtml(row.late_text)}</td>
+              <td>${escapeHtml(row.late_approved)}</td>
+              <td>${escapeHtml(row.leave_text)}</td>
+              <td>${escapeHtml(row.flags)}</td>
+              <td>${escapeHtml(String(row.corrections || 0))}</td>
+            </tr>
+          `,
+        )
+        .join("")
+    : `
+      <tr>
+        <td colspan="11" class="empty-cell">No history found for this month.</td>
+      </tr>
+    `;
+
+  const auditRows = recentAudit.length
+    ? recentAudit
+        .map(
+          (row) => `
+            <tr>
+              <td>${escapeHtml(row.created_at_text)}</td>
+              <td>${escapeHtml(row.action_type)}</td>
+              <td>${escapeHtml(row.note)}</td>
+            </tr>
+          `,
+        )
+        .join("")
+    : `
+      <tr>
+        <td colspan="3" class="empty-cell">No recent audit entries.</td>
+      </tr>
+    `;
+
+  return `
+    <html>
+      <head>
+        <title>Employee Attendance</title>
+        <style>
+          :root {
+            --line: rgba(74, 222, 128, 0.14);
+            --line-strong: rgba(74, 222, 128, 0.3);
+            --text: #e8fff2;
+            --muted: #8db6a0;
+            --neon: #61ffa1;
+            --shadow: 0 0 0 1px rgba(74, 222, 128, 0.08), 0 14px 40px rgba(0,0,0,0.45);
+          }
+
+          * { box-sizing: border-box; }
+
+          body {
+            margin: 0;
+            background:
+              radial-gradient(circle at top left, rgba(46,230,138,0.12), transparent 28%),
+              radial-gradient(circle at top right, rgba(56,189,248,0.08), transparent 20%),
+              linear-gradient(180deg, #040b08 0%, #06110d 42%, #081510 100%);
+            color: var(--text);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          }
+
+          .wrap {
+            max-width: 1380px;
+            margin: 0 auto;
+            padding: 24px 18px 36px;
+          }
+
+          .topbar, .panel, .card {
+            background: linear-gradient(180deg, rgba(11,29,22,0.92), rgba(6,17,13,0.95));
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            box-shadow: var(--shadow);
+          }
+
+          .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 18px 20px;
+          }
+
+          .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--neon);
+            font-weight: 700;
+            margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 30px;
+            letter-spacing: -0.04em;
+          }
+
+          .subtitle {
+            color: var(--muted);
+            margin-top: 8px;
+            font-size: 14px;
+          }
+
+          .links {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+          }
+
+          .links a {
+            color: var(--text);
+            text-decoration: none;
+            padding: 10px 14px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(8, 24, 19, 0.85);
+            font-weight: 600;
+          }
+
+          .links a:hover {
+            color: var(--neon);
+            border-color: var(--line-strong);
+          }
+
+          .cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 18px;
+          }
+
+          .card {
+            padding: 16px;
+          }
+
+          .card-label {
+            color: var(--muted);
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            font-weight: 700;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          .card h2 {
+            margin: 10px 0 0;
+            font-size: 28px;
+            color: var(--neon);
+          }
+
+          .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            margin-bottom: 18px;
+          }
+
+          .panel {
+            padding: 18px;
+            margin-bottom: 18px;
+          }
+
+          h2 {
+            margin: 0 0 12px;
+            font-size: 19px;
+          }
+
+          .kv {
+            display: grid;
+            grid-template-columns: 220px 1fr;
+            gap: 10px;
+            row-gap: 12px;
+          }
+
+          .kv .k {
+            color: var(--muted);
+          }
+
+          .table-wrap {
+            overflow-x: auto;
+            border: 1px solid rgba(74, 222, 128, 0.08);
+            border-radius: 14px;
+            background: rgba(5, 14, 11, 0.65);
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+
+          th, td {
+            padding: 12px;
+            border-bottom: 1px solid rgba(74, 222, 128, 0.08);
+            text-align: left;
+            vertical-align: top;
+          }
+
+          th {
+            color: #9fdab7;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            background: rgba(8, 22, 17, 0.98);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          .empty-cell {
+            text-align: center;
+            color: var(--muted);
+            padding: 18px;
+          }
+
+          @media (max-width: 1000px) {
+            .cards, .grid-2 { grid-template-columns: 1fr; }
+            .kv { grid-template-columns: 1fr; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="wrap">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Employee Attendance Detail</div>
+              <h1>${escapeHtml(employee.name || "Employee")}</h1>
+              <div class="subtitle">
+                Role: ${escapeHtml(employee.role || "-")} | Phone: ${escapeHtml(employee.phone_number || "-")}
+              </div>
+            </div>
+            <div class="links">
+              <a href="/attendance">Attendance</a>
+              <a href="/dashboard">Dashboard</a>
+              <a href="/tasks">Tasks</a>
+              <a href="/logs">Logs</a>
+            </div>
+          </div>
+
+          <div class="cards">
+            <div class="card"><div class="card-label">Current Status</div><h2>${escapeHtml(today.current_status || "-")}</h2></div>
+            <div class="card"><div class="card-label">Worked Today</div><h2>${escapeHtml(today.worked_text || "-")}</h2></div>
+            <div class="card"><div class="card-label">Break Today</div><h2>${escapeHtml(today.break_text || "-")}</h2></div>
+            <div class="card"><div class="card-label">Late Today</div><h2>${escapeHtml(today.late_text || "No")}</h2></div>
+          </div>
+
+          <div class="grid-2">
+            <div class="panel">
+              <h2>Today details</h2>
+              <div class="kv">
+                <div class="k">Attendance date</div><div>${escapeHtml(today.attendance_date || "-")}</div>
+                <div class="k">First login</div><div>${escapeHtml(today.first_login_text || "-")}</div>
+                <div class="k">Last logout</div><div>${escapeHtml(today.last_logout_text || "-")}</div>
+                <div class="k">Break count</div><div>${escapeHtml(String(today.break_count || 0))}</div>
+                <div class="k">Late status</div><div>${escapeHtml(today.late_status || "-")}</div>
+                <div class="k">Leave today</div><div>${today.leave_today ? "Yes" : "No"}</div>
+                <div class="k">Flags</div>
+                <div>
+                  ${
+                    [
+                      today.long_shift_flag ? "Long shift" : null,
+                      today.long_break_flag ? "Long break" : null,
+                      today.possible_half_day ? "Half day" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "None"
+                  }
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h2>Monthly summary</h2>
+              <div class="kv">
+                <div class="k">Present days</div><div>${escapeHtml(String(monthly.presentDays || 0))}</div>
+                <div class="k">Total leave entries</div><div>${escapeHtml(String(monthly.leaveDays || 0))}</div>
+                <div class="k">Past leave dates</div><div>${escapeHtml(formatDateListForHumans(monthly.pastLeaveDates || []))}</div>
+                <div class="k">Upcoming leave dates</div><div>${escapeHtml(formatDateListForHumans(monthly.upcomingLeaveDates || []))}</div>
+                <div class="k">Late joins</div><div>${escapeHtml(String(monthly.lateJoins || 0))}</div>
+                <div class="k">Approved late</div><div>${escapeHtml(String(monthly.approvedLate || 0))}</div>
+                <div class="k">Late not approved</div><div>${escapeHtml(String(monthly.unapprovedLate || 0))}</div>
+                <div class="k">Late without prior info</div><div>${escapeHtml(String(monthly.uninformedLate || 0))}</div>
+                <div class="k">Average login time</div><div>${escapeHtml(monthly.avgLoginTimeText || "-")}</div>
+                <div class="k">Average break time</div><div>${escapeHtml(formatDurationMinutes(monthly.avgBreakMin || 0))}</div>
+                <div class="k">Long shift flags</div><div>${escapeHtml(String(monthly.longShiftCount || 0))}</div>
+                <div class="k">Long break flags</div><div>${escapeHtml(String(monthly.longBreakCount || 0))}</div>
+                <div class="k">Possible half days</div><div>${escapeHtml(String(monthly.possibleHalfDays || 0))}</div>
+                <div class="k">Manager corrections</div><div>${escapeHtml(String(monthly.managerCorrectionCount || 0))}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>Today timeline</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Action</th>
+                    <th>Expected Duration</th>
+                    <th>Reason</th>
+                    <th>Note</th>
+                  </tr>
+                </thead>
+                <tbody>${todayTimelineRows}</tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>Attendance history this month</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Login</th>
+                    <th>Logout</th>
+                    <th>Worked</th>
+                    <th>Break</th>
+                    <th>Late</th>
+                    <th>Late status</th>
+                    <th>Leave</th>
+                    <th>Flags</th>
+                    <th>Corrections</th>
+                  </tr>
+                </thead>
+                <tbody>${historyRows}</tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>Recent attendance audit</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Action Type</th>
+                    <th>Note</th>
+                  </tr>
+                </thead>
+                <tbody>${auditRows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <script>
+          setInterval(() => {
+            window.location.reload();
+          }, 60000);
+
+          document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") {
+              location.reload();
+            }
+          });
+        </script>
+      </body>
+    </html>
+  `;
 }
 
 async function getDashboardData() {
@@ -5313,6 +6031,56 @@ function renderDashboardPage(data) {
   `;
 }
 
+app.get("/attendance/:userId", requireDashboardAuth, async (req, res) => {
+  try {
+    const userId = Number(req.params.userId);
+    if (!userId) {
+      return res.status(400).send("Invalid user id");
+    }
+
+    const data = await getEmployeeAttendanceOverview(userId);
+    return res.status(200).send(renderEmployeeAttendancePage(data));
+  } catch (error) {
+    console.error("Employee attendance page error:", error);
+    return res.status(500).send(`
+      <html>
+        <head>
+          <title>Employee Attendance Error</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              background: #0f172a;
+              color: white;
+              padding: 40px;
+            }
+            .box {
+              max-width: 800px;
+              margin: 0 auto;
+              padding: 24px;
+              border-radius: 16px;
+              background: rgba(255,255,255,0.06);
+              border: 1px solid rgba(255,255,255,0.1);
+            }
+            pre {
+              white-space: pre-wrap;
+              word-break: break-word;
+              color: #fca5a5;
+            }
+            a { color: #93c5fd; }
+          </style>
+        </head>
+        <body>
+          <div class="box">
+            <h1>Employee attendance failed to load</h1>
+            <pre>${escapeHtml(error?.message || String(error))}</pre>
+            <p><a href="/attendance">Back to attendance</a></p>
+          </div>
+        </body>
+      </html>
+    `);
+  }
+});
+
 async function getDashboardSummaryData() {
   const { startUtc, endUtc, attendanceDate } = getCurrentAttendanceDayRange();
   const today = attendanceDate;
@@ -5390,9 +6158,12 @@ async function getDashboardSummaryData() {
 
 async function getAttendancePageData() {
   const { startUtc, endUtc } = getCurrentAttendanceDayRange();
+  const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
+
   const [
     { data: users, error: usersError },
     { data: events, error: eventsError },
+    plannedOffRows,
   ] = await Promise.all([
     supabase
       .from("users")
@@ -5408,10 +6179,16 @@ async function getAttendancePageData() {
       .gte("created_at", startUtc)
       .lt("created_at", endUtc)
       .order("created_at", { ascending: false }),
+
+    getPlannedOffRowsForDate(attendanceDate),
   ]);
 
   if (usersError) throw usersError;
   if (eventsError) throw eventsError;
+
+  const plannedOffUserIds = new Set(
+    (plannedOffRows || []).map((x) => x.user_id),
+  );
 
   const latestByUser = new Map();
   for (const event of events || []) {
@@ -5422,23 +6199,25 @@ async function getAttendancePageData() {
 
   const currentStatus = (users || []).map((user) => {
     const latest = latestByUser.get(user.id);
+    const status = plannedOffUserIds.has(user.id)
+      ? "leave"
+      : latest?.action || "unknown";
+
     return {
       user_id: user.id,
       name: user.name,
       role: user.role,
-      status: latest?.action || "unknown",
+      status,
       last_event_at: latest?.created_at || null,
       last_event_at_text: latest?.created_at
         ? formatDateTime(latest.created_at)
-        : "-",
+        : plannedOffUserIds.has(user.id)
+          ? "On leave today"
+          : "-",
     };
   });
 
-  const activeTodayUserIds = new Set(
-    (events || [])
-      .filter((e) => e.created_at >= startUtc && e.created_at < endUtc)
-      .map((e) => e.user_id),
-  );
+  const activeTodayUserIds = new Set((events || []).map((e) => e.user_id));
 
   const loggedInCount = currentStatus.filter(
     (x) => x.status === "login" || x.status === "back",
@@ -5794,6 +6573,21 @@ app.get("/api/attendance", async (_req, res) => {
   } catch (error) {
     console.error("API /api/attendance error:", error);
     return sendApiError(res, 500, "Failed to load attendance");
+  }
+});
+
+app.get("/api/attendance/:userId", async (req, res) => {
+  try {
+    const userId = Number(req.params.userId);
+    if (!userId) {
+      return sendApiError(res, 400, "Invalid user id");
+    }
+
+    const data = await getEmployeeAttendanceOverview(userId);
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("API /api/attendance/:userId error:", error);
+    return sendApiError(res, 500, "Failed to load employee attendance");
   }
 });
 
@@ -6377,10 +7171,10 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
 
           <div class="panel">
             <h2>Current Status</h2>
+            <div style="color:#8db6a0; margin-bottom:12px; font-size:13px;">Click any row to open full employee attendance details.</div>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Last Activity</th></tr></thead>
-                <tbody id="currentStatusRows"></tbody>
+<thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Last Activity</th></tr></thead>                <tbody id="currentStatusRows"></tbody>
               </table>
             </div>
           </div>
@@ -6397,37 +7191,72 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
         </div>
 
         <script>
-          async function loadAttendance() {
-            const res = await fetch('/api/attendance');
-            const json = await res.json();
-            if (!json.ok) return;
 
-            const data = json.data;
-            document.getElementById('loggedIn').textContent = data.summary.logged_in_count;
-            document.getElementById('onBreak').textContent = data.summary.on_break_count;
-            document.getElementById('activeToday').textContent = data.summary.active_today_count;
+async function loadAttendance() {
+  const res = await fetch('/api/attendance');
+  const json = await res.json();
+  if (!json.ok) return;
 
-            document.getElementById('currentStatusRows').innerHTML = (data.current_status || []).map(row => \`
-              <tr>
-                <td>\${row.name || ''}</td>
-                <td>\${row.role || ''}</td>
-                <td>\${row.status || ''}</td>
-                <td>\${row.last_event_at_text || '-'}</td>
-              </tr>
-            \`).join('');
+  const data = json.data;
 
-            document.getElementById('recentEventRows').innerHTML = (data.recent_events || []).map(row => \`
-              <tr>
-                <td>\${row.created_at_text || ''}</td>
-                <td>\${row.user_id || ''}</td>
-                <td>\${row.action || ''}</td>
-                <td>\${row.duration_min || '-'}</td>
-                <td>\${row.note || '-'}</td>
-              </tr>
-            \`).join('');
-          }
+  document.getElementById('loggedIn').textContent =
+    data.summary.logged_in_count;
+
+  document.getElementById('onBreak').textContent =
+    data.summary.on_break_count;
+
+  document.getElementById('activeToday').textContent =
+    data.summary.active_today_count;
+
+  document.getElementById('currentStatusRows').innerHTML =
+    (data.current_status || [])
+      .map(function (row) {
+        return (
+          '<tr style="cursor:pointer" data-id="' + (row.user_id || '') + '">' +
+            '<td>' + (row.name || '') + '</td>' +
+            '<td>' + (row.role || '') + '</td>' +
+            '<td>' + (row.status || '') + '</td>' +
+            '<td>' + (row.last_event_at_text || '-') + '</td>' +
+          '</tr>'
+        );
+      })
+      .join('');
+
+  document.getElementById('recentEventRows').innerHTML =
+    (data.recent_events || [])
+      .map(function (row) {
+        return (
+          '<tr>' +
+            '<td>' + (row.created_at_text || '') + '</td>' +
+            '<td>' + (row.user_id || '') + '</td>' +
+            '<td>' + (row.action || '') + '</td>' +
+            '<td>' + (row.duration_min || '-') + '</td>' +
+            '<td>' + (row.note || '-') + '</td>' +
+          '</tr>'
+        );
+      })
+      .join('');
+}
 
           loadAttendance();
+          document.getElementById("currentStatusRows").addEventListener("click", function (e) {
+  const tr = e.target.closest("tr[data-id]");
+  if (!tr) return;
+
+  const id = tr.getAttribute("data-id");
+  if (!id) return;
+
+  window.location.href = "/attendance/" + id;
+});
+          document.getElementById("currentStatusRows").addEventListener("click", function (e) {
+  const tr = e.target.closest("tr[data-id]");
+  if (!tr) return;
+
+  const id = tr.getAttribute("data-id");
+  if (!id) return;
+
+  window.location.href = "/attendance/" + id;
+});
             setInterval(() => {
     window.location.reload();
   }, 60000);
