@@ -162,7 +162,7 @@ function badgeClass(value) {
   if (["blocked", "break"].includes(v)) return "badge badge-danger";
   if (["in_progress", "back", "login"].includes(v)) return "badge badge-info";
   if (["pending"].includes(v)) return "badge badge-warn";
-  if (["cancelled"].includes(v)) return "badge badge-muted";
+ if (["cancelled"].includes(v)) return "badge badge-muted";
 
   return "badge badge-muted";
 }
@@ -382,7 +382,9 @@ function parseMarkAttendanceCommand(text) {
     };
   }
 
-  match = raw.match(/^mark\s+(.+?)\s+break\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
+  match = raw.match(
+    /^mark\s+(.+?)\s+break\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
+  );
   if (match) {
     return {
       target_name: match[1].trim(),
@@ -450,7 +452,9 @@ function parseDirectManagerAttendanceCommand(text) {
     }
   }
 
-  match = raw.match(/^break\s+(.+?)\s+(\d+)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
+  match = raw.match(
+    /^break\s+(.+?)\s+(\d+)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
+  );
   if (match) {
     return {
       target_name: match[1].trim(),
@@ -472,7 +476,9 @@ function parseDirectManagerAttendanceCommand(text) {
     };
   }
 
-  match = raw.match(/^break\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
+  match = raw.match(
+    /^break\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
+  );
   if (match) {
     return {
       target_name: match[1].trim(),
@@ -1057,7 +1063,7 @@ async function getTaskAssignedCount(userId) {
     .from("tasks")
     .select("*", { count: "exact", head: true })
     .eq("assigned_to_user_id", userId)
-    .not("status", "in", '("done","archived","cancelled")');
+.not("status", "in", '("done","archived","cancelled")');
 
   if (error) {
     console.error("Assigned task count error:", error);
@@ -1219,10 +1225,7 @@ async function getAttendanceEventsForAttendanceDay(attendanceDateString) {
   return data || [];
 }
 
-async function getAttendanceEventsForUserOnAttendanceDay(
-  userId,
-  attendanceDateString,
-) {
+async function getAttendanceEventsForUserOnAttendanceDay(userId, attendanceDateString) {
   const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
 
   const { data, error } = await supabase
@@ -1267,11 +1270,7 @@ async function getLatestBreakEventAtOrBefore(userId, occurredAtIso = null) {
   return data || null;
 }
 
-async function getLatestAttendanceEventByAction(
-  userId,
-  action,
-  attendanceDateString = null,
-) {
+async function getLatestAttendanceEventByAction(userId, action, attendanceDateString = null) {
   let query = supabase
     .from("attendance_events")
     .select(
@@ -1306,10 +1305,7 @@ async function deleteAttendanceEventById(eventId) {
   return error;
 }
 
-async function deleteAttendanceEventsForUserOnAttendanceDay(
-  userId,
-  attendanceDateString,
-) {
+async function deleteAttendanceEventsForUserOnAttendanceDay(userId, attendanceDateString) {
   const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
 
   const { error } = await supabase
@@ -1358,26 +1354,22 @@ async function isAttendanceDayLocked(userId, attendanceDateString) {
   return !!data?.is_locked;
 }
 
-async function setAttendanceDayLock(
-  userId,
-  attendanceDateString,
-  isLocked,
-  actedByUserId,
-  note = null,
-) {
-  const { error } = await supabase.from("attendance_day_locks").upsert(
-    [
-      {
-        user_id: userId,
-        attendance_date: attendanceDateString,
-        is_locked: isLocked,
-        locked_by_user_id: actedByUserId,
-        note,
-        updated_at: new Date().toISOString(),
-      },
-    ],
-    { onConflict: "user_id,attendance_date" },
-  );
+async function setAttendanceDayLock(userId, attendanceDateString, isLocked, actedByUserId, note = null) {
+  const { error } = await supabase
+    .from("attendance_day_locks")
+    .upsert(
+      [
+        {
+          user_id: userId,
+          attendance_date: attendanceDateString,
+          is_locked: isLocked,
+          locked_by_user_id: actedByUserId,
+          note,
+          updated_at: new Date().toISOString(),
+        },
+      ],
+      { onConflict: "user_id,attendance_date" },
+    );
 
   return error;
 }
@@ -1414,35 +1406,24 @@ function analyzeAttendanceIssues(events) {
     if (ev.action === "login") {
       loginCount += 1;
       if (loginCount > 1) {
-        issues.push(
-          `Multiple login entries found (latest at ${formatTimeOnly(ev.created_at)})`,
-        );
+        issues.push(`Multiple login entries found (latest at ${formatTimeOnly(ev.created_at)})`);
       }
     }
 
     if (ev.action === "break") {
       if (breakOpen) {
-        issues.push(
-          `Break started again without back at ${formatTimeOnly(ev.created_at)}`,
-        );
+        issues.push(`Break started again without back at ${formatTimeOnly(ev.created_at)}`);
       }
       breakOpen = ev;
     }
 
     if (ev.action === "back") {
       if (!breakOpen) {
-        issues.push(
-          `Back recorded without a matching break at ${formatTimeOnly(ev.created_at)}`,
-        );
+        issues.push(`Back recorded without a matching break at ${formatTimeOnly(ev.created_at)}`);
       } else {
-        const breakMinutes = minutesBetween(
-          breakOpen.created_at,
-          ev.created_at,
-        );
+        const breakMinutes = minutesBetween(breakOpen.created_at, ev.created_at);
         if (breakMinutes >= LONG_BREAK_THRESHOLD_MIN) {
-          issues.push(
-            `Long break detected: ${formatDurationMinutes(breakMinutes)} ending at ${formatTimeOnly(ev.created_at)}`,
-          );
+          issues.push(`Long break detected: ${formatDurationMinutes(breakMinutes)} ending at ${formatTimeOnly(ev.created_at)}`);
         }
       }
       breakOpen = null;
@@ -1451,25 +1432,19 @@ function analyzeAttendanceIssues(events) {
     if (ev.action === "logout") {
       hasLogout = true;
       if (breakOpen) {
-        issues.push(
-          `Logout happened while still on break at ${formatTimeOnly(ev.created_at)}`,
-        );
+        issues.push(`Logout happened while still on break at ${formatTimeOnly(ev.created_at)}`);
         breakOpen = null;
       }
     }
   }
 
   if (breakOpen) {
-    issues.push(
-      `Break without return since ${formatTimeOnly(breakOpen.created_at)}`,
-    );
+    issues.push(`Break without return since ${formatTimeOnly(breakOpen.created_at)}`);
   }
 
   const summary = getAttendanceSummaryFromEvents(events || []);
   if (summary.longShiftFlag) {
-    issues.push(
-      `Long shift detected: ${formatDurationMinutes(summary.workedMinutes)}`,
-    );
+    issues.push(`Long shift detected: ${formatDurationMinutes(summary.workedMinutes)}`);
   }
 
   const hasWorkStart = (events || []).some(
@@ -1779,10 +1754,7 @@ async function handleUndoAttendance(res, actingUser, command) {
     : await findUniqueUserByName(command.target_name);
 
   if (!isSelf && !isManagerOrAdmin(actingUser)) {
-    return sendTwiml(
-      res,
-      "You are not allowed to undo other people's attendance.",
-    );
+    return sendTwiml(res, "You are not allowed to undo other people's attendance.");
   }
 
   if (!targetUser) {
@@ -1795,10 +1767,7 @@ async function handleUndoAttendance(res, actingUser, command) {
   try {
     const latestEvent = await getLatestAttendanceEvent(targetUser.id);
     if (!latestEvent) {
-      return sendTwiml(
-        res,
-        `No attendance event found to undo for ${targetUser.name}.`,
-      );
+      return sendTwiml(res, `No attendance event found to undo for ${targetUser.name}.`);
     }
 
     const attendanceDate = getAttendanceDayDateStringFromDate(
@@ -1874,10 +1843,7 @@ async function handleResetAttendance(res, actingUser, command) {
     );
 
     const [attendanceError, lateError, offError] = await Promise.all([
-      deleteAttendanceEventsForUserOnAttendanceDay(
-        targetUser.id,
-        attendanceDate,
-      ),
+      deleteAttendanceEventsForUserOnAttendanceDay(targetUser.id, attendanceDate),
       deleteLateArrivalForUserOnDate(targetUser.id, attendanceDate),
       deletePlannedOffForUserOnDate(targetUser.id, attendanceDate),
     ]);
@@ -1941,12 +1907,13 @@ async function handleForceAttendance(res, actingUser, command) {
   }
 
   if (new Date(occurredAtIso) > new Date()) {
-    return sendTwiml(res, "❌ Future attendance corrections are not allowed");
+    return sendTwiml(
+      res,
+      "❌ Future attendance corrections are not allowed",
+    );
   }
 
-  const attendanceDate = getAttendanceDayDateStringFromDate(
-    new Date(occurredAtIso),
-  );
+  const attendanceDate = getAttendanceDayDateStringFromDate(new Date(occurredAtIso));
   const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
 
   if (locked) {
@@ -1960,10 +1927,7 @@ async function handleForceAttendance(res, actingUser, command) {
   let note = `Force ${command.action} by ${actingUser.name}`;
 
   if (command.action === "back") {
-    const lastBreak = await getLatestBreakEventAtOrBefore(
-      targetUser.id,
-      occurredAtIso,
-    );
+    const lastBreak = await getLatestBreakEventAtOrBefore(targetUser.id, occurredAtIso);
     if (lastBreak) {
       durationMin = minutesBetween(lastBreak.created_at, occurredAtIso);
       note += ` | Actual break: ${durationMin} min`;
@@ -2028,12 +1992,13 @@ async function handleFixAttendance(res, actingUser, command) {
   }
 
   if (new Date(correctedIso) > new Date()) {
-    return sendTwiml(res, "❌ Future attendance corrections are not allowed");
+    return sendTwiml(
+      res,
+      "❌ Future attendance corrections are not allowed",
+    );
   }
 
-  const attendanceDate = getAttendanceDayDateStringFromDate(
-    new Date(correctedIso),
-  );
+  const attendanceDate = getAttendanceDayDateStringFromDate(new Date(correctedIso));
   const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
 
   if (locked) {
@@ -2066,10 +2031,7 @@ async function handleFixAttendance(res, actingUser, command) {
   let durationMin = latestActionEvent.duration_min;
 
   if (command.action === "back") {
-    const lastBreak = await getLatestBreakEventAtOrBefore(
-      targetUser.id,
-      correctedIso,
-    );
+    const lastBreak = await getLatestBreakEventAtOrBefore(targetUser.id, correctedIso);
     if (lastBreak) {
       durationMin = minutesBetween(lastBreak.created_at, correctedIso);
       patch.duration_min = durationMin;
@@ -2269,9 +2231,7 @@ async function handleAutoFixAttendance(res, actingUser, command) {
     return sendTwiml(
       res,
       `🛠 Auto-fix complete for ${targetUser.name}\nDate: ${attendanceDate}\n${
-        applied.length
-          ? applied.map((x) => `• ${x}`).join("\n")
-          : "No changes were needed"
+        applied.length ? applied.map((x) => `• ${x}`).join("\n") : "No changes were needed"
       }`,
     );
   } catch (error) {
@@ -2338,7 +2298,7 @@ async function handleMyTasks(res, user) {
     .from("tasks")
     .select("id, title, priority, status, progress, deadline")
     .eq("assigned_to_user_id", user.id)
-    .not("status", "in", '("done","archived","cancelled")')
+.not("status", "in", '("done","archived","cancelled")')
     .order("deadline", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
 
@@ -2643,6 +2603,7 @@ async function handleLateCommand(res, user, lateCommand) {
   );
 }
 
+
 async function handleMarkedAttendance(res, actingUser, markCommand) {
   if (!isManagerOrAdmin(actingUser)) {
     return sendTwiml(res, "You are not allowed to mark attendance for others.");
@@ -2687,10 +2648,7 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     );
   }
 
-  const lastAction = await getLastActionAtOrBefore(
-    targetUser.id,
-    occurredAtIso,
-  );
+  const lastAction = await getLastActionAtOrBefore(targetUser.id, occurredAtIso);
 
   const oldValue = {
     last_action: lastAction,
@@ -2735,7 +2693,7 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     duration_min:
       markCommand.action === "back"
         ? actualBreakMinutes
-        : (markCommand.duration_min ?? null),
+        : markCommand.duration_min ?? null,
     expected_duration_min: markCommand.duration_min ?? null,
     reason: markCommand.reason ?? null,
     note,
@@ -2772,9 +2730,7 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     return sendTwiml(
       res,
       `${targetUser.name}: break started${
-        markCommand.duration_min
-          ? ` for ${markCommand.duration_min} minutes`
-          : ""
+        markCommand.duration_min ? ` for ${markCommand.duration_min} minutes` : ""
       } by ${actingUser.name}${
         markCommand.time_text ? ` at ${markCommand.time_text}` : ""
       }.`,
@@ -3320,7 +3276,7 @@ async function handleTasksByName(res, actingUser, assigneeName) {
     .from("tasks")
     .select("id, title, priority, status, progress, deadline")
     .eq("assigned_to_user_id", targetUser.id)
-    .not("status", "in", '("done","archived","cancelled")')
+.not("status", "in", '("done","archived","cancelled")')
     .order("deadline", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
 
@@ -3803,8 +3759,8 @@ async function handleHelp(res, user) {
     "timeline Aj",
     "timeline Aj today",
     "audit Aj",
-    "cancel task 12",
-    "delete task 12",
+"cancel task 12",
+"delete task 12",
     "audit Aj today",
     "undo attendance Aj",
     "undo my attendance",
@@ -3999,9 +3955,7 @@ function parseEmployeeSummaryCommand(text) {
 
 function parseTimelineCommand(text) {
   const raw = String(text || "").trim();
-  let match = raw.match(
-    /^timeline\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
-  );
+  let match = raw.match(/^timeline\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i);
 
   if (match) {
     return {
@@ -4021,9 +3975,7 @@ function parseTimelineCommand(text) {
 
 function parseAuditAttendanceCommand(text) {
   const raw = String(text || "").trim();
-  let match = raw.match(
-    /^audit\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
-  );
+  let match = raw.match(/^audit\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i);
 
   if (match) {
     return {
@@ -4077,9 +4029,7 @@ function parseResetAttendanceCommand(text) {
 function parseForceAttendanceCommand(text) {
   const raw = String(text || "").trim();
 
-  let match = raw.match(
-    /^force\s+(logout|back)\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
-  );
+  let match = raw.match(/^force\s+(logout|back)\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
   if (match) {
     return {
       action: match[1].toLowerCase(),
@@ -4499,116 +4449,151 @@ async function getDashboardData() {
 app.use("/api", requireDashboardAuth);
 
 function renderDashboardPage(data) {
+  const summary = data?.summary || {};
+  const attendance = data?.attendance || [];
+  const blockedTasks = data?.blockedTasks || [];
+  const overdueTasks = data?.overdueTasks || [];
+
   const summaryCards = [
-    { label: "Open Tasks", value: data.summary.openTasks, tone: "warn" },
     {
-      label: "Overdue Tasks",
-      value: data.summary.overdueTasks,
-      tone: "danger",
+      label: "Open Tasks",
+      value: summary.openTasks ?? 0,
+      note: "Active work requiring ownership",
+      cardClass: "info",
     },
     {
-      label: "Blocked Tasks",
-      value: data.summary.blockedTasks,
-      tone: "danger",
-    },
-    { label: "Logged In Now", value: data.summary.loggedInCount, tone: "ok" },
-    { label: "On Break Now", value: data.summary.onBreakCount, tone: "info" },
-    {
-      label: "Planned Off Today",
-      value: data.summary.plannedOffCount,
-      tone: "cyan",
+      label: "Overdue",
+      value: summary.overdueTasks ?? 0,
+      note: "Past deadline and needing action",
+      cardClass: "danger",
     },
     {
-      label: "No Login Today",
-      value: data.summary.noLoginCount,
-      tone: "muted",
+      label: "Blocked",
+      value: summary.blockedTasks ?? 0,
+      note: "Waiting on help or dependency",
+      cardClass: "warn",
     },
-    { label: "Active Team", value: data.summary.teamCount, tone: "ok" },
-  ]
+    {
+      label: "Logged In",
+      value: summary.loggedInCount ?? 0,
+      note: "Currently working right now",
+      cardClass: "success",
+    },
+    {
+      label: "On Break",
+      value: summary.onBreakCount ?? 0,
+      note: "Live break status snapshot",
+      cardClass: "muted",
+    },
+    {
+      label: "Planned Off",
+      value: summary.plannedOffCount ?? 0,
+      note: "Approved off / leave state",
+      cardClass: "muted",
+    },
+    {
+      label: "No Login",
+      value: summary.noLoginCount ?? 0,
+      note: "No attendance marked yet",
+      cardClass: "danger",
+    },
+    {
+      label: "Team Size",
+      value: summary.teamCount ?? 0,
+      note: "Active people in dashboard",
+      cardClass: "info",
+    },
+  ];
+
+  const summaryCardsHtml = summaryCards
     .map(
       (card) => `
-        <div class="card stat-card tone-${escapeHtml(card.tone)}">
-          <div class="stat-top">
-            <div class="stat-label">${escapeHtml(card.label)}</div>
-            <div class="stat-dot"></div>
-          </div>
+        <div class="stat-card ${card.cardClass}">
+          <div class="stat-label">${escapeHtml(card.label)}</div>
           <div class="stat-value">${escapeHtml(card.value)}</div>
+          <div class="stat-note">${escapeHtml(card.note)}</div>
         </div>
       `,
     )
     .join("");
 
-  const openTaskRows = data.openTasks.length
-    ? data.openTasks
-        .map(
-          (task) => `
+  const attendanceRows = attendance.length
+    ? attendance
+        .map((row) => {
+          const statusClass = badgeClass(row.status || "unknown");
+          return `
             <tr>
-              <td>#${escapeHtml(task.id)}</td>
-              <td>${escapeHtml(task.title)}</td>
-              <td>${escapeHtml(task.assigned_to ?? task.name ?? "-")}</td>
-              <td><span class="${badgeClass(task.priority)}">${escapeHtml(task.priority)}</span></td>
-              <td><span class="${badgeClass(task.status)}">${escapeHtml(task.status)}</span></td>
-              <td>${escapeHtml(task.progress ?? 0)}%</td>
-              <td>${escapeHtml(formatDateOnly(task.deadline))}</td>
+              <td>
+                <div class="primary-text">${escapeHtml(row.name || "-")}</div>
+              </td>
+              <td>
+                <span class="muted">${escapeHtml(row.role || "-")}</span>
+              </td>
+              <td>
+                <span class="${statusClass}">${escapeHtml(row.status || "unknown")}</span>
+              </td>
+              <td>
+                <span>${escapeHtml(row.breakDurationText || row.break_duration_text || "-")}</span>
+              </td>
+              <td>
+                <span>${escapeHtml(row.workedTodayText || row.worked_today_text || "-")}</span>
+              </td>
             </tr>
-          `,
-        )
+          `;
+        })
         .join("")
-    : `<tr><td colspan="7" class="empty">No open tasks</td></tr>`;
+    : `
+      <tr>
+        <td colspan="5" class="empty-cell">No attendance data found.</td>
+      </tr>
+    `;
 
-  const attendanceRows = data.attendance.length
-    ? data.attendance
-        .map(
-          (row) => `
+  const blockedRows = blockedTasks.length
+    ? blockedTasks
+        .map((task) => `
           <tr>
-            <td>${escapeHtml(row.name)}</td>
-            <td>${escapeHtml(row.role || "-")}</td>
-            <td><span class="${badgeClass(row.status)}">${escapeHtml(row.status)}</span></td>
-            <td>${escapeHtml(formatDateTime(row.last_action_at))}</td>
-            <td>${row.duration_min != null ? escapeHtml(formatDurationMinutes(row.duration_min)) : "-"}</td>
-            <td>${escapeHtml(formatDurationMinutes(row.worked_min_today || 0))}</td>
+            <td>#${escapeHtml(task.id)}</td>
+            <td>
+              <div class="primary-text">${escapeHtml(task.title || "-")}</div>
+            </td>
+            <td>${escapeHtml(task.assignee_name || task.assignee || "-")}</td>
+            <td>${escapeHtml(task.blocker_note || task.reason || "-")}</td>
           </tr>
-        `,
-        )
+        `)
         .join("")
-    : `<tr><td colspan="6" class="empty">No attendance data</td></tr>`;
+    : `
+      <tr>
+        <td colspan="4" class="empty-cell">No blocked tasks right now.</td>
+      </tr>
+    `;
 
-  const overdueRows = data.overdueTasks.length
-    ? data.overdueTasks
-        .slice(0, 12)
-        .map(
-          (task) => `
-            <tr>
-              <td>#${escapeHtml(task.id)}</td>
-              <td>${escapeHtml(task.title)}</td>
-              <td>${escapeHtml(task.assigned_to ?? "-")}</td>
-              <td><span class="${badgeClass(task.priority)}">${escapeHtml(task.priority)}</span></td>
-              <td>${escapeHtml(formatDateOnly(task.deadline))}</td>
-              <td>${escapeHtml(task.days_overdue ?? 0)} day(s)</td>
-            </tr>
-          `,
-        )
+  const overdueRows = overdueTasks.length
+    ? overdueTasks
+        .map((task) => `
+          <tr>
+            <td>#${escapeHtml(task.id)}</td>
+            <td>
+              <div class="primary-text">${escapeHtml(task.title || "-")}</div>
+            </td>
+            <td>${escapeHtml(task.assignee_name || task.assignee || "-")}</td>
+            <td>
+              <span class="${badgeClass(task.priority || "")}">
+                ${escapeHtml(task.priority || "-")}
+              </span>
+            </td>
+            <td>${escapeHtml(task.deadline ? formatDateOnly(task.deadline) : "-")}</td>
+            <td>${escapeHtml(task.overdue_text || task.overdue || "-")}</td>
+          </tr>
+        `)
         .join("")
-    : `<tr><td colspan="6" class="empty">No overdue tasks</td></tr>`;
-
-  const blockedRows = data.blockedTasks.length
-    ? data.blockedTasks
-        .slice(0, 12)
-        .map(
-          (task) => `
-            <tr>
-              <td>#${escapeHtml(task.id)}</td>
-              <td>${escapeHtml(task.title)}</td>
-              <td>${escapeHtml(task.assigned_to ?? "-")}</td>
-              <td>${escapeHtml(task.blocker_note ?? "-")}</td>
-            </tr>
-          `,
-        )
-        .join("")
-    : `<tr><td colspan="4" class="empty">No blocked tasks</td></tr>`;
+    : `
+      <tr>
+        <td colspan="6" class="empty-cell">No overdue tasks right now.</td>
+      </tr>
+    `;
 
   return `
-  <!DOCTYPE html>
+  <!doctype html>
   <html lang="en">
     <head>
       <meta charset="UTF-8" />
@@ -4616,163 +4601,96 @@ function renderDashboardPage(data) {
       <title>WeSolveHR Dashboard</title>
       <style>
         :root {
-          --bg: #07110d;
-          --bg-2: #0a1813;
-          --panel: rgba(7, 20, 16, 0.88);
-          --panel-2: rgba(10, 27, 21, 0.92);
-          --panel-3: rgba(9, 34, 24, 0.95);
-          --line: rgba(74, 222, 128, 0.14);
-          --line-strong: rgba(74, 222, 128, 0.3);
-          --text: #e8fff2;
-          --muted: #8db6a0;
-          --neon: #61ffa1;
-          --neon-soft: #2ee68a;
-          --cyan: #67e8f9;
-          --warn: #facc15;
-          --danger: #fb7185;
-          --info: #38bdf8;
-          --shadow: 0 0 0 1px rgba(74, 222, 128, 0.08), 0 14px 40px rgba(0,0,0,0.45);
-          --glow: 0 0 24px rgba(97,255,161,0.12);
+          --bg: #f6f8fc;
+          --panel: rgba(255, 255, 255, 0.88);
+          --panel-strong: #ffffff;
+          --text: #18212f;
+          --muted: #6b7280;
+          --line: rgba(15, 23, 42, 0.08);
+          --line-strong: rgba(15, 23, 42, 0.12);
+          --shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.06);
+          --shadow-card: 0 6px 18px rgba(15, 23, 42, 0.05);
+          --radius-xl: 22px;
+          --radius-lg: 18px;
+          --radius-md: 14px;
+          --radius-sm: 12px;
+
+          --accent: #2563eb;
+          --accent-soft: rgba(37, 99, 235, 0.10);
+
+          --success: #15803d;
+          --success-soft: rgba(21, 128, 61, 0.10);
+
+          --warn: #b45309;
+          --warn-soft: rgba(180, 83, 9, 0.12);
+
+          --danger: #b91c1c;
+          --danger-soft: rgba(185, 28, 28, 0.10);
+
+          --info: #1d4ed8;
+          --info-soft: rgba(29, 78, 216, 0.10);
+
+          --muted-badge: #475569;
+          --muted-soft: rgba(71, 85, 105, 0.10);
         }
 
-        * { box-sizing: border-box; }
+        * {
+          box-sizing: border-box;
+        }
 
         html, body {
           margin: 0;
-          min-height: 100%;
+          padding: 0;
           background:
-            radial-gradient(circle at top left, rgba(46,230,138,0.12), transparent 28%),
-            radial-gradient(circle at top right, rgba(56,189,248,0.08), transparent 20%),
-            linear-gradient(180deg, #040b08 0%, #06110d 42%, #081510 100%);
+            radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 28%),
+            radial-gradient(circle at top right, rgba(14, 165, 233, 0.08), transparent 24%),
+            var(--bg);
           color: var(--text);
           font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          overflow-x: hidden;
+          line-height: 1.45;
         }
 
-        body::before {
-          content: "";
-          position: fixed;
-          inset: 0;
-          pointer-events: none;
-          background:
-            linear-gradient(
-              to bottom,
-              rgba(255,255,255,0.025) 0px,
-              rgba(255,255,255,0.025) 1px,
-              transparent 1px,
-              transparent 4px
-            );
-          background-size: 100% 4px;
-          opacity: 0.08;
-          mix-blend-mode: soft-light;
+        body {
+          padding: 30px 20px 48px;
         }
 
-        body::after {
-          content: "";
-          position: fixed;
-          inset: 0;
-          pointer-events: none;
-          background:
-            radial-gradient(circle at 20% 20%, rgba(97,255,161,0.06), transparent 18%),
-            radial-gradient(circle at 80% 30%, rgba(56,189,248,0.04), transparent 16%),
-            radial-gradient(circle at 50% 80%, rgba(97,255,161,0.03), transparent 20%);
-          filter: blur(18px);
-        }
-
-        .wrap {
-          position: relative;
-          z-index: 1;
-          max-width: 1460px;
+        .page-shell {
+          max-width: 1400px;
           margin: 0 auto;
-          padding: 28px 20px 40px;
         }
 
-        .topbar {
+        .hero {
           display: flex;
           justify-content: space-between;
-          align-items: center;
-          gap: 16px;
+          align-items: flex-start;
+          gap: 18px;
           margin-bottom: 22px;
-          flex-wrap: wrap;
-          padding: 18px 20px;
-          border: 1px solid var(--line);
-          border-radius: 18px;
-          background:
-            linear-gradient(180deg, rgba(10,27,21,0.9), rgba(5,16,12,0.92));
-          box-shadow: var(--shadow), var(--glow);
+          padding: 24px 26px;
+          border: 1px solid rgba(255,255,255,0.55);
+          border-radius: var(--radius-xl);
+          background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(248,250,252,0.92));
+          box-shadow: var(--shadow-soft);
           backdrop-filter: blur(10px);
         }
 
-        .eyebrow {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 11px;
-          letter-spacing: 0.16em;
-          text-transform: uppercase;
-          color: var(--neon);
-          margin-bottom: 8px;
-          font-weight: 700;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        }
-
-        .eyebrow::before {
-          content: "";
-          width: 8px;
-          height: 8px;
-          border-radius: 999px;
-          background: var(--neon);
-          box-shadow: 0 0 14px rgba(97,255,161,0.75);
-          animation: pulseDot 1.8s infinite ease-in-out;
-        }
-
-        .title {
+        .hero-title {
           margin: 0;
-          font-size: 32px;
-          font-weight: 800;
-          line-height: 1;
-          letter-spacing: -0.04em;
-          color: var(--text);
-          text-shadow: 0 0 18px rgba(97,255,161,0.08);
+          font-size: 28px;
+          font-weight: 700;
+          letter-spacing: -0.03em;
         }
 
-        .title-accent {
-          color: var(--neon);
-          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        }
-
-        .subtitle {
-          color: var(--muted);
+        .hero-subtitle {
           margin-top: 8px;
+          color: var(--muted);
           font-size: 14px;
         }
 
-        .links {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
-        .link-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 11px 14px;
-          border-radius: 12px;
-          background: rgba(8, 24, 19, 0.85);
-          color: var(--text);
-          text-decoration: none;
-          border: 1px solid var(--line);
-          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
-          transition: all 0.18s ease;
-          font-weight: 600;
-        }
-
-        .link-btn:hover {
-          border-color: var(--line-strong);
-          color: var(--neon);
-          transform: translateY(-1px);
-          box-shadow: 0 0 18px rgba(97,255,161,0.08);
+        .hero-meta {
+          text-align: right;
+          color: var(--muted);
+          font-size: 13px;
+          white-space: nowrap;
         }
 
         .stats-grid {
@@ -4782,75 +4700,67 @@ function renderDashboardPage(data) {
           margin-bottom: 22px;
         }
 
-        .card {
-          background:
-            linear-gradient(180deg, rgba(11,29,22,0.92), rgba(6,17,13,0.95));
-          border: 1px solid var(--line);
-          border-radius: 18px;
-          box-shadow: var(--shadow);
-          backdrop-filter: blur(8px);
+        .stat-card {
           position: relative;
           overflow: hidden;
+          padding: 18px 18px 16px;
+          border-radius: var(--radius-lg);
+          background: var(--panel);
+          border: 1px solid rgba(255,255,255,0.60);
+          box-shadow: var(--shadow-card);
+          backdrop-filter: blur(8px);
+          transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
         }
 
-        .card::before {
+        .stat-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 28px rgba(15, 23, 42, 0.09);
+          border-color: rgba(37, 99, 235, 0.16);
+        }
+
+        .stat-card::before {
           content: "";
           position: absolute;
-          inset: 0;
-          pointer-events: none;
-          background: linear-gradient(135deg, rgba(97,255,161,0.04), transparent 30%, transparent 70%, rgba(56,189,248,0.03));
+          inset: 0 auto 0 0;
+          width: 4px;
+          border-radius: 999px;
+          background: var(--accent);
+          opacity: 0.95;
         }
 
-        .stat-card {
-          padding: 16px 16px 18px;
-          min-height: 116px;
-        }
-
-        .stat-top {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          margin-bottom: 14px;
-        }
+        .stat-card.success::before { background: var(--success); }
+        .stat-card.warn::before { background: var(--warn); }
+        .stat-card.danger::before { background: var(--danger); }
+        .stat-card.info::before { background: var(--info); }
+        .stat-card.muted::before { background: var(--muted-badge); }
 
         .stat-label {
-          color: var(--muted);
+          margin: 0 0 8px;
           font-size: 12px;
-          letter-spacing: 0.08em;
+          font-weight: 600;
+          letter-spacing: 0.06em;
           text-transform: uppercase;
-          font-weight: 700;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        }
-
-        .stat-dot {
-          width: 10px;
-          height: 10px;
-          border-radius: 999px;
-          background: currentColor;
-          opacity: 0.9;
-          box-shadow: 0 0 14px currentColor;
+          color: var(--muted);
         }
 
         .stat-value {
-          font-size: 34px;
-          font-weight: 800;
-          letter-spacing: -0.05em;
-          line-height: 1;
-          color: var(--text);
+          margin: 0;
+          font-size: 30px;
+          font-weight: 700;
+          letter-spacing: -0.04em;
         }
 
-        .tone-ok { color: var(--neon); }
-        .tone-warn { color: var(--warn); }
-        .tone-danger { color: var(--danger); }
-        .tone-info { color: var(--info); }
-        .tone-cyan { color: var(--cyan); }
-        .tone-muted { color: #93a39a; }
+        .stat-note {
+          margin-top: 8px;
+          font-size: 12px;
+          color: var(--muted);
+        }
 
-        .grid {
+        .main-grid {
           display: grid;
-          grid-template-columns: 1.5fr 1fr;
+          grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
           gap: 18px;
+          align-items: start;
         }
 
         .stack {
@@ -4858,222 +4768,245 @@ function renderDashboardPage(data) {
           gap: 18px;
         }
 
+        .card {
+          background: var(--panel-strong);
+          border: 1px solid var(--line);
+          border-radius: var(--radius-lg);
+          box-shadow: var(--shadow-card);
+          padding: 20px;
+        }
+
         .section {
-          padding: 18px;
+          padding: 20px;
         }
 
         .section-header {
           display: flex;
-          align-items: center;
           justify-content: space-between;
+          align-items: flex-start;
           gap: 12px;
-          margin-bottom: 14px;
+          margin-bottom: 8px;
         }
 
         .section-title {
           margin: 0;
           font-size: 18px;
-          font-weight: 800;
+          font-weight: 700;
           letter-spacing: -0.02em;
-          color: var(--text);
         }
 
         .section-title span {
-          color: var(--neon);
-          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-          font-size: 13px;
-          margin-right: 8px;
+          color: var(--accent);
         }
 
         .section-subtitle {
-          color: var(--muted);
           font-size: 13px;
-          margin-bottom: 12px;
+          color: var(--muted);
+          margin-bottom: 16px;
         }
 
         .table-wrap {
           overflow-x: auto;
-          border: 1px solid rgba(74, 222, 128, 0.08);
-          border-radius: 14px;
-          background: rgba(5, 14, 11, 0.65);
+          border: 1px solid var(--line);
+          border-radius: 16px;
+          background: #fff;
         }
 
         table {
           width: 100%;
-          border-collapse: collapse;
+          border-collapse: separate;
+          border-spacing: 0;
           font-size: 14px;
         }
 
-        th, td {
+        thead th {
+          position: sticky;
+          top: 0;
+          z-index: 1;
           text-align: left;
-          padding: 12px 10px;
-          border-bottom: 1px solid rgba(74, 222, 128, 0.08);
+          padding: 14px 14px;
+          font-size: 12px;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: var(--muted);
+          background: #f8fafc;
+          border-bottom: 1px solid var(--line-strong);
+        }
+
+        tbody td {
+          padding: 14px 14px;
+          border-bottom: 1px solid var(--line);
           vertical-align: top;
         }
 
-        th {
-          color: #9fdab7;
-          font-size: 11px;
-          font-weight: 800;
-          text-transform: uppercase;
-          letter-spacing: 0.1em;
-          position: sticky;
-          top: 0;
-          background: rgba(8, 22, 17, 0.98);
-          z-index: 1;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        tbody tr:last-child td {
+          border-bottom: none;
         }
 
         tbody tr {
-          transition: background 0.18s ease, transform 0.18s ease;
+          transition: background-color 0.16s ease;
         }
 
         tbody tr:hover {
-          background: rgba(97,255,161,0.045);
+          background: rgba(37, 99, 235, 0.035);
         }
 
-        .empty {
-          text-align: center;
-          color: var(--muted);
-          padding: 18px;
+        .primary-text {
+          font-weight: 600;
+          color: var(--text);
         }
 
         .badge {
           display: inline-flex;
           align-items: center;
-          padding: 5px 10px;
+          gap: 6px;
+          padding: 6px 10px;
           border-radius: 999px;
           font-size: 12px;
-          font-weight: 800;
+          font-weight: 700;
+          line-height: 1;
           border: 1px solid transparent;
-          text-transform: capitalize;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-          letter-spacing: 0.02em;
+          white-space: nowrap;
         }
 
-        .badge-danger {
-          background: rgba(251, 113, 133, 0.12);
-          color: #ff9eb0;
-          border-color: rgba(251, 113, 133, 0.28);
-          box-shadow: 0 0 14px rgba(251,113,133,0.08);
-        }
-
-        .badge-warn {
-          background: rgba(250, 204, 21, 0.1);
-          color: #ffe47d;
-          border-color: rgba(250, 204, 21, 0.24);
-          box-shadow: 0 0 14px rgba(250,204,21,0.06);
+        .badge::before {
+          content: "";
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: currentColor;
+          opacity: 0.85;
         }
 
         .badge-ok {
-          background: rgba(97, 255, 161, 0.12);
-          color: #9effc7;
-          border-color: rgba(97, 255, 161, 0.26);
-          box-shadow: 0 0 14px rgba(97,255,161,0.06);
+          background: var(--success-soft);
+          color: var(--success);
+          border-color: rgba(21, 128, 61, 0.14);
+        }
+
+        .badge-warn {
+          background: var(--warn-soft);
+          color: var(--warn);
+          border-color: rgba(180, 83, 9, 0.14);
+        }
+
+        .badge-danger {
+          background: var(--danger-soft);
+          color: var(--danger);
+          border-color: rgba(185, 28, 28, 0.14);
         }
 
         .badge-info {
-          background: rgba(56, 189, 248, 0.12);
-          color: #8ee3ff;
-          border-color: rgba(56, 189, 248, 0.26);
-          box-shadow: 0 0 14px rgba(56,189,248,0.06);
+          background: var(--info-soft);
+          color: var(--info);
+          border-color: rgba(29, 78, 216, 0.14);
         }
 
         .badge-muted {
-          background: rgba(255,255,255,0.06);
-          color: #d7efe0;
-          border-color: rgba(255,255,255,0.08);
+          background: var(--muted-soft);
+          color: var(--muted-badge);
+          border-color: rgba(71, 85, 105, 0.12);
+        }
+
+        .muted {
+          color: var(--muted);
+        }
+
+        .empty-cell {
+          text-align: center;
+          color: var(--muted);
+          padding: 18px;
+        }
+
+        .spacer {
+          height: 18px;
         }
 
         .footer-note {
-          margin-top: 18px;
+          margin-top: 24px;
           padding: 14px 16px;
           border-radius: 14px;
+          background: rgba(255,255,255,0.78);
           border: 1px solid var(--line);
-          background: rgba(7, 18, 14, 0.82);
           color: var(--muted);
           font-size: 12px;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          letter-spacing: 0.03em;
         }
 
-        @keyframes pulseDot {
-          0%, 100% { opacity: 0.55; transform: scale(0.95); }
-          50% { opacity: 1; transform: scale(1.08); }
+        @media (max-width: 1180px) {
+          .stats-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+
+          .main-grid {
+            grid-template-columns: 1fr;
+          }
         }
 
-        @media (max-width: 1200px) {
-          .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          .grid { grid-template-columns: 1fr; }
-        }
+        @media (max-width: 780px) {
+          body {
+            padding: 18px 12px 28px;
+          }
 
-        @media (max-width: 700px) {
-          .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          .wrap { padding: 16px 12px 28px; }
-          .title { font-size: 24px; }
-          th, td { padding: 10px 8px; font-size: 13px; }
-          .topbar { padding: 16px; }
+          .hero {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+
+          .hero-meta {
+            text-align: left;
+            white-space: normal;
+          }
+
+          .stats-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .card,
+          .section {
+            padding: 16px;
+          }
+
+          .stat-value {
+            font-size: 24px;
+          }
         }
       </style>
     </head>
     <body>
-      <div class="wrap">
-        <div class="topbar">
+      <div class="page-shell">
+        <div class="hero">
           <div>
-            <div class="eyebrow">Live Operations Console</div>
-            <h1 class="title"><span class="title-accent">WeSolveHR //</span> Cyber Command Center</h1>
-            <div class="subtitle">Real-time view of tasks, attendance, blockers, and operational risk</div>
+            <h1 class="hero-title">WeSolveHR Command Center</h1>
+            <div class="hero-subtitle">
+              Real-time view of task execution, attendance flow, risks, and support load
+            </div>
           </div>
-          <div class="links">
-            <a class="link-btn" href="/dashboard">Dashboard</a>
-            <a class="link-btn" href="/tasks">Tasks</a>
-            <a class="link-btn" href="/attendance">Attendance</a>
-            <a class="link-btn" href="/logs">Logs</a>
+          <div class="hero-meta">
+            <div><strong>Secure dashboard</strong></div>
+            <div>Live operations overview</div>
           </div>
         </div>
 
         <div class="stats-grid">
-          ${summaryCards}
+          ${summaryCardsHtml}
         </div>
 
-        <div class="grid">
-          <div class="card section">
-            <div class="section-header">
-              <h2 class="section-title"><span>[TASKS]</span> Open Tasks</h2>
-            </div>
-            <div class="section-subtitle">Current active work across the team</div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Title</th>
-                    <th>Assignee</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                    <th>Progress</th>
-                    <th>Deadline</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${openTaskRows}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
+        <div class="main-grid">
           <div class="stack">
             <div class="card section">
               <div class="section-header">
-                <h2 class="section-title"><span>[OPS]</span> Latest Attendance</h2>
+                <h2 class="section-title"><span>[LIVE]</span> Attendance Overview</h2>
               </div>
-              <div class="section-subtitle">Most recent state for each active user</div>
+              <div class="section-subtitle">
+                Latest attendance state, break duration, and worked time for active staff
+              </div>
               <div class="table-wrap">
                 <table>
                   <thead>
                     <tr>
                       <th>Name</th>
                       <th>Role</th>
-                      <th>Status</th>
                       <th>Last Action</th>
                       <th>Break Duration</th>
                       <th>Worked Today</th>
@@ -5085,12 +5018,16 @@ function renderDashboardPage(data) {
                 </table>
               </div>
             </div>
+          </div>
 
+          <div class="stack">
             <div class="card section">
               <div class="section-header">
                 <h2 class="section-title"><span>[ALERT]</span> Blocked Tasks</h2>
               </div>
-              <div class="section-subtitle">Items needing intervention or unblock support</div>
+              <div class="section-subtitle">
+                Items needing intervention or unblock support
+              </div>
               <div class="table-wrap">
                 <table>
                   <thead>
@@ -5110,13 +5047,15 @@ function renderDashboardPage(data) {
           </div>
         </div>
 
-        <div style="height:18px"></div>
+        <div class="spacer"></div>
 
         <div class="card section">
           <div class="section-header">
             <h2 class="section-title"><span>[RISK]</span> Overdue Tasks</h2>
           </div>
-          <div class="section-subtitle">Past-deadline items sorted for visibility and escalation</div>
+          <div class="section-subtitle">
+            Past-deadline items sorted for visibility and escalation
+          </div>
           <div class="table-wrap">
             <table>
               <thead>
@@ -5145,6 +5084,7 @@ function renderDashboardPage(data) {
   `;
 }
 
+
 async function getDashboardSummaryData() {
   const { startUtc, endUtc, attendanceDate } = getCurrentAttendanceDayRange();
   const today = attendanceDate;
@@ -5160,12 +5100,12 @@ async function getDashboardSummaryData() {
     supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
-      .not("status", "in", '("done","archived","cancelled")'),
+.not("status", "in", '("done","archived","cancelled")'),
     supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
       .lt("deadline", today)
-      .not("status", "in", '("done","archived","cancelled")'),
+.not("status", "in", '("done","archived","cancelled")'),
     supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
@@ -5334,7 +5274,7 @@ async function getTasksPageData(filters = {}) {
   if (filters.overdue === "true") {
     query = query
       .lt("deadline", today)
-      .not("status", "in", '("done","archived","cancelled")');
+.not("status", "in", '("done","archived","cancelled")');
   }
 
   const { data, error } = await query;
@@ -6257,6 +6197,7 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
   `);
 });
 
+
 app.get("/logs", requireDashboardAuth, async (_req, res) => {
   res.status(200).send(`
     <html>
@@ -6464,6 +6405,8 @@ app.get("/logs", requireDashboardAuth, async (_req, res) => {
   `);
 });
 
+
+
 app.post("/whatsapp", async (req, res) => {
   try {
     if (!validateTwilioRequest(req)) {
@@ -6628,54 +6571,57 @@ app.post("/whatsapp", async (req, res) => {
       );
     }
 
-    const cancelCmd = parseCancelTaskCommand(body);
+const cancelCmd = parseCancelTaskCommand(body);
 
-    if (cancelCmd) {
-      if (!isManagerOrAdmin(user)) {
-        return sendTwiml(res, "❌ Only managers/admins can cancel tasks");
-      }
+if (cancelCmd) {
+  if (!isManagerOrAdmin(user)) {
+    return sendTwiml(
+      res,
+      "❌ Only managers/admins can cancel tasks",
+    );
+  }
 
-      const { task, error } = await getTaskById(cancelCmd.taskId);
+  const { task, error } = await getTaskById(cancelCmd.taskId);
 
-      if (error || !task) {
-        return sendTwiml(res, "❌ Task not found");
-      }
+  if (error || !task) {
+    return sendTwiml(res, "❌ Task not found");
+  }
 
-      if (task.status === "cancelled") {
-        return sendTwiml(res, "⚠️ Task already cancelled");
-      }
+  if (task.status === "cancelled") {
+    return sendTwiml(res, "⚠️ Task already cancelled");
+  }
 
-      const oldStatus = task.status;
+  const oldStatus = task.status;
 
-      const { error: updateError } = await supabase
-        .from("tasks")
-        .update({
-          status: "cancelled",
-          last_updated_by_user_id: user.id,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", cancelCmd.taskId);
+const { error: updateError } = await supabase
+  .from("tasks")
+  .update({
+    status: "cancelled",
+    last_updated_by_user_id: user.id,
+    updated_at: new Date().toISOString(),
+  })
+  .eq("id", cancelCmd.taskId);
 
-      if (updateError) {
-        console.error(updateError);
-        return sendTwiml(res, "❌ Failed to cancel task");
-      }
+  if (updateError) {
+    console.error(updateError);
+    return sendTwiml(res, "❌ Failed to cancel task");
+  }
 
-      // History tracking
-      await insertTaskHistory(
-        cancelCmd.taskId,
-        user.id,
-        "status_change",
-        "status",
-        oldStatus,
-        "cancelled",
-      );
+  // History tracking
+  await insertTaskHistory(
+    cancelCmd.taskId,
+    user.id,
+    "status_change",
+    "status",
+    oldStatus,
+    "cancelled",
+  );
 
-      return sendTwiml(
-        res,
-        `🗑️ Task #${cancelCmd.taskId} cancelled successfully`,
-      );
-    }
+  return sendTwiml(
+    res,
+    `🗑️ Task #${cancelCmd.taskId} cancelled successfully`,
+  );
+}
 
     const unblockCommand = parseUnblockCommand(body);
     if (unblockCommand) {
