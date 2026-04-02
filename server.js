@@ -202,6 +202,22 @@ function monthNameToNumber(monthText) {
   return months[normalizeText(monthText)] || null;
 }
 
+function parseLateForOtherCommand(text) {
+  const raw = String(text || "").trim();
+
+  const match = raw.match(
+    /^late\s+(.+?)\s+(\d{1,2}(:\d{2})?\s*(am|pm))(?:\s+(.+))?$/i,
+  );
+
+  if (!match) return null;
+
+  return {
+    target_name: match[1].trim(),
+    time_text: match[2].trim().replace(/\s+/g, " "),
+    note: match[5]?.trim() || null,
+  };
+}
+
 function parseFlexibleDateText(input) {
   const text = normalizeText(stripOrdinalSuffixes(input || ""));
   const todayDb = getTodayDateStringInTimeZone(APP_TIMEZONE);
@@ -289,11 +305,11 @@ function parseLocalDateTimeForToday(timeText) {
     .toLowerCase()
     .replace(/\s+/g, " ");
 
-  const match = raw.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+  const match = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i);
   if (!match) return null;
 
   let hour = Number(match[1]);
-  const minute = Number(match[2]);
+  const minute = match[2] == null ? 0 : Number(match[2]);
   const ampm = match[3].toLowerCase();
 
   if (hour < 1 || hour > 12 || minute < 0 || minute > 59) return null;
@@ -735,7 +751,9 @@ function parseAttendanceCommand(text) {
 function parseLateCommand(text) {
   const raw = String(text || "").trim();
 
-  const match = raw.match(/^late\s+(\d{1,2}:\d{2}\s*(?:am|pm))(?:\s+(.+))?$/i);
+  const match = raw.match(
+    /^late\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))(?:\s+(.+))?$/i,
+  );
   if (!match) return null;
 
   return {
@@ -6748,6 +6766,67 @@ app.post("/whatsapp", async (req, res) => {
 
     if (parseStatusCommand(body)) {
       return handleStatus(res, user);
+    }
+    const lateForOther = parseLateForOtherCommand(body);
+    // ✅ NEW BLOCK — PUT HERE
+    if (lateForOther) {
+      if (!isManagerOrAdmin(user)) {
+        return sendTwiml(res, "Only managers can mark late for others.");
+      }
+
+      const targetUser = await findUniqueUserByName(lateForOther.target_name);
+
+      if (!targetUser) {
+        return sendTwiml(
+          res,
+          `Could not find user "${lateForOther.target_name}"`,
+        );
+      }
+
+      const lateIso = parseLocalDateTimeForToday(lateForOther.time_text);
+
+      if (!lateIso) {
+        return sendTwiml(
+          res,
+          `Invalid time format "${lateForOther.time_text}". Use 10:00 PM`,
+        );
+      }
+
+      const attendanceDate = getAttendanceDayDateStringFromDate(
+        new Date(lateIso),
+      );
+
+      const shiftStartIso = getShiftStartIsoForToday();
+
+      const approved = isLateApproved(new Date().toISOString(), shiftStartIso);
+
+      const informedAtIso = new Date().toISOString();
+
+      const { error } = await supabase.from("late_arrivals").upsert(
+        [
+          {
+            user_id: targetUser.id,
+            late_date: attendanceDate,
+            expected_login_at: lateIso,
+            informed_at: informedAtIso,
+            shift_start_at: shiftStartIso,
+            is_approved: approved,
+            created_by_user_id: user.id,
+            note: lateForOther.note || `Marked by ${user.name}`,
+          },
+        ],
+        { onConflict: "user_id,late_date" },
+      );
+
+      if (error) {
+        console.error(error);
+        return sendTwiml(res, "Failed to mark late.");
+      }
+
+      return sendTwiml(
+        res,
+        `⏰ Late marked\n${targetUser.name} will join at ${lateForOther.time_text}`,
+      );
     }
 
     const lateCommand = parseLateCommand(body);
