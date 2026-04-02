@@ -162,6 +162,7 @@ function badgeClass(value) {
   if (["blocked", "break"].includes(v)) return "badge badge-danger";
   if (["in_progress", "back", "login"].includes(v)) return "badge badge-info";
   if (["pending"].includes(v)) return "badge badge-warn";
+  if (["cancelled"].includes(v)) return "badge badge-muted";
 
   return "badge badge-muted";
 }
@@ -265,6 +266,17 @@ function parseFlexibleDateText(input) {
   }
 
   return null;
+}
+
+function parseCancelTaskCommand(text) {
+  const raw = String(text || "").trim();
+  const match = raw.match(/^(cancel|delete)\s+task\s+(\d+)$/i);
+
+  if (!match) return null;
+
+  return {
+    taskId: Number(match[2]),
+  };
 }
 
 function parseDeadline(deadlineText) {
@@ -885,7 +897,13 @@ function canReadTask(user, task) {
 
 function canModifyTask(user, task) {
   if (!user || !task) return false;
+
+  if (task.status === "cancelled") {
+    return isManagerOrAdmin(user); // only managers can touch cancelled
+  }
+
   if (isManagerOrAdmin(user)) return true;
+
   return task.assigned_to_user_id === user.id;
 }
 
@@ -1039,7 +1057,7 @@ async function getTaskAssignedCount(userId) {
     .from("tasks")
     .select("*", { count: "exact", head: true })
     .eq("assigned_to_user_id", userId)
-    .not("status", "in", '("done","archived")');
+    .not("status", "in", '("done","archived","cancelled")');
 
   if (error) {
     console.error("Assigned task count error:", error);
@@ -2320,7 +2338,7 @@ async function handleMyTasks(res, user) {
     .from("tasks")
     .select("id, title, priority, status, progress, deadline")
     .eq("assigned_to_user_id", user.id)
-    .not("status", "in", '("done","archived")')
+    .not("status", "in", '("done","archived","cancelled")')
     .order("deadline", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
 
@@ -3302,7 +3320,7 @@ async function handleTasksByName(res, actingUser, assigneeName) {
     .from("tasks")
     .select("id, title, priority, status, progress, deadline")
     .eq("assigned_to_user_id", targetUser.id)
-    .not("status", "in", '("done","archived")')
+    .not("status", "in", '("done","archived","cancelled")')
     .order("deadline", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
 
@@ -3785,6 +3803,8 @@ async function handleHelp(res, user) {
     "timeline Aj",
     "timeline Aj today",
     "audit Aj",
+    "cancel task 12",
+    "delete task 12",
     "audit Aj today",
     "undo attendance Aj",
     "undo my attendance",
@@ -5140,14 +5160,12 @@ async function getDashboardSummaryData() {
     supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
-      .not("status", "in", '("done","archived")'),
-
+      .not("status", "in", '("done","archived","cancelled")'),
     supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
       .lt("deadline", today)
-      .not("status", "in", '("done","archived")'),
-
+      .not("status", "in", '("done","archived","cancelled")'),
     supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
@@ -5316,7 +5334,7 @@ async function getTasksPageData(filters = {}) {
   if (filters.overdue === "true") {
     query = query
       .lt("deadline", today)
-      .not("status", "in", '("done","archived")');
+      .not("status", "in", '("done","archived","cancelled")');
   }
 
   const { data, error } = await query;
@@ -6607,6 +6625,55 @@ app.post("/whatsapp", async (req, res) => {
         user,
         blockCommand.taskId,
         blockCommand.reason,
+      );
+    }
+
+    const cancelCmd = parseCancelTaskCommand(body);
+
+    if (cancelCmd) {
+      if (!isManagerOrAdmin(user)) {
+        return sendTwiml(res, "❌ Only managers/admins can cancel tasks");
+      }
+
+      const { task, error } = await getTaskById(cancelCmd.taskId);
+
+      if (error || !task) {
+        return sendTwiml(res, "❌ Task not found");
+      }
+
+      if (task.status === "cancelled") {
+        return sendTwiml(res, "⚠️ Task already cancelled");
+      }
+
+      const oldStatus = task.status;
+
+      const { error: updateError } = await supabase
+        .from("tasks")
+        .update({
+          status: "cancelled",
+          last_updated_by_user_id: user.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", cancelCmd.taskId);
+
+      if (updateError) {
+        console.error(updateError);
+        return sendTwiml(res, "❌ Failed to cancel task");
+      }
+
+      // History tracking
+      await insertTaskHistory(
+        cancelCmd.taskId,
+        user.id,
+        "status_change",
+        "status",
+        oldStatus,
+        "cancelled",
+      );
+
+      return sendTwiml(
+        res,
+        `🗑️ Task #${cancelCmd.taskId} cancelled successfully`,
       );
     }
 
