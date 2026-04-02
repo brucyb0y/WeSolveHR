@@ -1688,15 +1688,6 @@ async function handleEmployeeSummary(res, actingUser, command) {
     );
   }
 
-  const isSelf = targetUser.id === actingUser.id;
-
-  if (!isSelf && !isManagerOrAdmin(actingUser)) {
-    return sendTwiml(
-      res,
-      "You can only view your own summary. Managers/admin can view others.",
-    );
-  }
-
   try {
     const monthly = await getEmployeeMonthlyAttendanceSummary(targetUser.id);
 
