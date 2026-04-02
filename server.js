@@ -162,7 +162,7 @@ function badgeClass(value) {
   if (["blocked", "break"].includes(v)) return "badge badge-danger";
   if (["in_progress", "back", "login"].includes(v)) return "badge badge-info";
   if (["pending"].includes(v)) return "badge badge-warn";
- if (["cancelled"].includes(v)) return "badge badge-muted";
+  if (["cancelled"].includes(v)) return "badge badge-muted";
 
   return "badge badge-muted";
 }
@@ -382,9 +382,7 @@ function parseMarkAttendanceCommand(text) {
     };
   }
 
-  match = raw.match(
-    /^mark\s+(.+?)\s+break\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
-  );
+  match = raw.match(/^mark\s+(.+?)\s+break\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
   if (match) {
     return {
       target_name: match[1].trim(),
@@ -452,9 +450,7 @@ function parseDirectManagerAttendanceCommand(text) {
     }
   }
 
-  match = raw.match(
-    /^break\s+(.+?)\s+(\d+)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
-  );
+  match = raw.match(/^break\s+(.+?)\s+(\d+)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
   if (match) {
     return {
       target_name: match[1].trim(),
@@ -476,9 +472,7 @@ function parseDirectManagerAttendanceCommand(text) {
     };
   }
 
-  match = raw.match(
-    /^break\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
-  );
+  match = raw.match(/^break\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
   if (match) {
     return {
       target_name: match[1].trim(),
@@ -1063,7 +1057,7 @@ async function getTaskAssignedCount(userId) {
     .from("tasks")
     .select("*", { count: "exact", head: true })
     .eq("assigned_to_user_id", userId)
-.not("status", "in", '("done","archived","cancelled")');
+    .not("status", "in", '("done","archived","cancelled")');
 
   if (error) {
     console.error("Assigned task count error:", error);
@@ -1225,7 +1219,10 @@ async function getAttendanceEventsForAttendanceDay(attendanceDateString) {
   return data || [];
 }
 
-async function getAttendanceEventsForUserOnAttendanceDay(userId, attendanceDateString) {
+async function getAttendanceEventsForUserOnAttendanceDay(
+  userId,
+  attendanceDateString,
+) {
   const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
 
   const { data, error } = await supabase
@@ -1270,7 +1267,11 @@ async function getLatestBreakEventAtOrBefore(userId, occurredAtIso = null) {
   return data || null;
 }
 
-async function getLatestAttendanceEventByAction(userId, action, attendanceDateString = null) {
+async function getLatestAttendanceEventByAction(
+  userId,
+  action,
+  attendanceDateString = null,
+) {
   let query = supabase
     .from("attendance_events")
     .select(
@@ -1305,7 +1306,10 @@ async function deleteAttendanceEventById(eventId) {
   return error;
 }
 
-async function deleteAttendanceEventsForUserOnAttendanceDay(userId, attendanceDateString) {
+async function deleteAttendanceEventsForUserOnAttendanceDay(
+  userId,
+  attendanceDateString,
+) {
   const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
 
   const { error } = await supabase
@@ -1354,22 +1358,26 @@ async function isAttendanceDayLocked(userId, attendanceDateString) {
   return !!data?.is_locked;
 }
 
-async function setAttendanceDayLock(userId, attendanceDateString, isLocked, actedByUserId, note = null) {
-  const { error } = await supabase
-    .from("attendance_day_locks")
-    .upsert(
-      [
-        {
-          user_id: userId,
-          attendance_date: attendanceDateString,
-          is_locked: isLocked,
-          locked_by_user_id: actedByUserId,
-          note,
-          updated_at: new Date().toISOString(),
-        },
-      ],
-      { onConflict: "user_id,attendance_date" },
-    );
+async function setAttendanceDayLock(
+  userId,
+  attendanceDateString,
+  isLocked,
+  actedByUserId,
+  note = null,
+) {
+  const { error } = await supabase.from("attendance_day_locks").upsert(
+    [
+      {
+        user_id: userId,
+        attendance_date: attendanceDateString,
+        is_locked: isLocked,
+        locked_by_user_id: actedByUserId,
+        note,
+        updated_at: new Date().toISOString(),
+      },
+    ],
+    { onConflict: "user_id,attendance_date" },
+  );
 
   return error;
 }
@@ -1406,24 +1414,35 @@ function analyzeAttendanceIssues(events) {
     if (ev.action === "login") {
       loginCount += 1;
       if (loginCount > 1) {
-        issues.push(`Multiple login entries found (latest at ${formatTimeOnly(ev.created_at)})`);
+        issues.push(
+          `Multiple login entries found (latest at ${formatTimeOnly(ev.created_at)})`,
+        );
       }
     }
 
     if (ev.action === "break") {
       if (breakOpen) {
-        issues.push(`Break started again without back at ${formatTimeOnly(ev.created_at)}`);
+        issues.push(
+          `Break started again without back at ${formatTimeOnly(ev.created_at)}`,
+        );
       }
       breakOpen = ev;
     }
 
     if (ev.action === "back") {
       if (!breakOpen) {
-        issues.push(`Back recorded without a matching break at ${formatTimeOnly(ev.created_at)}`);
+        issues.push(
+          `Back recorded without a matching break at ${formatTimeOnly(ev.created_at)}`,
+        );
       } else {
-        const breakMinutes = minutesBetween(breakOpen.created_at, ev.created_at);
+        const breakMinutes = minutesBetween(
+          breakOpen.created_at,
+          ev.created_at,
+        );
         if (breakMinutes >= LONG_BREAK_THRESHOLD_MIN) {
-          issues.push(`Long break detected: ${formatDurationMinutes(breakMinutes)} ending at ${formatTimeOnly(ev.created_at)}`);
+          issues.push(
+            `Long break detected: ${formatDurationMinutes(breakMinutes)} ending at ${formatTimeOnly(ev.created_at)}`,
+          );
         }
       }
       breakOpen = null;
@@ -1432,19 +1451,25 @@ function analyzeAttendanceIssues(events) {
     if (ev.action === "logout") {
       hasLogout = true;
       if (breakOpen) {
-        issues.push(`Logout happened while still on break at ${formatTimeOnly(ev.created_at)}`);
+        issues.push(
+          `Logout happened while still on break at ${formatTimeOnly(ev.created_at)}`,
+        );
         breakOpen = null;
       }
     }
   }
 
   if (breakOpen) {
-    issues.push(`Break without return since ${formatTimeOnly(breakOpen.created_at)}`);
+    issues.push(
+      `Break without return since ${formatTimeOnly(breakOpen.created_at)}`,
+    );
   }
 
   const summary = getAttendanceSummaryFromEvents(events || []);
   if (summary.longShiftFlag) {
-    issues.push(`Long shift detected: ${formatDurationMinutes(summary.workedMinutes)}`);
+    issues.push(
+      `Long shift detected: ${formatDurationMinutes(summary.workedMinutes)}`,
+    );
   }
 
   const hasWorkStart = (events || []).some(
@@ -1754,7 +1779,10 @@ async function handleUndoAttendance(res, actingUser, command) {
     : await findUniqueUserByName(command.target_name);
 
   if (!isSelf && !isManagerOrAdmin(actingUser)) {
-    return sendTwiml(res, "You are not allowed to undo other people's attendance.");
+    return sendTwiml(
+      res,
+      "You are not allowed to undo other people's attendance.",
+    );
   }
 
   if (!targetUser) {
@@ -1767,7 +1795,10 @@ async function handleUndoAttendance(res, actingUser, command) {
   try {
     const latestEvent = await getLatestAttendanceEvent(targetUser.id);
     if (!latestEvent) {
-      return sendTwiml(res, `No attendance event found to undo for ${targetUser.name}.`);
+      return sendTwiml(
+        res,
+        `No attendance event found to undo for ${targetUser.name}.`,
+      );
     }
 
     const attendanceDate = getAttendanceDayDateStringFromDate(
@@ -1843,7 +1874,10 @@ async function handleResetAttendance(res, actingUser, command) {
     );
 
     const [attendanceError, lateError, offError] = await Promise.all([
-      deleteAttendanceEventsForUserOnAttendanceDay(targetUser.id, attendanceDate),
+      deleteAttendanceEventsForUserOnAttendanceDay(
+        targetUser.id,
+        attendanceDate,
+      ),
       deleteLateArrivalForUserOnDate(targetUser.id, attendanceDate),
       deletePlannedOffForUserOnDate(targetUser.id, attendanceDate),
     ]);
@@ -1907,13 +1941,12 @@ async function handleForceAttendance(res, actingUser, command) {
   }
 
   if (new Date(occurredAtIso) > new Date()) {
-    return sendTwiml(
-      res,
-      "❌ Future attendance corrections are not allowed",
-    );
+    return sendTwiml(res, "❌ Future attendance corrections are not allowed");
   }
 
-  const attendanceDate = getAttendanceDayDateStringFromDate(new Date(occurredAtIso));
+  const attendanceDate = getAttendanceDayDateStringFromDate(
+    new Date(occurredAtIso),
+  );
   const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
 
   if (locked) {
@@ -1927,7 +1960,10 @@ async function handleForceAttendance(res, actingUser, command) {
   let note = `Force ${command.action} by ${actingUser.name}`;
 
   if (command.action === "back") {
-    const lastBreak = await getLatestBreakEventAtOrBefore(targetUser.id, occurredAtIso);
+    const lastBreak = await getLatestBreakEventAtOrBefore(
+      targetUser.id,
+      occurredAtIso,
+    );
     if (lastBreak) {
       durationMin = minutesBetween(lastBreak.created_at, occurredAtIso);
       note += ` | Actual break: ${durationMin} min`;
@@ -1992,13 +2028,12 @@ async function handleFixAttendance(res, actingUser, command) {
   }
 
   if (new Date(correctedIso) > new Date()) {
-    return sendTwiml(
-      res,
-      "❌ Future attendance corrections are not allowed",
-    );
+    return sendTwiml(res, "❌ Future attendance corrections are not allowed");
   }
 
-  const attendanceDate = getAttendanceDayDateStringFromDate(new Date(correctedIso));
+  const attendanceDate = getAttendanceDayDateStringFromDate(
+    new Date(correctedIso),
+  );
   const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
 
   if (locked) {
@@ -2031,7 +2066,10 @@ async function handleFixAttendance(res, actingUser, command) {
   let durationMin = latestActionEvent.duration_min;
 
   if (command.action === "back") {
-    const lastBreak = await getLatestBreakEventAtOrBefore(targetUser.id, correctedIso);
+    const lastBreak = await getLatestBreakEventAtOrBefore(
+      targetUser.id,
+      correctedIso,
+    );
     if (lastBreak) {
       durationMin = minutesBetween(lastBreak.created_at, correctedIso);
       patch.duration_min = durationMin;
@@ -2231,7 +2269,9 @@ async function handleAutoFixAttendance(res, actingUser, command) {
     return sendTwiml(
       res,
       `🛠 Auto-fix complete for ${targetUser.name}\nDate: ${attendanceDate}\n${
-        applied.length ? applied.map((x) => `• ${x}`).join("\n") : "No changes were needed"
+        applied.length
+          ? applied.map((x) => `• ${x}`).join("\n")
+          : "No changes were needed"
       }`,
     );
   } catch (error) {
@@ -2298,7 +2338,7 @@ async function handleMyTasks(res, user) {
     .from("tasks")
     .select("id, title, priority, status, progress, deadline")
     .eq("assigned_to_user_id", user.id)
-.not("status", "in", '("done","archived","cancelled")')
+    .not("status", "in", '("done","archived","cancelled")')
     .order("deadline", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
 
@@ -2603,7 +2643,6 @@ async function handleLateCommand(res, user, lateCommand) {
   );
 }
 
-
 async function handleMarkedAttendance(res, actingUser, markCommand) {
   if (!isManagerOrAdmin(actingUser)) {
     return sendTwiml(res, "You are not allowed to mark attendance for others.");
@@ -2648,7 +2687,10 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     );
   }
 
-  const lastAction = await getLastActionAtOrBefore(targetUser.id, occurredAtIso);
+  const lastAction = await getLastActionAtOrBefore(
+    targetUser.id,
+    occurredAtIso,
+  );
 
   const oldValue = {
     last_action: lastAction,
@@ -2693,7 +2735,7 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     duration_min:
       markCommand.action === "back"
         ? actualBreakMinutes
-        : markCommand.duration_min ?? null,
+        : (markCommand.duration_min ?? null),
     expected_duration_min: markCommand.duration_min ?? null,
     reason: markCommand.reason ?? null,
     note,
@@ -2730,7 +2772,9 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     return sendTwiml(
       res,
       `${targetUser.name}: break started${
-        markCommand.duration_min ? ` for ${markCommand.duration_min} minutes` : ""
+        markCommand.duration_min
+          ? ` for ${markCommand.duration_min} minutes`
+          : ""
       } by ${actingUser.name}${
         markCommand.time_text ? ` at ${markCommand.time_text}` : ""
       }.`,
@@ -3276,7 +3320,7 @@ async function handleTasksByName(res, actingUser, assigneeName) {
     .from("tasks")
     .select("id, title, priority, status, progress, deadline")
     .eq("assigned_to_user_id", targetUser.id)
-.not("status", "in", '("done","archived","cancelled")')
+    .not("status", "in", '("done","archived","cancelled")')
     .order("deadline", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false });
 
@@ -3759,8 +3803,8 @@ async function handleHelp(res, user) {
     "timeline Aj",
     "timeline Aj today",
     "audit Aj",
-"cancel task 12",
-"delete task 12",
+    "cancel task 12",
+    "delete task 12",
     "audit Aj today",
     "undo attendance Aj",
     "undo my attendance",
@@ -3955,7 +3999,9 @@ function parseEmployeeSummaryCommand(text) {
 
 function parseTimelineCommand(text) {
   const raw = String(text || "").trim();
-  let match = raw.match(/^timeline\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i);
+  let match = raw.match(
+    /^timeline\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
+  );
 
   if (match) {
     return {
@@ -3975,7 +4021,9 @@ function parseTimelineCommand(text) {
 
 function parseAuditAttendanceCommand(text) {
   const raw = String(text || "").trim();
-  let match = raw.match(/^audit\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i);
+  let match = raw.match(
+    /^audit\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
+  );
 
   if (match) {
     return {
@@ -4029,7 +4077,9 @@ function parseResetAttendanceCommand(text) {
 function parseForceAttendanceCommand(text) {
   const raw = String(text || "").trim();
 
-  let match = raw.match(/^force\s+(logout|back)\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
+  let match = raw.match(
+    /^force\s+(logout|back)\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
+  );
   if (match) {
     return {
       action: match[1].toLowerCase(),
@@ -4489,7 +4539,7 @@ function renderDashboardPage(data) {
       label: "Planned Off",
       value: summary.plannedOffCount ?? 0,
       note: "Approved off / leave state",
-      cardClass: "muted",
+      cardClass: "cyan",
     },
     {
       label: "No Login",
@@ -4523,21 +4573,15 @@ function renderDashboardPage(data) {
           const statusClass = badgeClass(row.status || "unknown");
           return `
             <tr>
-              <td>
-                <div class="primary-text">${escapeHtml(row.name || "-")}</div>
-              </td>
-              <td>
-                <span class="muted">${escapeHtml(row.role || "-")}</span>
-              </td>
-              <td>
-                <span class="${statusClass}">${escapeHtml(row.status || "unknown")}</span>
-              </td>
-              <td>
-                <span>${escapeHtml(row.breakDurationText || row.break_duration_text || "-")}</span>
-              </td>
-              <td>
-                <span>${escapeHtml(row.workedTodayText || row.worked_today_text || "-")}</span>
-              </td>
+              <td><div class="primary-text">${escapeHtml(row.name || "-")}</div></td>
+              <td><span class="muted">${escapeHtml(row.role || "-")}</span></td>
+              <td><span class="${statusClass}">${escapeHtml(row.status || "unknown")}</span></td>
+              <td>${escapeHtml(
+                row.break_duration_text || row.breakDurationText || "-",
+              )}</td>
+              <td>${escapeHtml(
+                row.worked_today_text || row.workedTodayText || "-",
+              )}</td>
             </tr>
           `;
         })
@@ -4550,16 +4594,16 @@ function renderDashboardPage(data) {
 
   const blockedRows = blockedTasks.length
     ? blockedTasks
-        .map((task) => `
+        .map(
+          (task) => `
           <tr>
             <td>#${escapeHtml(task.id)}</td>
-            <td>
-              <div class="primary-text">${escapeHtml(task.title || "-")}</div>
-            </td>
-            <td>${escapeHtml(task.assignee_name || task.assignee || "-")}</td>
+            <td><div class="primary-text">${escapeHtml(task.title || "-")}</div></td>
+            <td>${escapeHtml(task.assignee_name || task.assignee || task.assigned_to || "-")}</td>
             <td>${escapeHtml(task.blocker_note || task.reason || "-")}</td>
           </tr>
-        `)
+        `,
+        )
         .join("")
     : `
       <tr>
@@ -4569,22 +4613,18 @@ function renderDashboardPage(data) {
 
   const overdueRows = overdueTasks.length
     ? overdueTasks
-        .map((task) => `
+        .map(
+          (task) => `
           <tr>
             <td>#${escapeHtml(task.id)}</td>
-            <td>
-              <div class="primary-text">${escapeHtml(task.title || "-")}</div>
-            </td>
-            <td>${escapeHtml(task.assignee_name || task.assignee || "-")}</td>
-            <td>
-              <span class="${badgeClass(task.priority || "")}">
-                ${escapeHtml(task.priority || "-")}
-              </span>
-            </td>
+            <td><div class="primary-text">${escapeHtml(task.title || "-")}</div></td>
+            <td>${escapeHtml(task.assignee_name || task.assignee || task.assigned_to || "-")}</td>
+            <td><span class="${badgeClass(task.priority || "")}">${escapeHtml(task.priority || "-")}</span></td>
             <td>${escapeHtml(task.deadline ? formatDateOnly(task.deadline) : "-")}</td>
-            <td>${escapeHtml(task.overdue_text || task.overdue || "-")}</td>
+            <td>${escapeHtml(task.overdue_text || task.days_overdue || task.overdue || "-")}</td>
           </tr>
-        `)
+        `,
+        )
         .join("")
     : `
       <tr>
@@ -4601,37 +4641,39 @@ function renderDashboardPage(data) {
       <title>WeSolveHR Dashboard</title>
       <style>
         :root {
-          --bg: #f6f8fc;
-          --panel: rgba(255, 255, 255, 0.88);
-          --panel-strong: #ffffff;
-          --text: #18212f;
-          --muted: #6b7280;
-          --line: rgba(15, 23, 42, 0.08);
-          --line-strong: rgba(15, 23, 42, 0.12);
-          --shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.06);
-          --shadow-card: 0 6px 18px rgba(15, 23, 42, 0.05);
+          --bg-0: #05080a;
+          --bg-1: #08110d;
+          --bg-2: #0b1511;
+          --panel: rgba(8, 18, 13, 0.88);
+          --panel-strong: rgba(7, 15, 11, 0.94);
+          --panel-soft: rgba(11, 22, 16, 0.86);
+          --text: #d7ffe7;
+          --text-strong: #f1fff7;
+          --muted: #91b8a0;
+          --line: rgba(88, 255, 149, 0.16);
+          --line-strong: rgba(88, 255, 149, 0.28);
+
+          --neon-green: #58ff95;
+          --neon-green-soft: rgba(88, 255, 149, 0.12);
+          --neon-cyan: #59f3ff;
+          --neon-cyan-soft: rgba(89, 243, 255, 0.12);
+          --neon-yellow: #ffe45e;
+          --neon-yellow-soft: rgba(255, 228, 94, 0.12);
+          --neon-red: #ff667d;
+          --neon-red-soft: rgba(255, 102, 125, 0.12);
+          --neon-blue: #7aa2ff;
+          --neon-blue-soft: rgba(122, 162, 255, 0.12);
+          --neon-slate: #a7b7c7;
+          --neon-slate-soft: rgba(167, 183, 199, 0.12);
+
+          --shadow-soft: 0 0 0 1px rgba(88,255,149,0.06), 0 10px 30px rgba(0,0,0,0.35);
+          --shadow-card: 0 0 0 1px rgba(88,255,149,0.10), 0 8px 26px rgba(0,0,0,0.30);
+          --glow-green: 0 0 18px rgba(88,255,149,0.16);
+          --glow-cyan: 0 0 18px rgba(89,243,255,0.16);
+
           --radius-xl: 22px;
           --radius-lg: 18px;
           --radius-md: 14px;
-          --radius-sm: 12px;
-
-          --accent: #2563eb;
-          --accent-soft: rgba(37, 99, 235, 0.10);
-
-          --success: #15803d;
-          --success-soft: rgba(21, 128, 61, 0.10);
-
-          --warn: #b45309;
-          --warn-soft: rgba(180, 83, 9, 0.12);
-
-          --danger: #b91c1c;
-          --danger-soft: rgba(185, 28, 28, 0.10);
-
-          --info: #1d4ed8;
-          --info-soft: rgba(29, 78, 216, 0.10);
-
-          --muted-badge: #475569;
-          --muted-soft: rgba(71, 85, 105, 0.10);
         }
 
         * {
@@ -4641,21 +4683,34 @@ function renderDashboardPage(data) {
         html, body {
           margin: 0;
           padding: 0;
-          background:
-            radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 28%),
-            radial-gradient(circle at top right, rgba(14, 165, 233, 0.08), transparent 24%),
-            var(--bg);
           color: var(--text);
-          font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          font-family: "Space Grotesk", "JetBrains Mono", "IBM Plex Sans", "Segoe UI", sans-serif;
           line-height: 1.45;
+          background:
+            radial-gradient(circle at top left, rgba(88,255,149,0.12), transparent 24%),
+            radial-gradient(circle at top right, rgba(89,243,255,0.10), transparent 22%),
+            linear-gradient(180deg, rgba(13, 26, 19, 0.95), rgba(4, 9, 7, 1));
+          background-color: var(--bg-0);
+        }
+
+        body::before {
+          content: "";
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          background-image:
+            linear-gradient(rgba(88,255,149,0.035) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(88,255,149,0.025) 1px, transparent 1px);
+          background-size: 100% 34px, 34px 100%;
+          mask-image: linear-gradient(to bottom, rgba(0,0,0,0.45), rgba(0,0,0,0.12));
         }
 
         body {
-          padding: 30px 20px 48px;
+          padding: 26px 18px 42px;
         }
 
         .page-shell {
-          max-width: 1400px;
+          max-width: 1450px;
           margin: 0 auto;
         }
 
@@ -4665,19 +4720,34 @@ function renderDashboardPage(data) {
           align-items: flex-start;
           gap: 18px;
           margin-bottom: 22px;
-          padding: 24px 26px;
-          border: 1px solid rgba(255,255,255,0.55);
+          padding: 26px 28px;
           border-radius: var(--radius-xl);
-          background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(248,250,252,0.92));
-          box-shadow: var(--shadow-soft);
-          backdrop-filter: blur(10px);
+          background:
+            linear-gradient(135deg, rgba(11, 22, 16, 0.96), rgba(8, 16, 12, 0.92));
+          border: 1px solid rgba(88,255,149,0.16);
+          box-shadow: var(--shadow-soft), var(--glow-green);
+          position: relative;
+          overflow: hidden;
+        }
+
+        .hero::after {
+          content: "";
+          position: absolute;
+          inset: auto -10% -45% auto;
+          width: 280px;
+          height: 280px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(89,243,255,0.16), transparent 68%);
+          pointer-events: none;
         }
 
         .hero-title {
           margin: 0;
-          font-size: 28px;
+          font-size: 30px;
           font-weight: 700;
-          letter-spacing: -0.03em;
+          letter-spacing: -0.02em;
+          color: var(--text-strong);
+          text-shadow: 0 0 14px rgba(88,255,149,0.12);
         }
 
         .hero-subtitle {
@@ -4693,6 +4763,10 @@ function renderDashboardPage(data) {
           white-space: nowrap;
         }
 
+        .hero-meta strong {
+          color: var(--text-strong);
+        }
+
         .stats-grid {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4705,17 +4779,16 @@ function renderDashboardPage(data) {
           overflow: hidden;
           padding: 18px 18px 16px;
           border-radius: var(--radius-lg);
-          background: var(--panel);
-          border: 1px solid rgba(255,255,255,0.60);
+          background: linear-gradient(180deg, rgba(10,20,14,0.95), rgba(8,16,12,0.92));
+          border: 1px solid rgba(88,255,149,0.12);
           box-shadow: var(--shadow-card);
-          backdrop-filter: blur(8px);
           transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
         }
 
         .stat-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 12px 28px rgba(15, 23, 42, 0.09);
-          border-color: rgba(37, 99, 235, 0.16);
+          transform: translateY(-3px);
+          box-shadow: 0 0 0 1px rgba(88,255,149,0.16), 0 14px 32px rgba(0,0,0,0.34), var(--glow-green);
+          border-color: rgba(88,255,149,0.24);
         }
 
         .stat-card::before {
@@ -4724,30 +4797,63 @@ function renderDashboardPage(data) {
           inset: 0 auto 0 0;
           width: 4px;
           border-radius: 999px;
-          background: var(--accent);
+          background: var(--neon-green);
+          box-shadow: 0 0 18px currentColor;
           opacity: 0.95;
         }
 
-        .stat-card.success::before { background: var(--success); }
-        .stat-card.warn::before { background: var(--warn); }
-        .stat-card.danger::before { background: var(--danger); }
-        .stat-card.info::before { background: var(--info); }
-        .stat-card.muted::before { background: var(--muted-badge); }
+        .stat-card::after {
+          content: "";
+          position: absolute;
+          inset: -50% -20% auto auto;
+          width: 140px;
+          height: 140px;
+          background: radial-gradient(circle, rgba(88,255,149,0.08), transparent 70%);
+          pointer-events: none;
+        }
+
+        .stat-card.success {
+          background: linear-gradient(135deg, rgba(14,31,20,0.96), rgba(8,16,12,0.92));
+        }
+
+        .stat-card.info {
+          background: linear-gradient(135deg, rgba(8,24,24,0.96), rgba(7,15,14,0.92));
+        }
+
+        .stat-card.warn {
+          background: linear-gradient(135deg, rgba(27,24,10,0.96), rgba(15,13,7,0.92));
+        }
+
+        .stat-card.danger {
+          background: linear-gradient(135deg, rgba(29,12,17,0.96), rgba(17,8,10,0.92));
+        }
+
+        .stat-card.cyan {
+          background: linear-gradient(135deg, rgba(10,22,28,0.96), rgba(7,13,16,0.92));
+        }
+
+        .stat-card.success::before { background: var(--neon-green); }
+        .stat-card.info::before { background: var(--neon-blue); }
+        .stat-card.warn::before { background: var(--neon-yellow); }
+        .stat-card.danger::before { background: var(--neon-red); }
+        .stat-card.cyan::before { background: var(--neon-cyan); }
+        .stat-card.muted::before { background: var(--neon-slate); }
 
         .stat-label {
           margin: 0 0 8px;
           font-size: 12px;
-          font-weight: 600;
-          letter-spacing: 0.06em;
+          font-weight: 700;
+          letter-spacing: 0.10em;
           text-transform: uppercase;
           color: var(--muted);
         }
 
         .stat-value {
           margin: 0;
-          font-size: 30px;
-          font-weight: 700;
-          letter-spacing: -0.04em;
+          font-size: 28px;
+          font-weight: 800;
+          letter-spacing: -0.03em;
+          color: var(--text-strong);
         }
 
         .stat-note {
@@ -4769,8 +4875,8 @@ function renderDashboardPage(data) {
         }
 
         .card {
-          background: var(--panel-strong);
-          border: 1px solid var(--line);
+          background: linear-gradient(180deg, rgba(9,18,13,0.96), rgba(7,13,10,0.94));
+          border: 1px solid rgba(88,255,149,0.14);
           border-radius: var(--radius-lg);
           box-shadow: var(--shadow-card);
           padding: 20px;
@@ -4790,13 +4896,15 @@ function renderDashboardPage(data) {
 
         .section-title {
           margin: 0;
-          font-size: 18px;
-          font-weight: 700;
-          letter-spacing: -0.02em;
+          font-size: 17px;
+          font-weight: 800;
+          letter-spacing: -0.01em;
+          color: var(--text-strong);
         }
 
         .section-title span {
-          color: var(--accent);
+          color: var(--neon-green);
+          text-shadow: 0 0 10px rgba(88,255,149,0.22);
         }
 
         .section-subtitle {
@@ -4807,9 +4915,9 @@ function renderDashboardPage(data) {
 
         .table-wrap {
           overflow-x: auto;
-          border: 1px solid var(--line);
+          border: 1px solid rgba(88,255,149,0.12);
           border-radius: 16px;
-          background: #fff;
+          background: rgba(8, 15, 11, 0.84);
         }
 
         table {
@@ -4820,22 +4928,20 @@ function renderDashboardPage(data) {
         }
 
         thead th {
-          position: sticky;
-          top: 0;
-          z-index: 1;
           text-align: left;
           padding: 14px 14px;
           font-size: 12px;
-          letter-spacing: 0.04em;
+          font-weight: 700;
+          letter-spacing: 0.08em;
           text-transform: uppercase;
-          color: var(--muted);
-          background: #f8fafc;
-          border-bottom: 1px solid var(--line-strong);
+          color: #9fd9b3;
+          background: rgba(12, 23, 17, 0.95);
+          border-bottom: 1px solid rgba(88,255,149,0.16);
         }
 
         tbody td {
           padding: 14px 14px;
-          border-bottom: 1px solid var(--line);
+          border-bottom: 1px solid rgba(88,255,149,0.08);
           vertical-align: top;
         }
 
@@ -4844,16 +4950,17 @@ function renderDashboardPage(data) {
         }
 
         tbody tr {
-          transition: background-color 0.16s ease;
+          transition: background-color 0.16s ease, box-shadow 0.16s ease;
         }
 
         tbody tr:hover {
-          background: rgba(37, 99, 235, 0.035);
+          background: rgba(88,255,149,0.05);
+          box-shadow: inset 0 0 0 9999px rgba(88,255,149,0.015);
         }
 
         .primary-text {
-          font-weight: 600;
-          color: var(--text);
+          font-weight: 700;
+          color: var(--text-strong);
         }
 
         .badge {
@@ -4871,41 +4978,42 @@ function renderDashboardPage(data) {
 
         .badge::before {
           content: "";
-          width: 7px;
-          height: 7px;
+          width: 6px;
+          height: 6px;
           border-radius: 50%;
           background: currentColor;
-          opacity: 0.85;
+          box-shadow: 0 0 10px currentColor;
+          opacity: 0.95;
         }
 
         .badge-ok {
-          background: var(--success-soft);
-          color: var(--success);
-          border-color: rgba(21, 128, 61, 0.14);
+          background: var(--neon-green-soft);
+          color: var(--neon-green);
+          border-color: rgba(88,255,149,0.18);
         }
 
         .badge-warn {
-          background: var(--warn-soft);
-          color: var(--warn);
-          border-color: rgba(180, 83, 9, 0.14);
+          background: var(--neon-yellow-soft);
+          color: var(--neon-yellow);
+          border-color: rgba(255,228,94,0.18);
         }
 
         .badge-danger {
-          background: var(--danger-soft);
-          color: var(--danger);
-          border-color: rgba(185, 28, 28, 0.14);
+          background: var(--neon-red-soft);
+          color: var(--neon-red);
+          border-color: rgba(255,102,125,0.18);
         }
 
         .badge-info {
-          background: var(--info-soft);
-          color: var(--info);
-          border-color: rgba(29, 78, 216, 0.14);
+          background: var(--neon-blue-soft);
+          color: var(--neon-blue);
+          border-color: rgba(122,162,255,0.18);
         }
 
         .badge-muted {
-          background: var(--muted-soft);
-          color: var(--muted-badge);
-          border-color: rgba(71, 85, 105, 0.12);
+          background: var(--neon-slate-soft);
+          color: var(--neon-slate);
+          border-color: rgba(167,183,199,0.18);
         }
 
         .muted {
@@ -4926,11 +5034,11 @@ function renderDashboardPage(data) {
           margin-top: 24px;
           padding: 14px 16px;
           border-radius: 14px;
-          background: rgba(255,255,255,0.78);
-          border: 1px solid var(--line);
+          background: linear-gradient(180deg, rgba(7,15,11,0.94), rgba(5,10,8,0.94));
+          border: 1px solid rgba(88,255,149,0.14);
           color: var(--muted);
           font-size: 12px;
-          letter-spacing: 0.03em;
+          letter-spacing: 0.04em;
         }
 
         @media (max-width: 1180px) {
@@ -4970,6 +5078,10 @@ function renderDashboardPage(data) {
           .stat-value {
             font-size: 24px;
           }
+
+          .hero-title {
+            font-size: 24px;
+          }
         }
       </style>
     </head>
@@ -4979,7 +5091,7 @@ function renderDashboardPage(data) {
           <div>
             <h1 class="hero-title">WeSolveHR Command Center</h1>
             <div class="hero-subtitle">
-              Real-time view of task execution, attendance flow, risks, and support load
+              Real-time task execution, attendance flow, risks, support load, and live team pulse
             </div>
           </div>
           <div class="hero-meta">
@@ -5076,14 +5188,13 @@ function renderDashboardPage(data) {
         </div>
 
         <div class="footer-note">
-          SYSTEM NOTE // Secure operations build active: task permissions, dashboard auth, webhook signature validation, and rate limiting enabled.
+          SYSTEM NOTE // Permissions, webhook validation, auth controls, and rate limiting active.
         </div>
       </div>
     </body>
   </html>
   `;
 }
-
 
 async function getDashboardSummaryData() {
   const { startUtc, endUtc, attendanceDate } = getCurrentAttendanceDayRange();
@@ -5100,12 +5211,12 @@ async function getDashboardSummaryData() {
     supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
-.not("status", "in", '("done","archived","cancelled")'),
+      .not("status", "in", '("done","archived","cancelled")'),
     supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
       .lt("deadline", today)
-.not("status", "in", '("done","archived","cancelled")'),
+      .not("status", "in", '("done","archived","cancelled")'),
     supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
@@ -5274,7 +5385,7 @@ async function getTasksPageData(filters = {}) {
   if (filters.overdue === "true") {
     query = query
       .lt("deadline", today)
-.not("status", "in", '("done","archived","cancelled")');
+      .not("status", "in", '("done","archived","cancelled")');
   }
 
   const { data, error } = await query;
@@ -6197,7 +6308,6 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
   `);
 });
 
-
 app.get("/logs", requireDashboardAuth, async (_req, res) => {
   res.status(200).send(`
     <html>
@@ -6405,8 +6515,6 @@ app.get("/logs", requireDashboardAuth, async (_req, res) => {
   `);
 });
 
-
-
 app.post("/whatsapp", async (req, res) => {
   try {
     if (!validateTwilioRequest(req)) {
@@ -6571,57 +6679,54 @@ app.post("/whatsapp", async (req, res) => {
       );
     }
 
-const cancelCmd = parseCancelTaskCommand(body);
+    const cancelCmd = parseCancelTaskCommand(body);
 
-if (cancelCmd) {
-  if (!isManagerOrAdmin(user)) {
-    return sendTwiml(
-      res,
-      "❌ Only managers/admins can cancel tasks",
-    );
-  }
+    if (cancelCmd) {
+      if (!isManagerOrAdmin(user)) {
+        return sendTwiml(res, "❌ Only managers/admins can cancel tasks");
+      }
 
-  const { task, error } = await getTaskById(cancelCmd.taskId);
+      const { task, error } = await getTaskById(cancelCmd.taskId);
 
-  if (error || !task) {
-    return sendTwiml(res, "❌ Task not found");
-  }
+      if (error || !task) {
+        return sendTwiml(res, "❌ Task not found");
+      }
 
-  if (task.status === "cancelled") {
-    return sendTwiml(res, "⚠️ Task already cancelled");
-  }
+      if (task.status === "cancelled") {
+        return sendTwiml(res, "⚠️ Task already cancelled");
+      }
 
-  const oldStatus = task.status;
+      const oldStatus = task.status;
 
-const { error: updateError } = await supabase
-  .from("tasks")
-  .update({
-    status: "cancelled",
-    last_updated_by_user_id: user.id,
-    updated_at: new Date().toISOString(),
-  })
-  .eq("id", cancelCmd.taskId);
+      const { error: updateError } = await supabase
+        .from("tasks")
+        .update({
+          status: "cancelled",
+          last_updated_by_user_id: user.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", cancelCmd.taskId);
 
-  if (updateError) {
-    console.error(updateError);
-    return sendTwiml(res, "❌ Failed to cancel task");
-  }
+      if (updateError) {
+        console.error(updateError);
+        return sendTwiml(res, "❌ Failed to cancel task");
+      }
 
-  // History tracking
-  await insertTaskHistory(
-    cancelCmd.taskId,
-    user.id,
-    "status_change",
-    "status",
-    oldStatus,
-    "cancelled",
-  );
+      // History tracking
+      await insertTaskHistory(
+        cancelCmd.taskId,
+        user.id,
+        "status_change",
+        "status",
+        oldStatus,
+        "cancelled",
+      );
 
-  return sendTwiml(
-    res,
-    `🗑️ Task #${cancelCmd.taskId} cancelled successfully`,
-  );
-}
+      return sendTwiml(
+        res,
+        `🗑️ Task #${cancelCmd.taskId} cancelled successfully`,
+      );
+    }
 
     const unblockCommand = parseUnblockCommand(body);
     if (unblockCommand) {
