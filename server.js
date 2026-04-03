@@ -5233,7 +5233,24 @@ async function getDashboardData() {
   const [openTasksResult, overdueResult, blockedResult, attendanceRows] =
     await Promise.all([
       supabase.from("open_tasks_view").select("*").limit(100),
-      supabase.from("overdue_tasks_view").select("*").limit(100),
+      supabase
+        .from("tasks")
+        .select(
+          `
+    id,
+    title,
+    priority,
+    status,
+    deadline,
+    blocker_note,
+    assigned_to_user_id,
+    users!tasks_assigned_to_user_id_fkey(name)
+  `,
+        )
+        .lt("deadline", getCurrentAttendanceDayRange().attendanceDate)
+        .not("status", "in", '("done","archived","cancelled")')
+        .order("deadline", { ascending: true })
+        .limit(100),
       supabase.from("blocked_tasks_view").select("*").limit(100),
       getLatestAttendanceByUser(),
     ]);
