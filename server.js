@@ -6587,6 +6587,7 @@ async function getTasksPageData(filters = {}) {
       users!tasks_assigned_to_user_id_fkey(name)
     `,
     )
+    .or("status.is.null,status.not.in.(done,archived,cancelled,deleted)")
     .order("deadline", { ascending: true, nullsFirst: false })
     .order("updated_at", { ascending: false });
 
@@ -6607,9 +6608,7 @@ async function getTasksPageData(filters = {}) {
   }
 
   if (filters.overdue === "true") {
-    query = query
-      .lt("deadline", today)
-      .not("status", "in", '("done","archived","cancelled")');
+    query = query.lt("deadline", today);
   }
 
   const { data, error } = await query;
@@ -6631,14 +6630,17 @@ async function getTasksPageData(filters = {}) {
   const search = String(filters.search || "")
     .trim()
     .toLowerCase();
+
   if (search) {
     rows = rows.filter((task) => {
       const matchesTitle = String(task.title || "")
         .toLowerCase()
         .includes(search);
+
       const matchesId = /^\d+$/.test(search)
         ? String(task.id) === search
         : false;
+
       return matchesTitle || matchesId;
     });
   }
@@ -7179,15 +7181,12 @@ app.get("/tasks", requireDashboardAuth, async (_req, res) => {
   <div class="controls">
     <input id="search" placeholder="Search task title or ID" />
     <select id="assignee"><option value="">All assignees</option></select>
-    <select id="status">
-      <option value="">All status</option>
-      <option value="open">Open</option>
-      <option value="in_progress">In progress</option>
-      <option value="blocked">Blocked</option>
-      <option value="done">Done</option>
-      <option value="cancelled">Cancelled</option>
-      <option value="archived">Archived</option>
-    </select>
+<select id="status">
+  <option value="">All active status</option>
+  <option value="open">Open</option>
+  <option value="in_progress">In progress</option>
+  <option value="blocked">Blocked</option>
+</select>
     <select id="priority">
       <option value="">All priority</option>
       <option value="low">Low</option>
