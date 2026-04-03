@@ -618,13 +618,14 @@ function parseStatusCommand(text) {
 }
 
 function parseProgressCommand(text) {
-  const msg = normalizeText(text);
-  const match = msg.match(/^progress\s+(\d+)\s+(\d{1,3})$/);
+  const raw = String(text || "").trim();
+  const match = raw.match(/^progress\s+(\d+)\s+(\d{1,3})\s+(.+)$/i);
   if (!match) return null;
 
   return {
     taskId: Number(match[1]),
     progress: Number(match[2]),
+    note: match[3].trim(),
   };
 }
 
@@ -641,10 +642,24 @@ function parseBlockCommand(text) {
 
 function parseUnblockCommand(text) {
   const raw = String(text || "").trim();
-  const match = raw.match(/^unblock\s+(\d+)$/i);
+  const match = raw.match(/^unblock\s+(\d+)\s+(.+)$/i);
   if (!match) return null;
 
-  return { taskId: Number(match[1]) };
+  return {
+    taskId: Number(match[1]),
+    note: match[2].trim(),
+  };
+}
+
+function parseDoneCommand(text) {
+  const raw = String(text || "").trim();
+  const match = raw.match(/^done\s+(\d+)\s+(.+)$/i);
+  if (!match) return null;
+
+  return {
+    taskId: Number(match[1]),
+    note: match[2].trim(),
+  };
 }
 
 function parseTasksByNameCommand(text) {
@@ -2415,9 +2430,10 @@ function handleHelp(res, user) {
       "Task commands:",
       "my tasks",
       "show task 1",
-      "progress 1 50",
+      "progress 1 50 finished API integration",
+      "done 1 tested and verified",
       "block 1 waiting on dependency",
-      "unblock 1",
+      "unblock 1 backend fix merged",
       "undo last task change",
     ];
 
@@ -2506,7 +2522,16 @@ async function handleShowTask(res, user, taskId) {
   );
 }
 
-async function handleDoneTask(res, user, taskId) {
+async function handleDoneTask(res, user, taskId, note) {
+  const cleanNote = String(note || "").trim();
+
+  if (!cleanNote) {
+    return sendTwiml(
+      res,
+      "Please add a note.\nExample: done 12 tested and verified",
+    );
+  }
+
   const { task, error } = await getTaskById(taskId);
 
   if (error) {
@@ -2545,14 +2570,26 @@ async function handleDoneTask(res, user, taskId) {
     user.id,
     "status_change",
     "status",
-    { status: task.status, progress: task.progress },
-    { status: "done", progress: 100 },
+    { status: task.status, progress: task.progress, note: null },
+    { status: "done", progress: 100, note: cleanNote },
   );
 
-  return sendTwiml(res, `Task #${taskId} marked done: ${task.title}`);
+  return sendTwiml(
+    res,
+    `✅ Task #${taskId} marked done\nTitle: ${task.title}\nNote: ${cleanNote}`,
+  );
 }
 
-async function handleProgressTask(res, user, taskId, progressValue) {
+async function handleProgressTask(res, user, taskId, progressValue, note) {
+  const cleanNote = String(note || "").trim();
+
+  if (!cleanNote) {
+    return sendTwiml(
+      res,
+      "Please add a note.\nExample: progress 12 60 finished API integration",
+    );
+  }
+
   if (progressValue < 0 || progressValue > 100) {
     return sendTwiml(res, "Progress must be between 0 and 100.");
   }
@@ -2598,13 +2635,13 @@ async function handleProgressTask(res, user, taskId, progressValue) {
     user.id,
     "progress_change",
     "progress",
-    { progress: task.progress, status: task.status },
-    { progress: progressValue, status: newStatus },
+    { progress: task.progress, status: task.status, note: null },
+    { progress: progressValue, status: newStatus, note: cleanNote },
   );
 
   return sendTwiml(
     res,
-    `Task #${taskId} progress updated to ${progressValue}%: ${task.title}`,
+    `📈 Task #${taskId} progress updated to ${progressValue}%\nTitle: ${task.title}\nNote: ${cleanNote}`,
   );
 }
 
@@ -3315,6 +3352,15 @@ Due: ${createdTask.deadline || "no due date"}`,
 }
 
 async function handleBlockTask(res, user, taskId, reason) {
+  const cleanNote = String(reason || "").trim();
+
+  if (!cleanNote) {
+    return sendTwiml(
+      res,
+      "Please add a reason.\nExample: block 12 waiting on backend fix",
+    );
+  }
+
   const { task, error } = await getTaskById(taskId);
 
   if (error) {
@@ -3350,7 +3396,7 @@ async function handleBlockTask(res, user, taskId, reason) {
     .from("tasks")
     .update({
       status: "blocked",
-      blocker_note: reason,
+      blocker_note: cleanNote,
       last_updated_by_user_id: user.id,
       updated_at: new Date().toISOString(),
     })
@@ -3366,19 +3412,28 @@ async function handleBlockTask(res, user, taskId, reason) {
     user.id,
     "status_change",
     "status",
-    { status: task.status, blocker_note: task.blocker_note },
-    { status: "blocked", blocker_note: reason },
+    { status: task.status, blocker_note: task.blocker_note, note: null },
+    { status: "blocked", blocker_note: cleanNote, note: cleanNote },
   );
 
   return sendTwiml(
     res,
     `⛔ Task #${taskId} blocked
 Title: ${task.title}
-Reason: ${reason}`,
+Reason: ${cleanNote}`,
   );
 }
 
-async function handleUnblockTask(res, user, taskId) {
+async function handleUnblockTask(res, user, taskId, note) {
+  const cleanNote = String(note || "").trim();
+
+  if (!cleanNote) {
+    return sendTwiml(
+      res,
+      "Please add a note.\nExample: unblock 12 backend fix merged",
+    );
+  }
+
   const { task, error } = await getTaskById(taskId);
 
   if (error) {
@@ -3419,11 +3474,16 @@ async function handleUnblockTask(res, user, taskId) {
     user.id,
     "status_change",
     "status",
-    { status: task.status, blocker_note: task.blocker_note },
-    { status: nextStatus, blocker_note: null },
+    { status: task.status, blocker_note: task.blocker_note, note: null },
+    { status: nextStatus, blocker_note: null, note: cleanNote },
   );
 
-  return sendTwiml(res, `Task #${taskId} unblocked: ${task.title}`);
+  return sendTwiml(
+    res,
+    `✅ Task #${taskId} unblocked
+Title: ${task.title}
+Note: ${cleanNote}`,
+  );
 }
 
 async function handleTasksByName(res, actingUser, assigneeName) {
@@ -6297,7 +6357,8 @@ async function getTaskDetailData(taskId) {
       old_value,
       new_value,
       created_at,
-      changed_by_user_id
+      changed_by_user_id,
+      changer:users!task_history_changed_by_user_id_fkey(name)
     `,
     )
     .eq("task_id", taskId)
@@ -6319,7 +6380,16 @@ async function getTaskDetailData(taskId) {
     created_by_user_id: task.created_by_user_id,
     created_at: task.created_at,
     updated_at: task.updated_at,
-    task_history: history || [],
+    task_history: (history || []).map((item) => ({
+      ...item,
+      changed_by_name: item.changer?.name || "Unknown",
+      note:
+        item?.new_value?.note ||
+        item?.new_value?.blocker_note ||
+        item?.old_value?.note ||
+        item?.old_value?.blocker_note ||
+        null,
+    })),
   };
 }
 
@@ -6823,11 +6893,93 @@ app.get("/tasks", requireDashboardAuth, async (_req, res) => {
                 </thead>
                 <tbody id="taskRows"></tbody>
               </table>
+              <div class="panel">
+  <h2>Task Detail</h2>
+  <div id="taskDetailEmpty" style="color:#8db6a0;">Click any task row to view full history.</div>
+  <div id="taskDetail" style="display:none;"></div>
+</div>
             </div>
           </div>
         </div>
 
         <script>
+        
+        function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function formatJsonValue(value) {
+  if (value == null) return '-';
+  if (typeof value === 'object') {
+    return escapeHtml(JSON.stringify(value));
+  }
+  return escapeHtml(String(value));
+}
+
+async function openTaskDetail(taskId) {
+  const res = await fetch('/api/tasks/' + taskId);
+  const json = await res.json();
+
+  if (!json.ok) {
+    document.getElementById('taskDetailEmpty').style.display = 'block';
+    document.getElementById('taskDetailEmpty').textContent = 'Could not load task detail';
+    document.getElementById('taskDetail').style.display = 'none';
+    document.getElementById('taskDetail').innerHTML = '';
+    return;
+  }
+
+  const task = json.data;
+  const historyRows = (task.task_history || []).map(function (item) {
+    return (
+      '<tr>' +
+        '<td>' + escapeHtml(item.created_at || '-') + '</td>' +
+        '<td>' + escapeHtml(item.changed_by_name || 'Unknown') + '</td>' +
+        '<td>' + escapeHtml(item.change_type || '-') + '</td>' +
+        '<td>' + escapeHtml(item.field_name || '-') + '</td>' +
+        '<td><code>' + formatJsonValue(item.old_value) + '</code></td>' +
+        '<td><code>' + formatJsonValue(item.new_value) + '</code></td>' +
+        '<td>' + escapeHtml(item.note || '-') + '</td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  document.getElementById('taskDetailEmpty').style.display = 'none';
+  document.getElementById('taskDetail').style.display = 'block';
+  document.getElementById('taskDetail').innerHTML =
+    '<div style="margin-bottom:16px;">' +
+      '<div style="font-size:22px; font-weight:800;">Task #' + task.id + ' — ' + escapeHtml(task.title || '') + '</div>' +
+      '<div style="margin-top:8px; color:#8db6a0;">' +
+        'Assignee: ' + escapeHtml(task.assignee_name || '-') +
+        ' | Status: ' + escapeHtml(task.status || '-') +
+        ' | Progress: ' + escapeHtml(task.progress ?? 0) + '%' +
+        ' | Priority: ' + escapeHtml(task.priority || '-') +
+        ' | Deadline: ' + escapeHtml(task.deadline || '-') +
+      '</div>' +
+      (task.detail ? '<div style="margin-top:10px;"><strong>Detail:</strong> ' + escapeHtml(task.detail) + '</div>' : '') +
+      (task.blocker_note ? '<div style="margin-top:10px;"><strong>Current blocker:</strong> ' + escapeHtml(task.blocker_note) + '</div>' : '') +
+    '</div>' +
+    '<div class="table-wrap">' +
+      '<table>' +
+        '<thead>' +
+          '<tr>' +
+            '<th>Time</th>' +
+            '<th>By</th>' +
+            '<th>Type</th>' +
+            '<th>Field</th>' +
+            '<th>Old</th>' +
+            '<th>New</th>' +
+            '<th>Note</th>' +
+          '</tr>' +
+        '</thead>' +
+        '<tbody>' + (historyRows || '<tr><td colspan="7">No history yet</td></tr>') + '</tbody>' +
+      '</table>' +
+    '</div>';
+}
+        
           async function loadUsers() {
             const res = await fetch('/api/users');
             const json = await res.json();
@@ -6871,18 +7023,20 @@ app.get("/tasks", requireDashboardAuth, async (_req, res) => {
             const rows = json.data || [];
             document.getElementById('statusText').textContent = rows.length ? '' : 'No tasks found';
 
-            document.getElementById('taskRows').innerHTML = rows.map(task => \`
-              <tr onclick="window.open('/api/tasks/\${task.id}', '_blank')">
-                <td>#\${task.id}</td>
-                <td>\${task.title || ''}</td>
-                <td>\${task.assignee_name || ''}</td>
-                <td>\${task.status || ''}</td>
-                <td>\${task.progress ?? 0}%</td>
-                <td>\${task.priority || ''}</td>
-                <td>\${task.deadline || '-'}</td>
-                <td>\${task.blocker_note || '-'}</td>
-              </tr>
-            \`).join('');
+document.getElementById('taskRows').innerHTML = rows.map(function(task) {
+  return (
+    '<tr onclick="openTaskDetail(' + task.id + ')">' +
+      '<td>#' + task.id + '</td>' +
+      '<td>' + (task.title || '') + '</td>' +
+      '<td>' + (task.assignee_name || '') + '</td>' +
+      '<td>' + (task.status || '') + '</td>' +
+      '<td>' + (task.progress ?? 0) + '%</td>' +
+      '<td>' + (task.priority || '') + '</td>' +
+      '<td>' + (task.deadline || '-') + '</td>' +
+      '<td>' + (task.blocker_note || '-') + '</td>' +
+    '</tr>'
+  );
+}).join('');
           }
 
           loadUsers().then(loadTasks);
@@ -7631,9 +7785,9 @@ app.post("/whatsapp", async (req, res) => {
       return handleShowTask(res, user, showTaskId);
     }
 
-    const doneTaskId = parseTaskIdCommand(body, "done");
-    if (doneTaskId) {
-      return handleDoneTask(res, user, doneTaskId);
+    const doneCommand = parseDoneCommand(body);
+    if (doneCommand) {
+      return handleDoneTask(res, user, doneCommand.taskId, doneCommand.note);
     }
 
     const employeeSummaryCommand = parseEmployeeSummaryCommand(body);
@@ -7700,6 +7854,7 @@ app.post("/whatsapp", async (req, res) => {
         user,
         progressCommand.taskId,
         progressCommand.progress,
+        progressCommand.note,
       );
     }
 
@@ -7841,7 +7996,12 @@ app.post("/whatsapp", async (req, res) => {
 
     const unblockCommand = parseUnblockCommand(body);
     if (unblockCommand) {
-      return handleUnblockTask(res, user, unblockCommand.taskId);
+      return handleUnblockTask(
+        res,
+        user,
+        unblockCommand.taskId,
+        unblockCommand.note,
+      );
     }
 
     const tasksByNameCommand = parseTasksByNameCommand(body);
