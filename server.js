@@ -3883,10 +3883,14 @@ async function handleNowSummary(res, actingUser) {
         );
       }
 
-      if (!latest) {
-        const lateInfo = lateByUser.get(user.id);
+      if (lateInfo) {
+        const isTimeUnsure =
+          !lateInfo.expected_login_at ||
+          String(lateInfo.note || "").includes("TIME_UNSURE");
 
-        if (lateInfo) {
+        if (isTimeUnsure) {
+          expectedLater.push(`${user.name} (late, time unsure)`);
+        } else {
           expectedLater.push(
             `${user.name} (till ${formatTimeOnly(lateInfo.expected_login_at)})`,
           );
@@ -3896,11 +3900,9 @@ async function handleNowSummary(res, actingUser) {
               `${user.name} has not logged in yet after the informed time (${formatTimeOnly(lateInfo.expected_login_at)})`,
             );
           }
-        } else {
-          noUpdateYet.push(user.name);
         }
-
-        continue;
+      } else {
+        noUpdateYet.push(user.name);
       }
 
       if (latest.action === "break") {
@@ -8244,6 +8246,11 @@ app.post("/whatsapp", async (req, res) => {
         res,
         `⏰ Late marked\n${targetUser.name} will join at ${lateForOther.time_text}`,
       );
+    }
+
+    const lateUnsureCommand = parseLateUnsureCommand(body);
+    if (lateUnsureCommand) {
+      return handleLateUnsureCommand(res, user, lateUnsureCommand);
     }
 
     const lateCommand = parseLateCommand(body);
