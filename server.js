@@ -6849,60 +6849,61 @@ app.get("/tasks", requireDashboardAuth, async (_req, res) => {
             </div>
           </div>
 
-          <div class="panel">
-            <div class="controls">
-              <input id="search" placeholder="Search task title or ID" />
-              <select id="assignee"><option value="">All assignees</option></select>
-              <select id="status">
-                <option value="">All status</option>
-<option value="open">Open</option>
-<option value="in_progress">In progress</option>
-<option value="blocked">Blocked</option>
-<option value="done">Done</option>
-<option value="cancelled">Cancelled</option>
-<option value="archived">Archived</option>
-              </select>
-              <select id="priority">
-                <option value="">All priority</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
-              <label><input type="checkbox" id="blocked" /> Blocked only</label>
-              <label><input type="checkbox" id="overdue" /> Overdue only</label>
-              <button onclick="loadTasks()">Apply</button>
-            </div>
-          </div>
+<div class="panel">
+  <div class="controls">
+    <input id="search" placeholder="Search task title or ID" />
+    <select id="assignee"><option value="">All assignees</option></select>
+    <select id="status">
+      <option value="">All status</option>
+      <option value="open">Open</option>
+      <option value="in_progress">In progress</option>
+      <option value="blocked">Blocked</option>
+      <option value="done">Done</option>
+      <option value="cancelled">Cancelled</option>
+      <option value="archived">Archived</option>
+    </select>
+    <select id="priority">
+      <option value="">All priority</option>
+      <option value="low">Low</option>
+      <option value="medium">Medium</option>
+      <option value="high">High</option>
+      <option value="urgent">Urgent</option>
+    </select>
+    <label><input type="checkbox" id="blocked" /> Blocked only</label>
+    <label><input type="checkbox" id="overdue" /> Overdue only</label>
+    <button onclick="loadTasks()">Apply</button>
+  </div>
+</div>
 
-          <div class="panel">
-            <div id="statusText">Loading tasks...</div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Title</th>
-                    <th>Assignee</th>
-                    <th>Status</th>
-                    <th>Progress</th>
-                    <th>Priority</th>
-                    <th>Deadline</th>
-                    <th>Blocker</th>
-                  </tr>
-                </thead>
-                <tbody id="taskRows"></tbody>
-              </table>
-              <div class="panel">
+<div class="panel">
+  <div id="statusText">Loading tasks...</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Title</th>
+          <th>Assignee</th>
+          <th>Status</th>
+          <th>Progress</th>
+          <th>Priority</th>
+          <th>Deadline</th>
+          <th>Blocker</th>
+        </tr>
+      </thead>
+      <tbody id="taskRows"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel">
   <h2>Task Detail</h2>
-  <div id="taskDetailEmpty" style="color:#8db6a0;">Click any task row to view full history.</div>
+  <div id="taskDetailEmpty" style="color:#8db6a0;">
+    Click any task row to view full history.
+  </div>
   <div id="taskDetail" style="display:none;"></div>
 </div>
-            </div>
-          </div>
-        </div>
-
-        <script>
+<script>
         
         function escapeHtml(value) {
   return String(value ?? '')
@@ -6910,6 +6911,22 @@ app.get("/tasks", requireDashboardAuth, async (_req, res) => {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function formatTime(ts) {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    }) + ' IST';
+  } catch {
+    return ts;
+  }
 }
 
 function formatJsonValue(value) {
@@ -6933,19 +6950,37 @@ async function openTaskDetail(taskId) {
   }
 
   const task = json.data;
-  const historyRows = (task.task_history || []).map(function (item) {
-    return (
-      '<tr>' +
-        '<td>' + escapeHtml(item.created_at || '-') + '</td>' +
-        '<td>' + escapeHtml(item.changed_by_name || 'Unknown') + '</td>' +
-        '<td>' + escapeHtml(item.change_type || '-') + '</td>' +
-        '<td>' + escapeHtml(item.field_name || '-') + '</td>' +
-        '<td><code>' + formatJsonValue(item.old_value) + '</code></td>' +
-        '<td><code>' + formatJsonValue(item.new_value) + '</code></td>' +
-        '<td>' + escapeHtml(item.note || '-') + '</td>' +
-      '</tr>'
-    );
-  }).join('');
+const historyRows = (task.task_history || []).map(function (item) {
+  const time = formatTime(item.created_at);
+  const by = item.changed_by_name || 'Unknown';
+  const note = item.note ? '<div style="margin-top:4px;color:#9fe3c1;">' + escapeHtml(item.note) + '</div>' : '';
+
+  let mainText = '';
+
+  if (item.change_type === 'progress_change') {
+    const oldP = item.old_value?.progress ?? 0;
+    const newP = item.new_value?.progress ?? 0;
+    mainText = '📈 Progress: ' + oldP + '% → ' + newP + '%';
+  } else if (item.change_type === 'status_change') {
+    const oldS = item.old_value?.status;
+    const newS = item.new_value?.status;
+    mainText = '🔄 Status: ' + oldS + ' → ' + newS;
+  } else if (item.change_type === 'task_created') {
+    mainText = '🆕 Task created';
+  } else if (item.change_type === 'undo') {
+    mainText = '↩️ Undo action';
+  } else {
+    mainText = item.change_type;
+  }
+
+  return (
+    '<div style="padding:10px;border-bottom:1px solid #1e2a24;">' +
+      '<div style="font-size:13px;color:#8db6a0;">' + time + ' — ' + escapeHtml(by) + '</div>' +
+      '<div style="font-size:15px;margin-top:4px;">' + mainText + '</div>' +
+      note +
+    '</div>'
+  );
+}).join('');
 
   document.getElementById('taskDetailEmpty').style.display = 'none';
   document.getElementById('taskDetail').style.display = 'block';
@@ -6962,22 +6997,9 @@ async function openTaskDetail(taskId) {
       (task.detail ? '<div style="margin-top:10px;"><strong>Detail:</strong> ' + escapeHtml(task.detail) + '</div>' : '') +
       (task.blocker_note ? '<div style="margin-top:10px;"><strong>Current blocker:</strong> ' + escapeHtml(task.blocker_note) + '</div>' : '') +
     '</div>' +
-    '<div class="table-wrap">' +
-      '<table>' +
-        '<thead>' +
-          '<tr>' +
-            '<th>Time</th>' +
-            '<th>By</th>' +
-            '<th>Type</th>' +
-            '<th>Field</th>' +
-            '<th>Old</th>' +
-            '<th>New</th>' +
-            '<th>Note</th>' +
-          '</tr>' +
-        '</thead>' +
-        '<tbody>' + (historyRows || '<tr><td colspan="7">No history yet</td></tr>') + '</tbody>' +
-      '</table>' +
-    '</div>';
+'<div style="margin-top:16px;border:1px solid #1e2a24;border-radius:8px;">' +
+  (historyRows || '<div style="padding:12px;">No history yet</div>') +
+'</div>'
 }
         
           async function loadUsers() {
