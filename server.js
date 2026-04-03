@@ -56,6 +56,7 @@ function normalizeText(text) {
 
 app.use(express.json());
 
+
 function sendTwiml(res, message) {
   try {
     console.log("sendTwiml called");
@@ -110,6 +111,55 @@ function safeParseJson(text) {
     console.error("Failed to parse AI JSON:", cleaned);
     return null;
   }
+}
+
+function parseDeadlineCommand(text) {
+  const raw = String(text || "").trim();
+  const match = raw.match(/^deadline\s+(\d+)\s+(.+)$/i);
+  if (!match) return null;
+
+  return {
+    taskId: Number(match[1]),
+    dateText: match[2].trim(),
+  };
+}
+
+function parseFlexibleDate(input) {
+  const raw = input.toLowerCase().trim();
+
+  if (raw === "today") {
+    return new Date();
+  }
+
+  if (raw === "tomorrow") {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d;
+  }
+
+  // try YYYY-MM-DD
+  const iso = new Date(raw);
+  if (!isNaN(iso.getTime())) return iso;
+
+  // try "5 Apr"
+  const parts = raw.split(" ");
+  if (parts.length === 2) {
+    const day = parseInt(parts[0], 10);
+    const monthStr = parts[1];
+
+    const months = {
+      jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+      jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+    };
+
+    const month = months[monthStr.slice(0, 3)];
+    if (month !== undefined && !isNaN(day)) {
+      const now = new Date();
+      return new Date(now.getFullYear(), month, day);
+    }
+  }
+
+  return null;
 }
 
 function isManagerOrAdmin(user) {
@@ -196,7 +246,7 @@ function badgeClass(value) {
   if (["done", "logout"].includes(v)) return "badge badge-muted";
   if (["blocked", "break"].includes(v)) return "badge badge-danger";
   if (["in_progress", "back", "login"].includes(v)) return "badge badge-info";
-  if (["open", "pending"].includes(v)) return "badge badge-warn";
+  if (["open","pending"].includes(v)) return "badge badge-warn";
   if (["cancelled"].includes(v)) return "badge badge-muted";
 
   return "badge badge-muted";
@@ -1752,6 +1802,59 @@ async function handleEmployeeSummary(res, actingUser, command) {
   }
 }
 
+async function handleDeadlineUpdate(res, user, taskId, dateText) {
+  if (!isManagerOrAdmin(user)) {
+    return sendTwiml(res, "Only managers can change deadlines.");
+  }
+
+  const parsedDate = parseFlexibleDate(dateText);
+
+  if (!parsedDate) {
+    return sendTwiml(
+      res,
+      "Invalid date. Try: deadline 12 5 Apr OR deadline 12 tomorrow"
+    );
+  }
+
+  const isoDate = parsedDate.toISOString().slice(0, 10);
+
+  const { task, error } = await getTaskById(taskId);
+
+  if (error) return sendTwiml(res, "Failed to fetch task.");
+  if (!task) return sendTwiml(res, `Task #${taskId} not found.`);
+
+  const oldDeadline = task.deadline;
+
+  const { error: updateError } = await supabase
+    .from("tasks")
+    .update({
+      deadline: isoDate,
+      last_updated_by_user_id: user.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", taskId);
+
+  if (updateError) {
+    console.error(updateError);
+    return sendTwiml(res, "Failed to update deadline.");
+  }
+
+  await insertTaskHistory(
+    taskId,
+    user.id,
+    "deadline_change",
+    "deadline",
+    { deadline: oldDeadline },
+    { deadline: isoDate },
+  );
+
+  return sendTwiml(
+    res,
+    `📅 Deadline updated for Task #${taskId}\nNew deadline: ${isoDate}`
+  );
+}
+
+
 async function handleTimelineAttendance(res, actingUser, command) {
   if (!isManagerOrAdmin(actingUser)) {
     return sendTwiml(res, "You are not allowed to view attendance timeline.");
@@ -2399,6 +2502,7 @@ async function handleLockAttendanceDay(res, actingUser, command) {
   );
 }
 
+
 function handleHelp(res, user) {
   try {
     console.log("handleHelp called for", user?.name);
@@ -2427,14 +2531,16 @@ function handleHelp(res, user) {
       "leave tomorrow",
       "late 11:00 am",
       "",
-      "Task commands:",
-      "my tasks",
-      "show task 1",
-      "progress 1 50 finished API integration",
-      "done 1 tested and verified",
-      "block 1 waiting on dependency",
-      "unblock 1 backend fix merged",
-      "undo last task change",
+"Task commands:",
+"my tasks",
+"show task 1",
+"progress 1 50 finished API integration",
+"done 1 tested and verified",
+"block 1 waiting on dependency",
+"unblock 1 backend fix merged",
+"deadline 1 5 Apr",
+"deadline 1 tomorrow",
+"undo last task change",
     ];
 
     if (isManager) {
@@ -2449,7 +2555,7 @@ function handleHelp(res, user) {
         "timeline Mahesh",
         "tasks Ruhab",
         "task Ruhab high present progress on Rasset by today",
-        "cancel task 2",
+        "cancel task 2"
       );
     }
 
@@ -2463,7 +2569,7 @@ function handleHelp(res, user) {
       "More help:",
       "• help attendance",
       "• help tasks",
-      isManager ? "• help manager" : "• ask your manager for manager commands",
+      isManager ? "• help manager" : "• ask your manager for manager commands"
     );
 
     return sendTwiml(res, lines.join("\n"));
@@ -2472,6 +2578,7 @@ function handleHelp(res, user) {
     return sendTwiml(res, "❌ Help failed");
   }
 }
+
 
 async function handleMyTasks(res, user) {
   const { data, error } = await supabase
@@ -2528,7 +2635,7 @@ async function handleDoneTask(res, user, taskId, note) {
   if (!cleanNote) {
     return sendTwiml(
       res,
-      "Please add a note.\nExample: done 12 tested and verified",
+      'Please add a note.\nExample: done 12 tested and verified',
     );
   }
 
@@ -2580,13 +2687,14 @@ async function handleDoneTask(res, user, taskId, note) {
   );
 }
 
+
 async function handleProgressTask(res, user, taskId, progressValue, note) {
   const cleanNote = String(note || "").trim();
 
   if (!cleanNote) {
     return sendTwiml(
       res,
-      "Please add a note.\nExample: progress 12 60 finished API integration",
+      'Please add a note.\nExample: progress 12 60 finished API integration',
     );
   }
 
@@ -2644,6 +2752,7 @@ async function handleProgressTask(res, user, taskId, progressValue, note) {
     `📈 Task #${taskId} progress updated to ${progressValue}%\nTitle: ${task.title}\nNote: ${cleanNote}`,
   );
 }
+
 
 async function handleShowOverdue(res, user) {
   if (!isManagerOrAdmin(user)) {
@@ -3357,7 +3466,7 @@ async function handleBlockTask(res, user, taskId, reason) {
   if (!cleanNote) {
     return sendTwiml(
       res,
-      "Please add a reason.\nExample: block 12 waiting on backend fix",
+      'Please add a reason.\nExample: block 12 waiting on backend fix',
     );
   }
 
@@ -3424,13 +3533,14 @@ Reason: ${cleanNote}`,
   );
 }
 
+
 async function handleUnblockTask(res, user, taskId, note) {
   const cleanNote = String(note || "").trim();
 
   if (!cleanNote) {
     return sendTwiml(
       res,
-      "Please add a note.\nExample: unblock 12 backend fix merged",
+      'Please add a note.\nExample: unblock 12 backend fix merged',
     );
   }
 
@@ -3485,6 +3595,7 @@ Title: ${task.title}
 Note: ${cleanNote}`,
   );
 }
+
 
 async function handleTasksByName(res, actingUser, assigneeName) {
   if (!isManagerOrAdmin(actingUser)) {
@@ -3932,6 +4043,7 @@ async function insertAttendanceAudit(
   }
 }
 
+
 async function handleUndoLastTaskChange(res, user) {
   if (!isManagerOrAdmin(user)) {
     return sendTwiml(res, "Undo is only available to managers/admins.");
@@ -4085,6 +4197,7 @@ function getCurrentAttendanceDayRange() {
   return getAttendanceDayUtcRange(attendanceDate);
 }
 
+
 function parseEmployeeSummaryCommand(text) {
   const raw = String(text || "").trim();
 
@@ -4101,6 +4214,7 @@ function parseEmployeeSummaryCommand(text) {
     target_name: match[1].trim(),
   };
 }
+
 
 function parseTimelineCommand(text) {
   const raw = String(text || "").trim();
@@ -4545,10 +4659,7 @@ async function getEmployeeMonthlyAttendanceSummary(userId) {
       ? "-"
       : `${String(((Math.floor(avgLoginMin / 60) + 11) % 12) + 1)}:${String(
           avgLoginMin % 60,
-        ).padStart(
-          2,
-          "0",
-        )} ${Math.floor(avgLoginMin / 60) >= 12 ? "PM" : "AM"} IST`;
+        ).padStart(2, "0")} ${Math.floor(avgLoginMin / 60) >= 12 ? "PM" : "AM"} IST`;
 
   const pastLeaveDates = leaveRows
     .filter((x) => x.off_date <= todayAttendanceDate)
@@ -4689,10 +4800,8 @@ async function getEmployeeAttendanceOverview(userId) {
   const auditRows = auditResult.data || [];
 
   const todaySummary = getAttendanceSummaryFromEvents(todayEvents);
-  const leaveToday =
-    leaveRows.find((x) => x.off_date === todayAttendanceDate) || null;
-  const lateToday =
-    lateRows.find((x) => x.late_date === todayAttendanceDate) || null;
+  const leaveToday = leaveRows.find((x) => x.off_date === todayAttendanceDate) || null;
+  const lateToday = lateRows.find((x) => x.late_date === todayAttendanceDate) || null;
 
   const eventsByAttendanceDay = new Map();
 
@@ -4706,6 +4815,7 @@ async function getEmployeeAttendanceOverview(userId) {
     eventsByAttendanceDay.get(attendanceDate).push(ev);
   }
 
+
   const history = [];
 
   const allAttendanceDates = new Set([
@@ -4713,17 +4823,15 @@ async function getEmployeeAttendanceOverview(userId) {
     ...leaveRows.map((x) => x.off_date),
   ]);
 
-  const sortedAttendanceDates = Array.from(allAttendanceDates).sort((a, b) =>
-    a < b ? 1 : -1,
+  const sortedAttendanceDates = Array.from(allAttendanceDates).sort(
+    (a, b) => (a < b ? 1 : -1),
   );
 
   for (const attendanceDate of sortedAttendanceDates) {
     const dayEvents = eventsByAttendanceDay.get(attendanceDate) || [];
     const daySummary = getAttendanceSummaryFromEvents(dayEvents);
-    const dayLate =
-      lateRows.find((x) => x.late_date === attendanceDate) || null;
-    const dayLeave =
-      leaveRows.find((x) => x.off_date === attendanceDate) || null;
+    const dayLate = lateRows.find((x) => x.late_date === attendanceDate) || null;
+    const dayLeave = leaveRows.find((x) => x.off_date === attendanceDate) || null;
     const dayAuditCount = auditRows.filter((x) => {
       const auditDate = parseIsoToAttendanceDateString(x.created_at);
       return auditDate === attendanceDate;
@@ -4751,14 +4859,13 @@ async function getEmployeeAttendanceOverview(userId) {
             : "no prior info"
           : "-",
       leave_text: dayLeave ? "Yes" : "No",
-      flags:
-        [
-          daySummary.longShiftFlag ? "Long shift" : null,
-          daySummary.longBreakFlag ? "Long break" : null,
-          daySummary.possibleHalfDay ? "Half day" : null,
-        ]
-          .filter(Boolean)
-          .join(", ") || "-",
+      flags: [
+        daySummary.longShiftFlag ? "Long shift" : null,
+        daySummary.longBreakFlag ? "Long break" : null,
+        daySummary.possibleHalfDay ? "Half day" : null,
+      ]
+        .filter(Boolean)
+        .join(", ") || "-",
       corrections: dayAuditCount,
       timeline: dayEvents.map((ev) => ({
         id: ev.id,
@@ -4786,9 +4893,7 @@ async function getEmployeeAttendanceOverview(userId) {
       break_text: formatDurationMinutes(todaySummary.breakMinutes),
       break_count: todaySummary.breakCount,
       late_text:
-        todaySummary.lateMinutes > 10
-          ? `${todaySummary.lateMinutes} min`
-          : "No",
+        todaySummary.lateMinutes > 10 ? `${todaySummary.lateMinutes} min` : "No",
       late_status:
         todaySummary.lateMinutes > 10
           ? lateToday
@@ -4836,9 +4941,7 @@ function renderEmployeeAttendancePage(data) {
               <td>${escapeHtml(ev.time_text || "-")}</td>
               <td>${escapeHtml(ev.action || "-")}</td>
               <td>${escapeHtml(
-                ev.expected_duration_min
-                  ? `${ev.expected_duration_min} min`
-                  : "-",
+                ev.expected_duration_min ? `${ev.expected_duration_min} min` : "-",
               )}</td>
               <td>${escapeHtml(ev.reason || "-")}</td>
               <td>${escapeHtml(ev.note || "-")}</td>
@@ -5125,9 +5228,7 @@ function renderEmployeeAttendancePage(data) {
                       today.long_shift_flag ? "Long shift" : null,
                       today.long_break_flag ? "Long break" : null,
                       today.possible_half_day ? "Half day" : null,
-                    ]
-                      .filter(Boolean)
-                      .join(", ") || "None"
+                    ].filter(Boolean).join(", ") || "None"
                   }
                 </div>
               </div>
@@ -5234,9 +5335,8 @@ async function getDashboardData() {
     await Promise.all([
       supabase.from("open_tasks_view").select("*").limit(100),
       supabase
-        .from("tasks")
-        .select(
-          `
+  .from("tasks")
+  .select(`
     id,
     title,
     priority,
@@ -5245,12 +5345,11 @@ async function getDashboardData() {
     blocker_note,
     assigned_to_user_id,
     users!tasks_assigned_to_user_id_fkey(name)
-  `,
-        )
-        .lt("deadline", getCurrentAttendanceDayRange().attendanceDate)
-        .not("status", "in", '("done","archived","cancelled")')
-        .order("deadline", { ascending: true })
-        .limit(100),
+  `)
+  .lt("deadline", getCurrentAttendanceDayRange().attendanceDate)
+  .not("status", "in", '("done","archived","cancelled")')
+  .order("deadline", { ascending: true })
+  .limit(100),
       supabase.from("blocked_tasks_view").select("*").limit(100),
       getLatestAttendanceByUser(),
     ]);
@@ -6205,9 +6304,7 @@ async function getAttendancePageData() {
   if (usersError) throw usersError;
   if (eventsError) throw eventsError;
 
-  const plannedOffUserIds = new Set(
-    (plannedOffRows || []).map((x) => x.user_id),
-  );
+  const plannedOffUserIds = new Set((plannedOffRows || []).map((x) => x.user_id));
 
   const latestByUser = new Map();
   for (const event of events || []) {
@@ -6257,6 +6354,7 @@ async function getAttendancePageData() {
     })),
   };
 }
+
 
 async function getTasksPageData(filters = {}) {
   const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
@@ -6409,6 +6507,7 @@ async function getTaskDetailData(taskId) {
     })),
   };
 }
+
 
 async function getLogsPageData() {
   const { data, error } = await supabase
@@ -7666,151 +7765,145 @@ app.post("/whatsapp", async (req, res) => {
     // ------------------------------------------------------------------
     // Basic / utility commands
     // ------------------------------------------------------------------
-    if (normalizedBody === "help attendance") {
-      return sendTwiml(
-        res,
-        [
-          "🕒 Attendance Help",
-          "",
-          "Your commands:",
-          "login",
-          "logout",
-          "break",
-          "back",
-          "status",
-          "now",
-          "leave today",
-          "leave tomorrow",
-          "late 11:00 am",
-          "",
-          "Examples:",
-          "login",
-          "break",
-          "back",
-          "logout",
-          "status",
-          "now",
-          "leave today",
-          "late 10:45 am",
-          "",
-          "Notes:",
-          "• Use actual clock time for late",
-          "• Do not use: late 30 min",
-        ].join("\n"),
-      );
-    }
+if (normalizedBody === "help attendance") {
+  return sendTwiml(
+    res,
+    [
+      "🕒 Attendance Help",
+      "",
+      "Your commands:",
+      "login",
+      "logout",
+      "break",
+      "back",
+      "status",
+      "now",
+      "leave today",
+      "leave tomorrow",
+      "late 11:00 am",
+      "",
+      "Examples:",
+      "login",
+      "break",
+      "back",
+      "logout",
+      "status",
+      "now",
+      "leave today",
+      "late 10:45 am",
+      "",
+      "Notes:",
+      "• Use actual clock time for late",
+      "• Do not use: late 30 min",
+    ].join("\n")
+  );
+}
 
-    if (normalizedBody === "help tasks") {
-      return sendTwiml(
-        res,
-        [
-          "📋 Task Help",
-          "",
-          "Create:",
-          "task Ruhab high present progress on Rasset by today",
-          "",
-          "View:",
-          "my tasks",
-          "tasks Ruhab",
-          "show task 2",
-          "",
-          "Update:",
-          "progress 2 50",
-          "block 2 waiting on dependency",
-          "unblock 2",
-          "undo last task change",
-          "",
-          "Manager/Admin only:",
-          "cancel task 2",
-          "delete task 2",
-          "",
-          "Notes:",
-          "• Use task ID for updates",
-          "• Priority: low, medium, high",
-        ].join("\n"),
-      );
-    }
+if (normalizedBody === "help tasks") {
+  return sendTwiml(
+    res,
+    [
+      "📋 Task Help",
+      "",
+      "Create:",
+      "task Ruhab high present progress on Rasset by today",
+      "",
+      "View:",
+      "my tasks",
+      "tasks Ruhab",
+      "show task 2",
+      "",
+      "Update:",
+      "progress 2 50",
+      "block 2 waiting on dependency",
+      "unblock 2",
+      "undo last task change",
+      "",
+      "Manager/Admin only:",
+      "cancel task 2",
+      "delete task 2",
+      "",
+      "Notes:",
+      "• Use task ID for updates",
+      "• Priority: low, medium, high",
+    ].join("\n")
+  );
+}
 
-    if (normalizedBody === "help manager") {
-      if (!isManagerOrAdmin(user)) {
-        return sendTwiml(
-          res,
-          "❌ Only managers/admins can use this help section.",
-        );
-      }
+if (normalizedBody === "help manager") {
+  if (!isManagerOrAdmin(user)) {
+    return sendTwiml(res, "❌ Only managers/admins can use this help section.");
+  }
 
-      return sendTwiml(
-        res,
-        [
-          "🧑‍💼 Manager/Admin Help",
-          "",
-          "Attendance for others:",
-          "login Zoya",
-          "logout Aj 6:30 pm",
-          "break Ruhab",
-          "back Mahesh",
-          "",
-          "People views:",
-          "employee summary Aj",
-          "timeline Mahesh",
-          "tasks Ruhab",
-          "",
-          "Task management:",
-          "task Ruhab high present progress on Rasset by today",
-          "cancel task 2",
-          "delete task 2",
-          "",
-          "Notes:",
-          "• Use clear unique names",
-          "• Past-time marking is allowed where supported",
-        ].join("\n"),
-      );
-    }
-    if (normalizedBody === "help" || normalizedBody === "commands") {
-      console.log("HELP matched", {
-        rawBody: body,
-        normalizedBody,
-        user: user?.name,
-        from,
-      });
-      return handleHelp(res, user);
-    }
+  return sendTwiml(
+    res,
+    [
+      "🧑‍💼 Manager/Admin Help",
+      "",
+      "Attendance for others:",
+      "login Zoya",
+      "logout Aj 6:30 pm",
+      "break Ruhab",
+      "back Mahesh",
+      "",
+      "People views:",
+      "employee summary Aj",
+      "timeline Mahesh",
+      "tasks Ruhab",
+      "",
+      "Task management:",
+      "task Ruhab high present progress on Rasset by today",
+      "cancel task 2",
+      "delete task 2",
+      "",
+      "Notes:",
+      "• Use clear unique names",
+      "• Past-time marking is allowed where supported",
+    ].join("\n")
+  );
+}
+if (normalizedBody === "help" || normalizedBody === "commands") {
+  console.log("HELP matched", {
+    rawBody: body,
+    normalizedBody,
+    user: user?.name,
+    from,
+  });
+  return handleHelp(res, user);
+}
 
-    if (normalizedBody === "help manager") {
-      if (!isManagerOrAdmin(user)) {
-        return sendTwiml(
-          res,
-          "❌ Only managers/admins can use this help section.",
-        );
-      }
+if (normalizedBody === "help manager") {
+  if (!isManagerOrAdmin(user)) {
+    return sendTwiml(res, "❌ Only managers/admins can use this help section.");
+  }
 
-      return sendTwiml(
-        res,
-        [
-          "🧑‍💼 Manager/Admin Help",
-          "",
-          "Attendance for others:",
-          "login Zoya",
-          "logout Aj 6:30 pm",
-          "break Ruhab",
-          "back Mahesh",
-          "",
-          "People views:",
-          "employee summary Aj",
-          "timeline Mahesh",
-          "tasks Ruhab",
-          "",
-          "Task management:",
-          "task Ruhab high present progress on Rasset by today",
-          "cancel task 2",
-          "delete task 2",
-          "",
-          "Notes:",
-          "• Use clear unique names",
-          "• Past-time marking is allowed where supported",
-        ].join("\n"),
-      );
-    }
+  return sendTwiml(
+    res,
+    [
+      "🧑‍💼 Manager/Admin Help",
+      "",
+      "Attendance for others:",
+      "login Zoya",
+      "logout Aj 6:30 pm",
+      "break Ruhab",
+      "back Mahesh",
+      "",
+      "People views:",
+      "employee summary Aj",
+      "timeline Mahesh",
+      "tasks Ruhab",
+      "",
+      "Task management:",
+      "task Ruhab high present progress on Rasset by today",
+      "cancel task 2",
+      "delete task 2",
+      "",
+      "Notes:",
+      "• Use clear unique names",
+      "• Past-time marking is allowed where supported",
+    ].join("\n")
+  );
+}
     if (normalizedBody === "my tasks") {
       return handleMyTasks(res, user);
     }
@@ -7824,10 +7917,11 @@ app.post("/whatsapp", async (req, res) => {
       return handleShowTask(res, user, showTaskId);
     }
 
-    const doneCommand = parseDoneCommand(body);
-    if (doneCommand) {
-      return handleDoneTask(res, user, doneCommand.taskId, doneCommand.note);
-    }
+const doneCommand = parseDoneCommand(body);
+if (doneCommand) {
+  return handleDoneTask(res, user, doneCommand.taskId, doneCommand.note);
+}
+
 
     const employeeSummaryCommand = parseEmployeeSummaryCommand(body);
     if (employeeSummaryCommand) {
@@ -7847,6 +7941,16 @@ app.post("/whatsapp", async (req, res) => {
     if (auditAttendanceCommand) {
       return handleAuditAttendance(res, user, auditAttendanceCommand);
     }
+    
+    const deadlineCommand = parseDeadlineCommand(body);
+if (deadlineCommand) {
+  return handleDeadlineUpdate(
+    res,
+    user,
+    deadlineCommand.taskId,
+    deadlineCommand.dateText
+  );
+}
 
     const undoAttendanceCommand = parseUndoAttendanceCommand(body);
     if (undoAttendanceCommand) {
@@ -7886,16 +7990,16 @@ app.post("/whatsapp", async (req, res) => {
     // ------------------------------------------------------------------
     // Task progress / identity / status
     // ------------------------------------------------------------------
-    const progressCommand = parseProgressCommand(body);
-    if (progressCommand) {
-      return handleProgressTask(
-        res,
-        user,
-        progressCommand.taskId,
-        progressCommand.progress,
-        progressCommand.note,
-      );
-    }
+const progressCommand = parseProgressCommand(body);
+if (progressCommand) {
+  return handleProgressTask(
+    res,
+    user,
+    progressCommand.taskId,
+    progressCommand.progress,
+    progressCommand.note,
+  );
+}
 
     if (parseWhoAmICommand(body)) {
       return handleWhoAmI(res, user);
@@ -8033,15 +8137,15 @@ app.post("/whatsapp", async (req, res) => {
       );
     }
 
-    const unblockCommand = parseUnblockCommand(body);
-    if (unblockCommand) {
-      return handleUnblockTask(
-        res,
-        user,
-        unblockCommand.taskId,
-        unblockCommand.note,
-      );
-    }
+const unblockCommand = parseUnblockCommand(body);
+if (unblockCommand) {
+  return handleUnblockTask(
+    res,
+    user,
+    unblockCommand.taskId,
+    unblockCommand.note,
+  );
+}
 
     const tasksByNameCommand = parseTasksByNameCommand(body);
     if (tasksByNameCommand) {
@@ -8154,13 +8258,13 @@ app.post("/whatsapp", async (req, res) => {
         "I could not parse that task automatically right now. Please use this format: task Ruhab high VPN testing by tomorrow",
       );
     }
-
+    
     console.log("Unknown command fallback", {
-      rawBody: body,
-      normalizedBody,
-      user: user?.name,
-      from,
-    });
+  rawBody: body,
+  normalizedBody,
+  user: user?.name,
+  from,
+});
 
     return sendTwiml(
       res,
