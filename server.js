@@ -2998,7 +2998,7 @@ async function handleLateUnsureCommand(res, actingUser, lateUnsureCommand) {
       {
         user_id: targetUser.id,
         late_date: attendanceDate,
-        expected_login_at: null,
+        expected_login_at: shiftStartIso,
         informed_at: informedAtIso,
         shift_start_at: shiftStartIso,
         is_approved: approved,
@@ -3010,7 +3010,12 @@ async function handleLateUnsureCommand(res, actingUser, lateUnsureCommand) {
   );
 
   if (error) {
-    console.error("Late unsure upsert error:", error);
+    console.error("Late unsure upsert error:", {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
     return sendTwiml(res, "Failed to mark late unsure.");
   }
 
