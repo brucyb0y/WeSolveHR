@@ -57,12 +57,32 @@ function normalizeText(text) {
 app.use(express.json());
 
 function sendTwiml(res, message) {
-  const twiml = new twilio.twiml.MessagingResponse();
-  if (message) {
-    twiml.message(message);
+  try {
+    console.log("sendTwiml called");
+    console.log("sendTwiml message preview:", String(message).slice(0, 300));
+
+    const twiml = new twilio.twiml.MessagingResponse();
+
+    if (message && String(message).trim()) {
+      twiml.message(String(message));
+    }
+
+    const xml = twiml.toString();
+    console.log("sendTwiml xml preview:", xml.slice(0, 300));
+
+    res.writeHead(200, { "Content-Type": "text/xml" });
+    res.end(xml);
+
+    console.log("sendTwiml response sent");
+    return;
+  } catch (err) {
+    console.error("sendTwiml failed:", err);
+    try {
+      res.status(500).send("Internal Server Error");
+    } catch (e) {
+      console.error("Failed sending 500 response:", e);
+    }
   }
-  res.writeHead(200, { "Content-Type": "text/xml" });
-  return res.end(twiml.toString());
 }
 
 function sendEmptyTwiml(res) {
@@ -2364,143 +2384,22 @@ async function handleLockAttendanceDay(res, actingUser, command) {
   );
 }
 
-async function handleHelp(res, user) {
+function handleHelp(res, user) {
   console.log("handleHelp called for", user?.name);
-  return sendTwiml(
-    res,
-    [
-      "👋 WeSolve HR Assistant — Complete Guide",
-      "",
-      "This system helps track attendance in a simple and transparent way.",
-      "",
-      "━━━━━━━━━━━━━━━━━━━",
-      "🟢 BASIC DAILY USE (MOST IMPORTANT)",
-      "━━━━━━━━━━━━━━━━━━━",
-      "",
-      "Just remember these 4 commands:",
-      "",
-      "👉 login  → Start your work day",
-      "👉 break  → When you step away",
-      "👉 back   → When you return",
-      "👉 logout → End your work day",
-      "",
-      "💡 Example flow:",
-      "login → break → back → logout",
-      "",
-      "━━━━━━━━━━━━━━━━━━━",
-      "⏰ LATE LOGIN",
-      "━━━━━━━━━━━━━━━━━━━",
-      "",
-      "If you're going to be late, inform in advance:",
-      "",
-      "👉 late 30 min",
-      "👉 late 1 hour",
-      "",
-      "If you don’t inform → marked as uninformed late",
-      "",
-      "━━━━━━━━━━━━━━━━━━━",
-      "📊 VIEW STATUS",
-      "━━━━━━━━━━━━━━━━━━━",
-      "",
-      "👉 status",
-      "Full team status",
-      "",
-      "👉 now",
-      "Quick snapshot of current activity",
-      "",
-      "👉 summary today",
-      "Detailed breakdown of today",
-      "",
-      "👉 who is on break",
-      "See active breaks",
-      "",
-      "━━━━━━━━━━━━━━━━━━━",
-      "📅 LEAVE MANAGEMENT",
-      "━━━━━━━━━━━━━━━━━━━",
-      "",
-      "👉 leave today",
-      "👉 leave tomorrow",
-      "👉 leave 11 april",
-      "",
-      "💡 Works for future dates also",
-      "",
-      "━━━━━━━━━━━━━━━━━━━",
-      "👤 EMPLOYEE REPORTS",
-      "━━━━━━━━━━━━━━━━━━━",
-      "",
-      "👉 employee summary",
-      "Your monthly report",
-      "",
-      "👉 employee summary Aj",
-      "Report for someone else",
-      "",
-      "Includes:",
-      "• Present days",
-      "• Leave dates (past + upcoming)",
-      "• Late counts (approved / not / uninformed)",
-      "• Average login time",
-      "• Break time",
-      "• Flags (long shift / long break / half day)",
-      "• Manager corrections",
-      "",
-      "━━━━━━━━━━━━━━━━━━━",
-      "🧠 ADVANCED (TIME CORRECTIONS)",
-      "━━━━━━━━━━━━━━━━━━━",
-      "",
-      "Managers/Admin can fix entries:",
-      "",
-      "👉 login Aj 8:30 am",
-      "👉 logout Aj 6:00 pm",
-      "👉 break Aj 1:00 pm",
-      "👉 back Aj 1:30 pm",
-      "",
-      "💡 Use when someone forgets to mark",
-      "",
-      "━━━━━━━━━━━━━━━━━━━",
-      "📅 MANAGER ACTIONS",
-      "━━━━━━━━━━━━━━━━━━━",
-      "",
-      "👉 leave Aj tomorrow",
-      "Mark leave for someone else",
-      "",
-      "━━━━━━━━━━━━━━━━━━━",
-      "🛠 TASK SYSTEM",
-      "━━━━━━━━━━━━━━━━━━━",
-      "",
-      "👉 my tasks",
-      "👉 show task 8",
-      "👉 done 8",
-      "👉 progress 8 50",
-      "👉 task Aj high test dashboard by tomorrow",
-      "",
-      "Manager/Admin only:",
-      "👉 tasks Aj",
-      "👉 show overdue",
-      "👉 block 8 waiting for Aj",
-      "👉 unblock 8",
-      "👉 undo last task change",
-      "👉 cancel task 12",
-      "👉 delete task 12",
-      "",
-      "━━━━━━━━━━━━━━━━━━━",
-      "👤 IDENTITY",
-      "━━━━━━━━━━━━━━━━━━━",
-      "",
-      "👉 who am i",
-      "Check your registered identity",
-      "",
-      "━━━━━━━━━━━━━━━━━━━",
-      "⚠️ IMPORTANT GUIDELINES",
-      "━━━━━━━━━━━━━━━━━━━",
-      "",
-      "• Always mark break and back",
-      "• Always logout at end of day",
-      "• Inform before being late",
-      "• Managers can fix mistakes",
-      "",
-      "💡 This system is for visibility, not policing 🙂",
-    ].join("\n"),
-  );
+
+  const msg =
+    "👋 WeSolve HR Assistant\n\n" +
+    "Basic commands:\n" +
+    "login\n" +
+    "logout\n" +
+    "break\n" +
+    "back\n" +
+    "status\n" +
+    "now\n" +
+    "my tasks\n" +
+    "help";
+
+  return sendTwiml(res, msg);
 }
 
 async function handleMyTasks(res, user) {
