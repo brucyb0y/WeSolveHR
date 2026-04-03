@@ -2385,21 +2385,76 @@ async function handleLockAttendanceDay(res, actingUser, command) {
 }
 
 function handleHelp(res, user) {
-  console.log("handleHelp called for", user?.name);
+  try {
+    console.log("handleHelp called for", user?.name);
 
-  const msg =
-    "👋 WeSolve HR Assistant\n\n" +
-    "Basic commands:\n" +
-    "login\n" +
-    "logout\n" +
-    "break\n" +
-    "back\n" +
-    "status\n" +
-    "now\n" +
-    "my tasks\n" +
-    "help";
+    const isManager = user?.role === "admin" || user?.role === "manager";
 
-  return sendTwiml(res, msg);
+    const lines = [
+      "👋 WeSolve HR Assistant",
+      "",
+      "Most used commands:",
+      "• login",
+      "• logout",
+      "• break",
+      "• back",
+      "• status",
+      "• now",
+      "• my tasks",
+      "• who am i",
+      "",
+      "Attendance:",
+      "login",
+      "logout",
+      "break",
+      "back",
+      "leave today",
+      "leave tomorrow",
+      "late 11:00 am",
+      "",
+      "Task commands:",
+      "my tasks",
+      "show task 1",
+      "progress 1 50",
+      "block 1 waiting on dependency",
+      "unblock 1",
+      "undo last task change",
+    ];
+
+    if (isManager) {
+      lines.push(
+        "",
+        "Manager/Admin commands:",
+        "login Zoya",
+        "logout Aj 6:30 pm",
+        "break Ruhab",
+        "back Mahesh",
+        "employee summary Aj",
+        "timeline Mahesh",
+        "tasks Ruhab",
+        "task Ruhab high present progress on Rasset by today",
+        "cancel task 2",
+      );
+    }
+
+    lines.push(
+      "",
+      "Notes:",
+      "• Use actual time for late, e.g. late 11:00 am",
+      "• For tasks, use task ID like show task 2",
+      "• cancel task / other-user commands are for managers/admins",
+      "",
+      "More help:",
+      "• help attendance",
+      "• help tasks",
+      isManager ? "• help manager" : "• ask your manager for manager commands",
+    );
+
+    return sendTwiml(res, lines.join("\n"));
+  } catch (err) {
+    console.error("handleHelp failed:", err);
+    return sendTwiml(res, "❌ Help failed");
+  }
 }
 
 async function handleMyTasks(res, user) {
@@ -7418,6 +7473,106 @@ app.post("/whatsapp", async (req, res) => {
     // ------------------------------------------------------------------
     // Basic / utility commands
     // ------------------------------------------------------------------
+    if (normalizedBody === "help attendance") {
+      return sendTwiml(
+        res,
+        [
+          "🕒 Attendance Help",
+          "",
+          "Your commands:",
+          "login",
+          "logout",
+          "break",
+          "back",
+          "status",
+          "now",
+          "leave today",
+          "leave tomorrow",
+          "late 11:00 am",
+          "",
+          "Examples:",
+          "login",
+          "break",
+          "back",
+          "logout",
+          "status",
+          "now",
+          "leave today",
+          "late 10:45 am",
+          "",
+          "Notes:",
+          "• Use actual clock time for late",
+          "• Do not use: late 30 min",
+        ].join("\n"),
+      );
+    }
+
+    if (normalizedBody === "help tasks") {
+      return sendTwiml(
+        res,
+        [
+          "📋 Task Help",
+          "",
+          "Create:",
+          "task Ruhab high present progress on Rasset by today",
+          "",
+          "View:",
+          "my tasks",
+          "tasks Ruhab",
+          "show task 2",
+          "",
+          "Update:",
+          "progress 2 50",
+          "block 2 waiting on dependency",
+          "unblock 2",
+          "undo last task change",
+          "",
+          "Manager/Admin only:",
+          "cancel task 2",
+          "delete task 2",
+          "",
+          "Notes:",
+          "• Use task ID for updates",
+          "• Priority: low, medium, high",
+        ].join("\n"),
+      );
+    }
+
+    if (normalizedBody === "help manager") {
+      if (!isManagerOrAdmin(user)) {
+        return sendTwiml(
+          res,
+          "❌ Only managers/admins can use this help section.",
+        );
+      }
+
+      return sendTwiml(
+        res,
+        [
+          "🧑‍💼 Manager/Admin Help",
+          "",
+          "Attendance for others:",
+          "login Zoya",
+          "logout Aj 6:30 pm",
+          "break Ruhab",
+          "back Mahesh",
+          "",
+          "People views:",
+          "employee summary Aj",
+          "timeline Mahesh",
+          "tasks Ruhab",
+          "",
+          "Task management:",
+          "task Ruhab high present progress on Rasset by today",
+          "cancel task 2",
+          "delete task 2",
+          "",
+          "Notes:",
+          "• Use clear unique names",
+          "• Past-time marking is allowed where supported",
+        ].join("\n"),
+      );
+    }
     if (normalizedBody === "help" || normalizedBody === "commands") {
       console.log("HELP matched", {
         rawBody: body,
@@ -7428,6 +7583,41 @@ app.post("/whatsapp", async (req, res) => {
       return handleHelp(res, user);
     }
 
+    if (normalizedBody === "help manager") {
+      if (!isManagerOrAdmin(user)) {
+        return sendTwiml(
+          res,
+          "❌ Only managers/admins can use this help section.",
+        );
+      }
+
+      return sendTwiml(
+        res,
+        [
+          "🧑‍💼 Manager/Admin Help",
+          "",
+          "Attendance for others:",
+          "login Zoya",
+          "logout Aj 6:30 pm",
+          "break Ruhab",
+          "back Mahesh",
+          "",
+          "People views:",
+          "employee summary Aj",
+          "timeline Mahesh",
+          "tasks Ruhab",
+          "",
+          "Task management:",
+          "task Ruhab high present progress on Rasset by today",
+          "cancel task 2",
+          "delete task 2",
+          "",
+          "Notes:",
+          "• Use clear unique names",
+          "• Past-time marking is allowed where supported",
+        ].join("\n"),
+      );
+    }
     if (normalizedBody === "my tasks") {
       return handleMyTasks(res, user);
     }
