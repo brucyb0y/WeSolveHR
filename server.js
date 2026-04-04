@@ -1329,10 +1329,9 @@ async function getTaskAssignedCount(userId) {
 }
 
 async function getTaskById(taskId) {
-  const { data, error } = await supabase
-    .from("tasks")
-    .select(
-      `
+  const numericTaskNo = Number(taskId);
+
+  let query = supabase.from("tasks").select(`
       id,
       task_no,
       title,
@@ -1347,10 +1346,15 @@ async function getTaskById(taskId) {
       assigned_to_user_id,
       created_by_user_id,
       last_updated_by_user_id
-    `,
-    )
-    .eq("id", taskId)
-    .maybeSingle();
+    `);
+
+  if (!Number.isNaN(numericTaskNo) && Number.isFinite(numericTaskNo)) {
+    query = query.eq("task_no", numericTaskNo);
+  } else {
+    query = query.eq("id", taskId);
+  }
+
+  const { data, error } = await query.maybeSingle();
 
   if (error) {
     console.error("Get task by id error:", error);
@@ -1989,7 +1993,7 @@ async function handleDeadlineUpdate(res, user, taskId, dateText) {
       last_updated_by_user_id: user.id,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", taskId);
+    .eq("id", task.id);
 
   if (updateError) {
     console.error(updateError);
@@ -1997,7 +2001,7 @@ async function handleDeadlineUpdate(res, user, taskId, dateText) {
   }
 
   await insertTaskHistory(
-    taskId,
+    task.id,
     user.id,
     "deadline_change",
     "deadline",
@@ -2917,7 +2921,7 @@ async function handleDoneTask(res, user, taskId, note) {
       last_updated_by_user_id: user.id,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", taskId);
+    .eq("id", task.id);
 
   if (updateError) {
     console.error("Done task update error:", updateError);
@@ -2925,7 +2929,7 @@ async function handleDoneTask(res, user, taskId, note) {
   }
 
   await insertTaskHistory(
-    taskId,
+    task.id,
     user.id,
     "status_change",
     "status",
@@ -2982,7 +2986,7 @@ async function handleProgressTask(res, user, taskId, progressValue, note) {
       last_updated_by_user_id: user.id,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", taskId);
+    .eq("id", task.id);
 
   if (updateError) {
     console.error("Progress task update error:", updateError);
@@ -2990,7 +2994,7 @@ async function handleProgressTask(res, user, taskId, progressValue, note) {
   }
 
   await insertTaskHistory(
-    taskId,
+    task.id,
     user.id,
     "progress_change",
     "progress",
@@ -3938,7 +3942,7 @@ async function handleBlockTask(res, user, taskId, reason) {
       last_updated_by_user_id: user.id,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", taskId);
+    .eq("id", task.id);
 
   if (updateError) {
     console.error("Block task update error:", updateError);
@@ -3946,7 +3950,7 @@ async function handleBlockTask(res, user, taskId, reason) {
   }
 
   await insertTaskHistory(
-    taskId,
+    task.id,
     user.id,
     "status_change",
     "status",
@@ -4000,7 +4004,7 @@ async function handleUnblockTask(res, user, taskId, note) {
       last_updated_by_user_id: user.id,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", taskId);
+    .eq("id", task.id);
 
   if (updateError) {
     console.error("Unblock task update error:", updateError);
@@ -4008,7 +4012,7 @@ async function handleUnblockTask(res, user, taskId, note) {
   }
 
   await insertTaskHistory(
-    taskId,
+    task.id,
     user.id,
     "status_change",
     "status",
