@@ -2007,7 +2007,7 @@ async function handleDeadlineUpdate(res, user, taskId, dateText) {
 
   return sendTwiml(
     res,
-    `📅 Deadline updated for Task #${taskId}\nNew deadline: ${isoDate}`,
+    `📅 Deadline updated for Task ${taskRef(task)}\nNew deadline: ${isoDate}`,
   );
 }
 
@@ -2906,7 +2906,7 @@ async function handleDoneTask(res, user, taskId, note) {
   }
 
   if (task.status === "done") {
-    return sendTwiml(res, `Task #${taskId} is already marked done.`);
+    return sendTwiml(res, `Task ${taskRef(task)} is already marked done.`);
   }
 
   const { error: updateError } = await supabase
@@ -2935,7 +2935,7 @@ async function handleDoneTask(res, user, taskId, note) {
 
   return sendTwiml(
     res,
-    `✅ Task #${taskId} marked done\nTitle: ${task.title}\nNote: ${cleanNote}`,
+    `✅ Task ${taskRef(task)} marked done\nTitle: ${task.title}\nNote: ${cleanNote}`,
   );
 }
 
@@ -3000,7 +3000,7 @@ async function handleProgressTask(res, user, taskId, progressValue, note) {
 
   return sendTwiml(
     res,
-    `📈 Task #${taskId} progress updated to ${progressValue}%\nTitle: ${task.title}\nNote: ${cleanNote}`,
+    `📈 Task ${taskRef(task)} progress updated to ${progressValue}%\nTitle: ${task.title}\nNote: ${cleanNote}`,
   );
 }
 
@@ -3922,12 +3922,12 @@ async function handleBlockTask(res, user, taskId, reason) {
   if (task.status === "done" || task.status === "archived") {
     return sendTwiml(
       res,
-      `Task #${taskId} cannot be blocked because it is ${task.status}.`,
+      `Task ${taskRef(task)} cannot be blocked because it is ${task.status}.`,
     );
   }
 
   if (task.status === "blocked") {
-    return sendTwiml(res, `Task #${taskId} is already blocked.`);
+    return sendTwiml(res, `Task ${taskRef(task)} is already blocked.`);
   }
 
   const { error: updateError } = await supabase
@@ -3956,7 +3956,7 @@ async function handleBlockTask(res, user, taskId, reason) {
 
   return sendTwiml(
     res,
-    `⛔ Task #${taskId} blocked
+    `⛔ Task #${taskRef(task)} blocked
 Title: ${task.title}
 Reason: ${cleanNote}`,
   );
@@ -3987,7 +3987,7 @@ async function handleUnblockTask(res, user, taskId, note) {
   }
 
   if (task.status !== "blocked") {
-    return sendTwiml(res, `Task #${taskId} is not blocked.`);
+    return sendTwiml(res, `Task ${taskRef(task)} is not blocked.`);
   }
 
   const nextStatus = task.progress > 0 ? "in_progress" : "open";
@@ -4018,7 +4018,7 @@ async function handleUnblockTask(res, user, taskId, note) {
 
   return sendTwiml(
     res,
-    `✅ Task #${taskId} unblocked
+    `✅ Task ${taskRef(task)} unblocked
 Title: ${task.title}
 Note: ${cleanNote}`,
   );
@@ -4637,6 +4637,10 @@ function getAttendanceDayDateStringFromDate(date = new Date()) {
   }
 
   return attendanceDate;
+}
+
+function taskRef(task) {
+  return "#" + (task?.task_no || task?.id || "");
 }
 
 function getAttendanceDayUtcRange(attendanceDateString) {
