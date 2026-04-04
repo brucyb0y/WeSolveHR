@@ -2658,77 +2658,158 @@ async function handleLockAttendanceDay(res, actingUser, command) {
   );
 }
 
-function handleHelp(res, user) {
+async function handleHelp(res, user, topic = "") {
   try {
-    console.log("handleHelp called for", user?.name);
+    const isManager = isManagerOrAdmin(user);
+    const normalizedTopic = normalizeText(topic || "");
 
-    const isManager = user?.role === "admin" || user?.role === "manager";
+    if (normalizedTopic === "tasks") {
+      return sendTwiml(
+        res,
+        [
+          "📋 Task Help",
+          "",
+          "Create tasks:",
+          "task Ruhab high present progress on Rasset by today",
+          "create task finalize parents pitch business joolian area parents owner zoya, niharika, aj priority high due 4 apr",
+          "",
+          "View tasks:",
+          "my tasks",
+          "tasks Ruhab",
+          "show task 2",
+          "",
+          "Update tasks:",
+          "progress 2 50% 20 mails sent no positive response",
+          "block 2 waiting on dependency",
+          "unblock 2 backend fix merged",
+          "done 2 tested and verified",
+          "deadline 2 11 april",
+          "undo last task change",
+          "",
+          "Manager/Admin only:",
+          "cancel task 2",
+          "delete task 2",
+          "",
+          "Notes:",
+          "• Use task number like show task 2",
+          "• Progress note is required",
+          "• Priority: low, medium, high, urgent",
+          "• Advanced create-task supports business, area, and multiple owners",
+        ].join("\n"),
+      );
+    }
+
+    if (normalizedTopic === "attendance") {
+      return sendTwiml(
+        res,
+        [
+          "🕒 Attendance Help",
+          "",
+          "Your own attendance:",
+          "login",
+          "logout",
+          "break",
+          "back",
+          "late 11:00 am",
+          "late unsure",
+          "status",
+          "summary today",
+          "now",
+          "who am i",
+          "",
+          "Leave / off:",
+          "off today",
+          "leave tomorrow",
+          "off 11 april",
+          "",
+          "Manager/Admin only:",
+          "login Zoya",
+          "logout Aj 6:30 pm",
+          "break Ruhab",
+          "back Mahesh",
+          "employee summary Aj",
+          "timeline Mahesh",
+          "who is on break",
+          "off Zoya tomorrow",
+          "leave Aj 11 april",
+          "",
+          "Notes:",
+          "• Use real times like 11:00 am",
+          "• Use today / tomorrow / weekday / date",
+        ].join("\n"),
+      );
+    }
+
+    if (normalizedTopic === "manager") {
+      if (!isManager) {
+        return sendTwiml(
+          res,
+          "❌ Only managers/admins can use this help section.",
+        );
+      }
+
+      return sendTwiml(
+        res,
+        [
+          "🧑‍💼 Manager/Admin Help",
+          "",
+          "Attendance for others:",
+          "login Zoya",
+          "logout Aj 6:30 pm",
+          "break Ruhab",
+          "back Mahesh",
+          "late Zoya 11:00 am",
+          "late Ruhab unsure",
+          "employee summary Aj",
+          "timeline Mahesh",
+          "who is on break",
+          "off Zoya tomorrow",
+          "",
+          "Task management:",
+          "tasks Ruhab",
+          "show task 2",
+          "task Ruhab high present progress on Rasset by today",
+          "create task finalize parents pitch business joolian area parents owner zoya, niharika, aj priority high due 4 apr",
+          "block 2 waiting on dependency",
+          "unblock 2 backend fix merged",
+          "done 2 tested and verified",
+          "cancel task 2",
+          "delete task 2",
+          "",
+          "Notes:",
+          "• Managers can view and manage other users' tasks",
+          "• Shared tasks may appear under each owner's task list",
+        ].join("\n"),
+      );
+    }
 
     const lines = [
-      "👋 WeSolve HR Assistant",
+      "🤖 WeSolveHR Help",
       "",
-      "Most used commands:",
-      "• login",
-      "• logout",
-      "• break",
-      "• back",
-      "• status",
-      "• now",
-      "• my tasks",
-      "• who am i",
-      "",
-      "Attendance:",
+      "Common commands:",
       "login",
       "logout",
       "break",
       "back",
-      "leave today",
-      "leave tomorrow",
-      "late 11:00 am",
-      "late unsure",
-      "late Aj unsure",
-      "",
-      "Task commands:",
+      "status",
       "my tasks",
-      "show task 1",
-      "progress 1 50 finished API integration",
-      "done 1 tested and verified",
-      "block 1 waiting on dependency",
-      "unblock 1 backend fix merged",
-      "deadline 1 5 Apr",
-      "deadline 1 tomorrow",
-      "deadline 1 +2 days",
-      "undo last task change",
-    ];
-
-    if (isManager) {
-      lines.push(
-        "",
-        "Manager/Admin commands:",
-        "login Zoya",
-        "logout Aj 6:30 pm",
-        "break Ruhab",
-        "back Mahesh",
-        "employee summary Aj",
-        "timeline Mahesh",
-        "tasks Ruhab",
-        "task Ruhab high present progress on Rasset by today",
-        "cancel task 2",
-      );
-    }
-
-    lines.push(
+      "show task 2",
+      "summary today",
       "",
-      "Notes:",
-      "• Use actual time for late, e.g. late 11:00 am",
-      "• For tasks, use task ID like show task 2",
-      "• cancel task / other-user commands are for managers/admins",
+      "Task examples:",
+      "task Ruhab high present progress on Rasset by today",
+      "progress 2 50% 20 mails sent no positive response",
+      "block 2 waiting on dependency",
+      "done 2 tested and verified",
+      "",
+      "Advanced task example:",
+      "create task finalize parents pitch business joolian area parents owner zoya, niharika, aj priority high due 4 apr",
       "",
       "More help:",
-      "• help attendance",
-      "• help tasks",
-      isManager ? "• help manager" : "• ask your manager for manager commands",
-    );
+      "help attendance",
+      "help tasks",
+      isManager ? "help manager" : "ask your manager for manager commands",
+    ];
 
     return sendTwiml(res, lines.join("\n"));
   } catch (err) {
@@ -7474,22 +7555,24 @@ app.get("/tasks", requireDashboardAuth, async (_req, res) => {
     <option value="general">General</option>
   </select>
 
-  <select id="area">
-    <option value="">All areas</option>
-    <option value="parents">Parents</option>
-    <option value="ap">AP</option>
-    <option value="ap scenarios">AP Scenarios</option>
-    <option value="friends/family">Friends/Family</option>
-    <option value="leads">Leads</option>
-    <option value="pricing">Pricing</option>
-    <option value="social media">Social Media</option>
-    <option value="calls">Calls</option>
-    <option value="pitch">Pitch</option>
-    <option value="content">Content</option>
-    <option value="tracking">Tracking</option>
-    <option value="training">Training</option>
-    <option value="escalation">Escalation</option>
-  </select>
+<select id="area">
+  <option value="">All areas</option>
+  <option value="pricing">Pricing</option>
+  <option value="marketing">Marketing</option>
+  <option value="prospect fu">Prospect FU</option>
+  <option value="pm">PM</option>
+  <option value="escalation">Escalation</option>
+  <option value="contractors hiring">Contractors Hiring</option>
+  <option value="product dev">Product Dev</option>
+  <option value="pitch practice">Pitch Practice</option>
+  <option value="b2c leads gen">B2C Leads Gen</option>
+  <option value="b2b leads gen">B2B Leads Gen</option>
+  <option value="website dev">Website Dev</option>
+  <option value="competitors calling">Competitors Calling</option>
+  <option value="prospects calling">Prospects Calling</option>
+  <option value="research">Research</option>
+  <option value="strategy">Strategy</option>
+</select>
 
   <select id="status">
     <option value="">All active status</option>
