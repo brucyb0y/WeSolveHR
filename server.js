@@ -2881,7 +2881,7 @@ async function handleShowTask(res, user, taskId) {
 
   return sendTwiml(
     res,
-    `Task #${task.task_no || task.id}\nOwners: ${assignedTo}\nPriority: ... ${task.priority}\nStatus: ${task.status}\nProgress: ${task.progress}%\nTitle: ${task.title}\nDeadline: ${task.deadline ?? "no deadline"}${detail}${blocker}`,
+    `Task #${task.task_no || task.id}\nOwners: ${assignedTo}\nPriority: ${task.priority}\nStatus: ${task.status}\nProgress: ${task.progress}%\nTitle: ${task.title}\nDeadline: ${task.deadline ?? "no deadline"}${detail}${blocker}`,
   );
 }
 
@@ -6110,7 +6110,7 @@ function renderDashboardPage(data) {
         .map(
           (task) => `
           <tr>
-            <td>#${escapeHtml(task.id)}</td>
+            #${escapeHtml(task.task_no || task.id)}
             <td><div class="primary-text">${escapeHtml(task.title || "-")}</div></td>
 <td>${escapeHtml(task.assignee_name || "-")}</td>
 </tr>
@@ -6128,8 +6128,8 @@ function renderDashboardPage(data) {
         .map(
           (task) => `
           <tr>
-            <td>#${escapeHtml(task.id)}</td>
-            <td><div class="primary-text">${escapeHtml(task.title || "-")}</div></td>
+#${escapeHtml(task.task_no || task.id)}
+<td><div class="primary-text">${escapeHtml(task.title || "-")}</div></td>
 <td>${escapeHtml(task.assignee_name || "-")}</td>
 <td><span class="${badgeClass(task.priority || "")}">${escapeHtml(task.priority || "-")}</span></td>
             <td>${escapeHtml(task.deadline ? formatDateOnly(task.deadline) : "-")}</td>
