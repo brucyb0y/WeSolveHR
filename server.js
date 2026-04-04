@@ -5848,6 +5848,8 @@ function renderEmployeeAttendancePage(data) {
 }
 
 async function getDashboardData() {
+  const todayAttendanceDate = getCurrentAttendanceDayRange().attendanceDate;
+
   const [openTasksResult, overdueResult, blockedResult, attendanceRows] =
     await Promise.all([
       supabase
@@ -5855,13 +5857,12 @@ async function getDashboardData() {
         .select(
           `
           id,
+          task_no,
           title,
           priority,
           status,
           deadline,
-          blocker_note,
-          assigned_to_user_id,
-          users!tasks_assigned_to_user_id_fkey(name)
+          blocker_note
         `,
         )
         .or("status.is.null,status.not.in.(done,archived,cancelled,deleted)")
@@ -5873,16 +5874,15 @@ async function getDashboardData() {
         .select(
           `
           id,
+          task_no,
           title,
           priority,
           status,
           deadline,
-          blocker_note,
-          assigned_to_user_id,
-          users!tasks_assigned_to_user_id_fkey(name)
+          blocker_note
         `,
         )
-        .lt("deadline", getCurrentAttendanceDayRange().attendanceDate)
+        .lt("deadline", todayAttendanceDate)
         .or("status.is.null,status.not.in.(done,archived,cancelled,deleted)")
         .order("deadline", { ascending: true })
         .limit(100),
@@ -5892,13 +5892,12 @@ async function getDashboardData() {
         .select(
           `
           id,
+          task_no,
           title,
           priority,
           status,
           deadline,
-          blocker_note,
-          assigned_to_user_id,
-          users!tasks_assigned_to_user_id_fkey(name)
+          blocker_note
         `,
         )
         .not("blocker_note", "is", null)
@@ -5908,6 +5907,7 @@ async function getDashboardData() {
 
       getLatestAttendanceByUser(),
     ]);
+
   if (openTasksResult.error) throw openTasksResult.error;
   if (overdueResult.error) throw overdueResult.error;
   if (blockedResult.error) throw blockedResult.error;
@@ -5917,28 +5917,91 @@ async function getDashboardData() {
   const blockedTasks = blockedResult.data || [];
   const attendance = attendanceRows || [];
 
-  const onBreak = attendance.filter((x) => x.status === "break");
-  const loggedIn = attendance.filter(
+  const allTasks = [...openTasks, ...overdueTasks, ...blockedTasks];
+  const uniqueTaskIds = [...new Set(allTasks.map((t) => t.id).filter(Boolean))];
+
+  let ownersByTaskId = {};
+
+  if (uniqueTaskIds.length) {
+    const { data: ownerRows, error: ownerError } = await supabase
+      .from("task_owners")
+      .select(
+        `
+        task_id,
+        user_id,
+        users!task_owners_user_id_fkey(id, name)
+      `,
+      )
+      .in("task_id", uniqueTaskIds);
+
+    if (ownerError) {
+      console.error("getDashboardData task_owners error:", ownerError);
+      throw ownerError;
+    }
+
+    for (const row of ownerRows || []) {
+      if (!ownersByTaskId[row.task_id]) {
+        ownersByTaskId[row.task_id] = [];
+      }
+
+      ownersByTaskId[row.task_id].push({
+        user_id: row.user_id,
+        name: row.users?.name || "",
+      });
+    }
+  }
+
+  function attachOwners(task) {
+    const owners = ownersByTaskId[task.id] || [];
+    const ownerNames = owners.map((x) => x.name).filter(Boolean);
+
+    return {
+      ...task,
+      owners,
+      owner_names: ownerNames,
+      assignee_name: ownerNames.length ? ownerNames.join(", ") : "-",
+    };
+  }
+
+  const openTasksWithOwners = openTasks.map(attachOwners);
+  const overdueTasksWithOwners = overdueTasks.map(attachOwners);
+  const blockedTasksWithOwners = blockedTasks.map(attachOwners);
+
+  const normalizedAttendance = attendance.map((row) => ({
+    ...row,
+    worked_today_text:
+      row.worked_today_text || formatDurationMinutes(row.worked_min_today || 0),
+    break_duration_text:
+      row.break_duration_text ||
+      (row.status === "break"
+        ? formatDurationMinutes(row.duration_min || 0)
+        : "-"),
+  }));
+
+  const onBreak = normalizedAttendance.filter((x) => x.status === "break");
+  const loggedIn = normalizedAttendance.filter(
     (x) => x.status === "login" || x.status === "back",
   );
-  const plannedOff = attendance.filter((x) => x.status === "planned_off");
-  const noLogin = attendance.filter((x) => x.status === "no_login");
+  const plannedOff = normalizedAttendance.filter(
+    (x) => x.status === "planned_off",
+  );
+  const noLogin = normalizedAttendance.filter((x) => x.status === "no_login");
 
   return {
     summary: {
-      openTasks: openTasks.length,
-      overdueTasks: overdueTasks.length,
-      blockedTasks: blockedTasks.length,
+      openTasks: openTasksWithOwners.length,
+      overdueTasks: overdueTasksWithOwners.length,
+      blockedTasks: blockedTasksWithOwners.length,
       onBreakCount: onBreak.length,
       loggedInCount: loggedIn.length,
       plannedOffCount: plannedOff.length,
       noLoginCount: noLogin.length,
-      teamCount: attendance.length,
+      teamCount: normalizedAttendance.length,
     },
-    openTasks,
-    overdueTasks,
-    blockedTasks,
-    attendance,
+    openTasks: openTasksWithOwners,
+    overdueTasks: overdueTasksWithOwners,
+    blockedTasks: blockedTasksWithOwners,
+    attendance: normalizedAttendance,
   };
 }
 
@@ -6045,9 +6108,8 @@ function renderDashboardPage(data) {
           <tr>
             <td>#${escapeHtml(task.id)}</td>
             <td><div class="primary-text">${escapeHtml(task.title || "-")}</div></td>
-            <td>${escapeHtml(task.assignee_name || task.assignee || task.assigned_to || "-")}</td>
-            <td>${escapeHtml(task.blocker_note || task.reason || "-")}</td>
-          </tr>
+<td>${escapeHtml(task.assignee_name || "-")}</td>
+</tr>
         `,
         )
         .join("")
@@ -6064,8 +6126,8 @@ function renderDashboardPage(data) {
           <tr>
             <td>#${escapeHtml(task.id)}</td>
             <td><div class="primary-text">${escapeHtml(task.title || "-")}</div></td>
-            <td>${escapeHtml(task.assignee_name || task.assignee || task.assigned_to || "-")}</td>
-            <td><span class="${badgeClass(task.priority || "")}">${escapeHtml(task.priority || "-")}</span></td>
+<td>${escapeHtml(task.assignee_name || "-")}</td>
+<td><span class="${badgeClass(task.priority || "")}">${escapeHtml(task.priority || "-")}</span></td>
             <td>${escapeHtml(task.deadline ? formatDateOnly(task.deadline) : "-")}</td>
             <td>${escapeHtml(task.overdue_text || task.days_overdue || task.overdue || "-")}</td>
           </tr>
@@ -6938,8 +7000,7 @@ async function getTasksPageData(filters = {}) {
       progress,
       priority,
       deadline,
-      blocker_note,
-      assigned_to_user_id
+      blocker_note
     `,
     )
     .order("deadline", { ascending: true, nullsFirst: false });
@@ -6969,14 +7030,12 @@ async function getTasksPageData(filters = {}) {
 
   if (search) {
     if (/^\d+$/.test(search)) {
-      query = query.or(`task_no.eq.${Number(search)},title.ilike.%${search}%`);
+      query = query.or(
+        `task_no.eq.${Number(search)},id.eq.${Number(search)},title.ilike.%${search}%`,
+      );
     } else {
       query = query.ilike("title", `%${search}%`);
     }
-  }
-
-  if (assignee) {
-    query = query.eq("assigned_to_user_id", assignee);
   }
 
   const { data: tasks, error } = await query;
@@ -6986,33 +7045,60 @@ async function getTasksPageData(filters = {}) {
     throw error;
   }
 
-  const userIds = [
-    ...new Set((tasks || []).map((t) => t.assigned_to_user_id).filter(Boolean)),
-  ];
-
-  let usersById = {};
-  if (userIds.length) {
-    const { data: users, error: usersError } = await supabase
-      .from("users")
-      .select("id, name")
-      .in("id", userIds);
-
-    if (usersError) {
-      console.error("getTasksPageData users error:", usersError);
-      throw usersError;
-    }
-
-    usersById = Object.fromEntries(
-      (users || []).map((u) => [String(u.id), u.name]),
-    );
+  if (!tasks || !tasks.length) {
+    return [];
   }
 
-  const rows = (tasks || []).map((task) => ({
-    ...task,
-    assignee_name: task.assigned_to_user_id
-      ? usersById[String(task.assigned_to_user_id)] || ""
-      : "",
-  }));
+  const taskIds = tasks.map((t) => t.id);
+
+  const { data: ownerRows, error: ownerError } = await supabase
+    .from("task_owners")
+    .select(
+      `
+      task_id,
+      user_id,
+      users!task_owners_user_id_fkey(id, name)
+    `,
+    )
+    .in("task_id", taskIds);
+
+  if (ownerError) {
+    console.error("getTasksPageData task_owners error:", ownerError);
+    throw ownerError;
+  }
+
+  const ownersByTaskId = {};
+  for (const row of ownerRows || []) {
+    if (!ownersByTaskId[row.task_id]) {
+      ownersByTaskId[row.task_id] = [];
+    }
+
+    ownersByTaskId[row.task_id].push({
+      user_id: row.user_id,
+      name: row.users?.name || "",
+    });
+  }
+
+  let rows = tasks.map((task) => {
+    const owners = ownersByTaskId[task.id] || [];
+
+    return {
+      ...task,
+      owner_names: owners.map((x) => x.name).filter(Boolean),
+      assignee_name: owners
+        .map((x) => x.name)
+        .filter(Boolean)
+        .join(", "),
+    };
+  });
+
+  if (assignee) {
+    rows = rows.filter((task) =>
+      (ownersByTaskId[task.id] || []).some(
+        (owner) => String(owner.user_id) === assignee,
+      ),
+    );
+  }
 
   return rows;
 }
@@ -7023,6 +7109,7 @@ async function getTaskDetailData(taskId) {
     .select(
       `
       id,
+      task_no,
       title,
       detail,
       priority,
@@ -7030,12 +7117,12 @@ async function getTaskDetailData(taskId) {
       progress,
       deadline,
       blocker_note,
-      assigned_to_user_id,
+      business,
+      area,
       created_by_user_id,
       last_updated_by_user_id,
       created_at,
-      updated_at,
-      assignee:users!tasks_assigned_to_user_id_fkey(name)
+      updated_at
     `,
     )
     .eq("id", taskId)
@@ -7043,6 +7130,25 @@ async function getTaskDetailData(taskId) {
 
   if (taskError) throw taskError;
   if (!task) return null;
+
+  const { data: ownerRows, error: ownerError } = await supabase
+    .from("task_owners")
+    .select(
+      `
+      task_id,
+      user_id,
+      users!task_owners_user_id_fkey(id, name)
+    `,
+    )
+    .eq("task_id", taskId);
+
+  if (ownerError) throw ownerError;
+
+  const ownerNames = (ownerRows || [])
+    .map((row) => row.users?.name)
+    .filter(Boolean);
+
+  const ownerIds = (ownerRows || []).map((row) => row.user_id).filter(Boolean);
 
   const { data: history, error: historyError } = await supabase
     .from("task_history")
@@ -7065,16 +7171,21 @@ async function getTaskDetailData(taskId) {
 
   return {
     id: task.id,
+    task_no: task.task_no,
     title: task.title,
     detail: task.detail,
-    assignee_name: task.assignee?.name || "Unknown",
+    owner_names: ownerNames,
+    assignee_name: ownerNames.join(", ") || "Unknown",
     priority: task.priority,
     status: task.status,
     progress: task.progress,
     deadline: task.deadline,
     blocker_note: task.blocker_note,
-    assigned_to_user_id: task.assigned_to_user_id,
+    business: task.business,
+    area: task.area,
+    owner_user_ids: ownerIds,
     created_by_user_id: task.created_by_user_id,
+    last_updated_by_user_id: task.last_updated_by_user_id,
     created_at: task.created_at,
     updated_at: task.updated_at,
     task_history: (history || []).map((item) => ({
