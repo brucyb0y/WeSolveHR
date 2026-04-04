@@ -702,13 +702,67 @@ function parseStatusCommand(text) {
 
 function parseProgressCommand(text) {
   const raw = String(text || "").trim();
-  const match = raw.match(/^progress\s+(\d+)\s+(\d{1,3})\s+(.+)$/i);
+
+  let match = raw.match(/^progress\s+task\s+(\d+)\s+(\d{1,3}%?)\s+(.+)$/i);
+  if (match) {
+    return {
+      taskId: Number(match[1]),
+      progress: parseProgressPercentToken(match[2]),
+      note: match[3].trim(),
+    };
+  }
+
+  match = raw.match(/^progress\s+(\d+)\s+(\d{1,3}%?)\s+(.+)$/i);
   if (!match) return null;
 
   return {
     taskId: Number(match[1]),
-    progress: Number(match[2]),
+    progress: parseProgressPercentToken(match[2]),
     note: match[3].trim(),
+  };
+}
+
+function parseAdvancedCreateTaskCommand(text) {
+  const raw = String(text || "").trim();
+
+  if (!/^create task\s+/i.test(raw)) return null;
+
+  const body = raw.replace(/^create task\s+/i, "").trim();
+
+  const ownerMatch = body.match(/\sowner\s+(.+?)\spriority\s+/i);
+  const priorityMatch = body.match(/\spriority\s+(low|medium|high|urgent)\s+/i);
+  const dueMatch = body.match(/\sdue\s+(.+)$/i);
+  const businessMatch = body.match(/\sbusiness\s+(.+?)\sarea\s+/i);
+  const areaMatch = body.match(/\sarea\s+(.+?)\sowner\s+/i);
+
+  if (!ownerMatch || !priorityMatch || !dueMatch) {
+    return {
+      error:
+        "Use: create task <title> business <business> area <area> owner <a, b> priority <level> due <date>",
+    };
+  }
+
+  const titleEnd = body.toLowerCase().indexOf(" business ");
+  if (titleEnd === -1) {
+    return { error: "Business is required in this format." };
+  }
+
+  const title = body.slice(0, titleEnd).trim();
+  const owners = parseOwnerNames(ownerMatch[1]);
+  const priority = priorityMatch[1].toLowerCase();
+  const deadline = parseDeadline(dueMatch[1].trim());
+
+  if (!title) return { error: "Task title is required." };
+  if (!owners.length) return { error: "At least one owner is required." };
+  if (!deadline) return { error: "Could not understand due date." };
+
+  return {
+    title,
+    business: businessMatch?.[1]?.trim() || null,
+    area: areaMatch?.[1]?.trim() || null,
+    owner_names: owners,
+    priority,
+    deadline,
   };
 }
 
@@ -1038,24 +1092,26 @@ function requireDashboardAuth(req, res, next) {
   return next();
 }
 
-function canReadTask(user, task) {
+async function canReadTask(user, task) {
   if (!user || !task) return false;
   if (isManagerOrAdmin(user)) return true;
-  return (
-    task.assigned_to_user_id === user.id || task.created_by_user_id === user.id
-  );
+  if (task.created_by_user_id === user.id) return true;
+
+  const ownerIds = await getTaskOwnerIds(task.id);
+  return ownerIds.includes(user.id);
 }
 
-function canModifyTask(user, task) {
+async function canModifyTask(user, task) {
   if (!user || !task) return false;
 
   if (task.status === "cancelled") {
-    return isManagerOrAdmin(user); // only managers can touch cancelled
+    return isManagerOrAdmin(user);
   }
 
   if (isManagerOrAdmin(user)) return true;
 
-  return task.assigned_to_user_id === user.id;
+  const ownerIds = await getTaskOwnerIds(task.id);
+  return ownerIds.includes(user.id);
 }
 
 async function parseTaskWithAI(text) {
@@ -1203,19 +1259,73 @@ async function findUniqueUserByName(name) {
   return users[0];
 }
 
+async function findUsersByNames(names) {
+  const matchedUsers = [];
+  const missingNames = [];
+
+  for (const name of names) {
+    const user = await findUniqueUserByName(name);
+    if (user) matchedUsers.push(user);
+    else missingNames.push(name);
+  }
+
+  return { matchedUsers, missingNames };
+}
+
+async function getTaskOwnerIds(taskId) {
+  const { data, error } = await supabase
+    .from("task_owners")
+    .select("user_id")
+    .eq("task_id", taskId);
+
+  if (error) {
+    console.error("getTaskOwnerIds error:", error);
+    return [];
+  }
+
+  return (data || []).map((x) => x.user_id);
+}
+
+async function getTaskOwnerNames(taskId) {
+  const { data, error } = await supabase
+    .from("task_owners")
+    .select(
+      `
+      user_id,
+      users!task_owners_user_id_fkey(name)
+    `,
+    )
+    .eq("task_id", taskId);
+
+  if (error) {
+    console.error("getTaskOwnerNames error:", error);
+    return [];
+  }
+
+  return (data || []).map((x) => x.users?.name).filter(Boolean);
+}
+
 async function getTaskAssignedCount(userId) {
-  const { count, error } = await supabase
-    .from("tasks")
-    .select("*", { count: "exact", head: true })
-    .eq("assigned_to_user_id", userId)
-    .not("status", "in", '("done","archived","cancelled")');
+  const { data, error } = await supabase
+    .from("task_owners")
+    .select(
+      `
+      task_id,
+      tasks!inner(id, status)
+    `,
+    )
+    .eq("user_id", userId);
 
   if (error) {
     console.error("Assigned task count error:", error);
     return 0;
   }
 
-  return count || 0;
+  return (data || []).filter(
+    (row) =>
+      row.tasks &&
+      !["done", "archived", "cancelled"].includes(row.tasks.status),
+  ).length;
 }
 
 async function getTaskById(taskId) {
@@ -1224,6 +1334,7 @@ async function getTaskById(taskId) {
     .select(
       `
       id,
+      task_no,
       title,
       detail,
       priority,
@@ -1231,10 +1342,11 @@ async function getTaskById(taskId) {
       progress,
       deadline,
       blocker_note,
+      business,
+      area,
       assigned_to_user_id,
       created_by_user_id,
-      last_updated_by_user_id,
-      users!tasks_assigned_to_user_id_fkey(name)
+      last_updated_by_user_id
     `,
     )
     .eq("id", taskId)
@@ -1245,7 +1357,19 @@ async function getTaskById(taskId) {
     return { task: null, error };
   }
 
-  return { task: data || null, error: null };
+  if (!data) {
+    return { task: null, error: null };
+  }
+
+  const ownerNames = await getTaskOwnerNames(data.id);
+
+  return {
+    task: {
+      ...data,
+      owner_names: ownerNames,
+    },
+    error: null,
+  };
 }
 
 async function insertTaskHistory(
@@ -2615,24 +2739,36 @@ function handleHelp(res, user) {
 
 async function handleMyTasks(res, user) {
   const { data, error } = await supabase
-    .from("tasks")
-    .select("id, title, priority, status, progress, deadline")
-    .eq("assigned_to_user_id", user.id)
-    .not("status", "in", '("done","archived","cancelled")')
-    .order("deadline", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: false });
+    .from("task_owners")
+    .select(
+      `
+      task_id,
+      tasks!inner(id, task_no, title, priority, status, progress, deadline)
+    `,
+    )
+    .eq("user_id", user.id);
 
   if (error) {
     console.error("My tasks query error:", error);
     return sendTwiml(res, "Failed to fetch your tasks.");
   }
 
-  if (!data || data.length === 0) {
+  const tasks = (data || [])
+    .map((x) => x.tasks)
+    .filter((t) => t && !["done", "archived", "cancelled"].includes(t.status));
+
+  if (!tasks.length) {
     return sendTwiml(res, "You have no open tasks.");
   }
 
-  const lines = data.slice(0, 8).map(formatTaskLine);
-  const suffix = data.length > 8 ? `\n...and ${data.length - 8} more.` : "";
+  const lines = tasks
+    .slice(0, 8)
+    .map(
+      (task) =>
+        `#${task.task_no || task.id}${task.priority ? ` | ${task.priority}` : ""} | ${task.status} | ${task.title} | due ${task.deadline ?? "no deadline"} | ${task.progress}%`,
+    );
+
+  const suffix = tasks.length > 8 ? `\n...and ${tasks.length - 8} more.` : "";
 
   return sendTwiml(res, `Your open tasks:\n${lines.join("\n")}${suffix}`);
 }
@@ -2648,17 +2784,19 @@ async function handleShowTask(res, user, taskId) {
     return sendTwiml(res, `Task #${taskId} not found.`);
   }
 
-  if (!canReadTask(user, task)) {
+  if (!(await canReadTask(user, task))) {
     return sendTwiml(res, "You are not allowed to view that task.");
   }
 
-  const assignedTo = task.users?.name || "Unknown";
+  const assignedTo = task.owner_names?.length
+    ? task.owner_names.join(", ")
+    : "Unknown";
   const detail = task.detail ? `\nDetail: ${task.detail}` : "";
   const blocker = task.blocker_note ? `\nBlocker: ${task.blocker_note}` : "";
 
   return sendTwiml(
     res,
-    `Task #${task.id}\nAssigned to: ${assignedTo}\nPriority: ${task.priority}\nStatus: ${task.status}\nProgress: ${task.progress}%\nTitle: ${task.title}\nDeadline: ${task.deadline ?? "no deadline"}${detail}${blocker}`,
+    `Task #${task.task_no || task.id}\nOwners: ${assignedTo}\nPriority: ... ${task.priority}\nStatus: ${task.status}\nProgress: ${task.progress}%\nTitle: ${task.title}\nDeadline: ${task.deadline ?? "no deadline"}${detail}${blocker}`,
   );
 }
 
@@ -2682,7 +2820,7 @@ async function handleDoneTask(res, user, taskId, note) {
     return sendTwiml(res, `Task #${taskId} not found.`);
   }
 
-  if (!canModifyTask(user, task)) {
+  if (!(await canModifyTask(user, task))) {
     return sendTwiml(res, "You are not allowed to modify that task.");
   }
 
@@ -2744,7 +2882,7 @@ async function handleProgressTask(res, user, taskId, progressValue, note) {
     return sendTwiml(res, `Task #${taskId} not found.`);
   }
 
-  if (!canModifyTask(user, task)) {
+  if (!(await canModifyTask(user, task))) {
     return sendTwiml(res, "You are not allowed to modify that task.");
   }
 
@@ -3487,6 +3625,94 @@ async function upsertLateArrival(
   return { error, approved };
 }
 
+async function handleCreateTaskAdvanced(res, user, taskCommand) {
+  if (taskCommand.error) {
+    return sendTwiml(res, `❌ ${taskCommand.error}`);
+  }
+
+  const { matchedUsers, missingNames } = await findUsersByNames(
+    taskCommand.owner_names,
+  );
+
+  if (missingNames.length) {
+    return sendTwiml(
+      res,
+      `❌ Could not find these users: ${missingNames.join(", ")}`,
+    );
+  }
+
+  const taskRow = {
+    created_by_user_id: user.id,
+    last_updated_by_user_id: user.id,
+    title: taskCommand.title,
+    detail: null,
+    priority: taskCommand.priority || "medium",
+    status: "open",
+    progress: 0,
+    deadline: taskCommand.deadline,
+    blocker_note: null,
+    business: taskCommand.business,
+    area: taskCommand.area,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data: createdTask, error: taskError } = await supabase
+    .from("tasks")
+    .insert([taskRow])
+    .select("id, task_no, title, priority, deadline, business, area")
+    .single();
+
+  if (taskError) {
+    console.error("Advanced task insert error:", taskError);
+    return sendTwiml(res, "❌ Could not create task.");
+  }
+
+  const ownerRows = matchedUsers.map((owner) => ({
+    task_id: createdTask.id,
+    user_id: owner.id,
+  }));
+
+  const { error: ownerInsertError } = await supabase
+    .from("task_owners")
+    .insert(ownerRows);
+
+  if (ownerInsertError) {
+    console.error("Task owners insert error:", ownerInsertError);
+    return sendTwiml(res, "❌ Task created but owners failed to save.");
+  }
+
+  await insertTaskHistory(
+    createdTask.id,
+    user.id,
+    "task_created",
+    "task",
+    null,
+    {
+      title: createdTask.title,
+      priority: createdTask.priority,
+      deadline: createdTask.deadline,
+      business: createdTask.business,
+      area: createdTask.area,
+      owners: matchedUsers.map((x) => x.name),
+    },
+  );
+
+  return sendTwiml(
+    res,
+    [
+      `✅ Task #${createdTask.task_no || createdTask.id} created`,
+      `Owners: ${matchedUsers.map((x) => x.name).join(", ")}`,
+      `Priority: ${createdTask.priority}`,
+      `Title: ${createdTask.title}`,
+      `Due: ${createdTask.deadline || "no due date"}`,
+      createdTask.business ? `Business: ${createdTask.business}` : null,
+      createdTask.area ? `Area: ${createdTask.area}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+}
+
 async function handleCreateTask(res, user, taskCommand) {
   if (!taskCommand.assignee_name) {
     return sendTwiml(
@@ -3544,7 +3770,7 @@ async function handleCreateTask(res, user, taskCommand) {
   const { data: createdTask, error: taskError } = await supabase
     .from("tasks")
     .insert([taskRow])
-    .select("id, title, priority, deadline")
+    .select("id, task_no, title, priority, deadline")
     .single();
 
   if (taskError) {
@@ -3569,13 +3795,16 @@ async function handleCreateTask(res, user, taskCommand) {
     },
   );
 
+  await supabase.from("task_owners").upsert([
+    {
+      task_id: createdTask.id,
+      user_id: assignee.id,
+    },
+  ]);
+
   return sendTwiml(
     res,
-    `✅ Task #${createdTask.id} created
-Owner: ${assignee.name}
-Priority: ${createdTask.priority || "none"}
-Title: ${createdTask.title}
-Due: ${createdTask.deadline || "no due date"}`,
+    `✅ Task #${createdTask.task_no || createdTask.id} created\nAssigned to ${assignee.name}\nPriority: ${createdTask.priority}\nTitle: ${createdTask.title}\nDue: ${createdTask.deadline || "no deadline"}`,
   );
 }
 
@@ -3729,24 +3958,36 @@ async function handleTasksByName(res, actingUser, assigneeName) {
   }
 
   const { data, error } = await supabase
-    .from("tasks")
-    .select("id, title, priority, status, progress, deadline")
-    .eq("assigned_to_user_id", targetUser.id)
-    .not("status", "in", '("done","archived","cancelled")')
-    .order("deadline", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: false });
+    .from("task_owners")
+    .select(
+      `
+      task_id,
+      tasks!inner(id, task_no, title, priority, status, progress, deadline)
+    `,
+    )
+    .eq("user_id", targetUser.id);
 
   if (error) {
     console.error("Tasks by name query error:", error);
     return sendTwiml(res, "Failed to fetch tasks.");
   }
 
-  if (!data || data.length === 0) {
+  const tasks = (data || [])
+    .map((x) => x.tasks)
+    .filter((t) => t && !["done", "archived", "cancelled"].includes(t.status));
+
+  if (!tasks.length) {
     return sendTwiml(res, `${targetUser.name} has no open tasks.`);
   }
 
-  const lines = data.slice(0, 8).map(formatTaskLine);
-  const suffix = data.length > 8 ? `\n...and ${data.length - 8} more.` : "";
+  const lines = tasks
+    .slice(0, 8)
+    .map(
+      (task) =>
+        `#${task.task_no || task.id} | ${task.priority} | ${task.status} | ${task.title} | due ${task.deadline ?? "no deadline"} | ${task.progress}%`,
+    );
+
+  const suffix = tasks.length > 8 ? `\n...and ${tasks.length - 8} more.` : "";
 
   return sendTwiml(
     res,
@@ -4221,7 +4462,7 @@ async function handleUndoLastTaskChange(res, user) {
     return sendTwiml(res, "Failed to fetch the task for undo.");
   }
 
-  if (!canModifyTask(user, task) && !isManagerOrAdmin(user)) {
+  if (!(await canModifyTask(user, task)) && !isManagerOrAdmin(user)) {
     return sendTwiml(res, "You are not allowed to undo that task change.");
   }
 
@@ -4355,6 +4596,24 @@ function parseEmployeeSummaryCommand(text) {
   return {
     target_name: match[1].trim(),
   };
+}
+
+function parseOwnerNames(ownerText) {
+  if (!ownerText) return [];
+  return ownerText
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function parseProgressPercentToken(token) {
+  const raw = String(token || "").trim();
+  const match = raw.match(/^(\d{1,3})%?$/);
+  if (!match) return null;
+
+  const value = Number(match[1]);
+  if (value < 0 || value > 100) return null;
+  return value;
 }
 
 function parseLateUnsureCommand(text) {
@@ -6568,82 +6827,107 @@ async function getAttendancePageData() {
 }
 
 async function getTasksPageData(filters = {}) {
-  const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
+  const search = String(filters.search || "").trim();
+  const assignee = String(filters.assignee || "").trim();
+  const business = String(filters.business || "")
+    .trim()
+    .toLowerCase();
+  const area = String(filters.area || "")
+    .trim()
+    .toLowerCase();
+  const status = String(filters.status || "").trim();
+  const priority = String(filters.priority || "").trim();
+  const blocked = String(filters.blocked || "") === "true";
+  const overdue = String(filters.overdue || "") === "true";
 
   let query = supabase
     .from("tasks")
     .select(
       `
       id,
+      task_no,
       title,
-      priority,
+      business,
+      area,
       status,
       progress,
+      priority,
       deadline,
       blocker_note,
-      assigned_to_user_id,
-      created_by_user_id,
-      updated_at,
-      users!tasks_assigned_to_user_id_fkey(name)
+      assigned_to_user_id
     `,
     )
-    .or("status.is.null,status.not.in.(done,archived,cancelled,deleted)")
-    .order("deadline", { ascending: true, nullsFirst: false })
-    .order("updated_at", { ascending: false });
+    .order("deadline", { ascending: true, nullsFirst: false });
 
-  if (filters.assignee) {
-    query = query.eq("assigned_to_user_id", Number(filters.assignee));
+  if (priority) {
+    query = query.eq("priority", priority);
   }
 
-  if (filters.status) {
-    query = query.eq("status", filters.status);
+  if (business) {
+    query = query.eq("business", business);
   }
 
-  if (filters.priority) {
-    query = query.eq("priority", filters.priority);
+  if (area) {
+    query = query.eq("area", area);
   }
 
-  if (filters.blocked === "true") {
+  if (blocked) {
     query = query.eq("status", "blocked");
+  } else if (status) {
+    query = query.eq("status", status);
   }
 
-  if (filters.overdue === "true") {
-    query = query.lt("deadline", today);
+  if (overdue) {
+    const today = new Date().toISOString().slice(0, 10);
+    query = query.lt("deadline", today).neq("status", "done");
   }
-
-  const { data, error } = await query;
-  if (error) throw error;
-
-  let rows = (data || []).map((task) => ({
-    id: task.id,
-    title: task.title,
-    assignee_name: task.users?.name || "Unknown",
-    status: task.status,
-    progress: task.progress,
-    priority: task.priority,
-    deadline: task.deadline,
-    blocker_note: task.blocker_note,
-    assigned_to_user_id: task.assigned_to_user_id,
-    created_by_user_id: task.created_by_user_id,
-  }));
-
-  const search = String(filters.search || "")
-    .trim()
-    .toLowerCase();
 
   if (search) {
-    rows = rows.filter((task) => {
-      const matchesTitle = String(task.title || "")
-        .toLowerCase()
-        .includes(search);
-
-      const matchesId = /^\d+$/.test(search)
-        ? String(task.id) === search
-        : false;
-
-      return matchesTitle || matchesId;
-    });
+    if (/^\d+$/.test(search)) {
+      query = query.or(`task_no.eq.${Number(search)},title.ilike.%${search}%`);
+    } else {
+      query = query.ilike("title", `%${search}%`);
+    }
   }
+
+  if (assignee) {
+    query = query.eq("assigned_to_user_id", assignee);
+  }
+
+  const { data: tasks, error } = await query;
+
+  if (error) {
+    console.error("getTasksPageData error:", error);
+    throw error;
+  }
+
+  const userIds = [
+    ...new Set((tasks || []).map((t) => t.assigned_to_user_id).filter(Boolean)),
+  ];
+
+  let usersById = {};
+  if (userIds.length) {
+    const { data: users, error: usersError } = await supabase
+      .from("users")
+      .select("id, name")
+      .in("id", userIds);
+
+    if (usersError) {
+      console.error("getTasksPageData users error:", usersError);
+      throw usersError;
+    }
+
+    usersById = Object.fromEntries(
+      (users || []).map((u) => [String(u.id), u.name]),
+    );
+  }
+
+  const rows = (tasks || []).map((task) => ({
+    ...task,
+    assignee_name: task.assigned_to_user_id
+      ? usersById[String(task.assigned_to_user_id)] || ""
+      : "",
+  }));
 
   return rows;
 }
@@ -6895,7 +7179,7 @@ app.get("/api/tasks/:id", async (req, res) => {
     }
 
     const demoUser = { role: "admin", id: 0 };
-    if (!canReadTask(demoUser, detail)) {
+    if (!(await canReadTask(demoUser, detail))) {
       return sendApiError(res, 403, "Not allowed to view this task");
     }
 
@@ -7179,25 +7463,53 @@ app.get("/tasks", requireDashboardAuth, async (_req, res) => {
 
 <div class="panel">
   <div class="controls">
-    <input id="search" placeholder="Search task title or ID" />
-    <select id="assignee"><option value="">All assignees</option></select>
-<select id="status">
-  <option value="">All active status</option>
-  <option value="open">Open</option>
-  <option value="in_progress">In progress</option>
-  <option value="blocked">Blocked</option>
-</select>
-    <select id="priority">
-      <option value="">All priority</option>
-      <option value="low">Low</option>
-      <option value="medium">Medium</option>
-      <option value="high">High</option>
-      <option value="urgent">Urgent</option>
-    </select>
-    <label><input type="checkbox" id="blocked" /> Blocked only</label>
-    <label><input type="checkbox" id="overdue" /> Overdue only</label>
-    <button onclick="loadTasks()">Apply</button>
-  </div>
+  <input id="search" placeholder="Search task title or ID" />
+  <select id="assignee"><option value="">All assignees</option></select>
+
+  <select id="business">
+    <option value="">All business</option>
+    <option value="joolian">Joolian</option>
+    <option value="wesolve">WeSolve</option>
+    <option value="rasset">Rasset</option>
+    <option value="general">General</option>
+  </select>
+
+  <select id="area">
+    <option value="">All areas</option>
+    <option value="parents">Parents</option>
+    <option value="ap">AP</option>
+    <option value="ap scenarios">AP Scenarios</option>
+    <option value="friends/family">Friends/Family</option>
+    <option value="leads">Leads</option>
+    <option value="pricing">Pricing</option>
+    <option value="social media">Social Media</option>
+    <option value="calls">Calls</option>
+    <option value="pitch">Pitch</option>
+    <option value="content">Content</option>
+    <option value="tracking">Tracking</option>
+    <option value="training">Training</option>
+    <option value="escalation">Escalation</option>
+  </select>
+
+  <select id="status">
+    <option value="">All active status</option>
+    <option value="open">Open</option>
+    <option value="in_progress">In progress</option>
+    <option value="blocked">Blocked</option>
+  </select>
+
+  <select id="priority">
+    <option value="">All priority</option>
+    <option value="low">Low</option>
+    <option value="medium">Medium</option>
+    <option value="high">High</option>
+    <option value="urgent">Urgent</option>
+  </select>
+
+  <label><input type="checkbox" id="blocked" /> Blocked only</label>
+  <label><input type="checkbox" id="overdue" /> Overdue only</label>
+  <button onclick="loadTasks()">Apply</button>
+</div>
 </div>
 
 <div class="panel">
@@ -7206,14 +7518,16 @@ app.get("/tasks", requireDashboardAuth, async (_req, res) => {
     <table>
       <thead>
         <tr>
-          <th>ID</th>
-          <th>Title</th>
-          <th>Assignee</th>
-          <th>Status</th>
-          <th>Progress</th>
-          <th>Priority</th>
-          <th>Deadline</th>
-          <th>Blocker</th>
+    <th>ID</th>
+    <th>Title</th>
+    <th>Business</th>
+    <th>Area</th>
+    <th>Assignee</th>
+    <th>Status</th>
+    <th>Progress</th>
+    <th>Priority</th>
+    <th>Deadline</th>
+    <th>Blocker</th>
         </tr>
       </thead>
       <tbody id="taskRows"></tbody>
@@ -7263,70 +7577,93 @@ function formatJsonValue(value) {
 }
 
 async function openTaskDetail(taskId) {
-  const res = await fetch('/api/tasks/' + taskId);
-  const json = await res.json();
+  try {
+    const res = await fetch('/api/tasks/' + taskId);
+    const json = await res.json();
 
-  if (!json.ok) {
+    if (!json.ok) {
+      document.getElementById('taskDetailEmpty').style.display = 'block';
+      document.getElementById('taskDetailEmpty').textContent = 'Could not load task detail';
+      document.getElementById('taskDetail').style.display = 'none';
+      document.getElementById('taskDetail').innerHTML = '';
+      return;
+    }
+
+    const task = json.data;
+
+    const ownerText =
+      task.owner_names && Array.isArray(task.owner_names) && task.owner_names.length
+        ? task.owner_names.join(', ')
+        : (task.assignee_name || '-');
+
+    const historyRows = (task.task_history || []).map(function(item) {
+      const time = formatTime(item.created_at);
+      const by = item.changed_by_name || 'Unknown';
+      const note = item.note
+        ? '<div style="margin-top:4px;color:#9fe3c1;">' + escapeHtml(item.note) + '</div>'
+        : '';
+
+      let mainText = '';
+
+      if (item.change_type === 'progress_change') {
+        const oldP = item.old_value?.progress ?? 0;
+        const newP = item.new_value?.progress ?? 0;
+        mainText = '📈 Progress: ' + oldP + '% → ' + newP + '%';
+      } else if (item.change_type === 'status_change') {
+        const oldS = item.old_value?.status ?? '-';
+        const newS = item.new_value?.status ?? '-';
+        mainText = '🔄 Status: ' + oldS + ' → ' + newS;
+      } else if (item.change_type === 'task_created') {
+        mainText = '🆕 Task created';
+      } else if (item.change_type === 'undo') {
+        mainText = '↩️ Undo action';
+      } else {
+        mainText = escapeHtml(item.change_type || 'Unknown change');
+      }
+
+      return (
+        '<div style="padding:10px;border-bottom:1px solid #1e2a24;">' +
+          '<div style="font-size:13px;color:#8db6a0;">' + escapeHtml(time) + ' — ' + escapeHtml(by) + '</div>' +
+          '<div style="font-size:15px;margin-top:4px;">' + mainText + '</div>' +
+          note +
+        '</div>'
+      );
+    }).join('');
+
+    document.getElementById('taskDetailEmpty').style.display = 'none';
+    document.getElementById('taskDetail').style.display = 'block';
+    document.getElementById('taskDetail').innerHTML =
+      '<div style="margin-bottom:16px;">' +
+        '<div style="font-size:22px; font-weight:800;">Task #' + (task.task_no || task.id) + ' — ' + escapeHtml(task.title || '') + '</div>' +
+        '<div style="margin-top:8px; color:#8db6a0; line-height:1.7;">' +
+          '<div><strong>Owners:</strong> ' + escapeHtml(ownerText) + '</div>' +
+          '<div><strong>Business:</strong> ' + escapeHtml(task.business || '-') + '</div>' +
+          '<div><strong>Area:</strong> ' + escapeHtml(task.area || '-') + '</div>' +
+          '<div><strong>Status:</strong> ' + escapeHtml(task.status || '-') + '</div>' +
+          '<div><strong>Progress:</strong> ' + (task.progress ?? 0) + '%</div>' +
+          '<div><strong>Priority:</strong> ' + escapeHtml(task.priority || '-') + '</div>' +
+          '<div><strong>Deadline:</strong> ' + escapeHtml(task.deadline || '-') + '</div>' +
+        '</div>' +
+        (task.detail
+          ? '<div style="margin-top:10px;"><strong>Detail:</strong> ' + escapeHtml(task.detail) + '</div>'
+          : '') +
+        (task.blocker_note
+          ? '<div style="margin-top:10px;"><strong>Current blocker:</strong> ' + escapeHtml(task.blocker_note) + '</div>'
+          : '') +
+      '</div>' +
+      '<div style="margin-top:16px;border:1px solid #1e2a24;border-radius:8px;">' +
+        (historyRows || '<div style="padding:12px;">No history yet</div>') +
+      '</div>';
+  } catch (error) {
+    console.error('openTaskDetail error:', error);
     document.getElementById('taskDetailEmpty').style.display = 'block';
     document.getElementById('taskDetailEmpty').textContent = 'Could not load task detail';
     document.getElementById('taskDetail').style.display = 'none';
     document.getElementById('taskDetail').innerHTML = '';
-    return;
   }
-
-  const task = json.data;
-const historyRows = (task.task_history || []).map(function (item) {
-  const time = formatTime(item.created_at);
-  const by = item.changed_by_name || 'Unknown';
-  const note = item.note ? '<div style="margin-top:4px;color:#9fe3c1;">' + escapeHtml(item.note) + '</div>' : '';
-
-  let mainText = '';
-
-  if (item.change_type === 'progress_change') {
-    const oldP = item.old_value?.progress ?? 0;
-    const newP = item.new_value?.progress ?? 0;
-    mainText = '📈 Progress: ' + oldP + '% → ' + newP + '%';
-  } else if (item.change_type === 'status_change') {
-    const oldS = item.old_value?.status;
-    const newS = item.new_value?.status;
-    mainText = '🔄 Status: ' + oldS + ' → ' + newS;
-  } else if (item.change_type === 'task_created') {
-    mainText = '🆕 Task created';
-  } else if (item.change_type === 'undo') {
-    mainText = '↩️ Undo action';
-  } else {
-    mainText = item.change_type;
-  }
-
-  return (
-    '<div style="padding:10px;border-bottom:1px solid #1e2a24;">' +
-      '<div style="font-size:13px;color:#8db6a0;">' + time + ' — ' + escapeHtml(by) + '</div>' +
-      '<div style="font-size:15px;margin-top:4px;">' + mainText + '</div>' +
-      note +
-    '</div>'
-  );
-}).join('');
-
-  document.getElementById('taskDetailEmpty').style.display = 'none';
-  document.getElementById('taskDetail').style.display = 'block';
-  document.getElementById('taskDetail').innerHTML =
-    '<div style="margin-bottom:16px;">' +
-      '<div style="font-size:22px; font-weight:800;">Task #' + task.id + ' — ' + escapeHtml(task.title || '') + '</div>' +
-      '<div style="margin-top:8px; color:#8db6a0;">' +
-        'Assignee: ' + escapeHtml(task.assignee_name || '-') +
-        ' | Status: ' + escapeHtml(task.status || '-') +
-        ' | Progress: ' + escapeHtml(task.progress ?? 0) + '%' +
-        ' | Priority: ' + escapeHtml(task.priority || '-') +
-        ' | Deadline: ' + escapeHtml(task.deadline || '-') +
-      '</div>' +
-      (task.detail ? '<div style="margin-top:10px;"><strong>Detail:</strong> ' + escapeHtml(task.detail) + '</div>' : '') +
-      (task.blocker_note ? '<div style="margin-top:10px;"><strong>Current blocker:</strong> ' + escapeHtml(task.blocker_note) + '</div>' : '') +
-    '</div>' +
-'<div style="margin-top:16px;border:1px solid #1e2a24;border-radius:8px;">' +
-  (historyRows || '<div style="padding:12px;">No history yet</div>') +
-'</div>'
 }
-        
+
+      
           async function loadUsers() {
             const res = await fetch('/api/users');
             const json = await res.json();
@@ -7342,19 +7679,24 @@ const historyRows = (task.task_history || []).map(function (item) {
 
           async function loadTasks() {
             const params = new URLSearchParams();
-            const search = document.getElementById('search').value.trim();
-            const assignee = document.getElementById('assignee').value;
-            const status = document.getElementById('status').value;
-            const priority = document.getElementById('priority').value;
-            const blocked = document.getElementById('blocked').checked;
-            const overdue = document.getElementById('overdue').checked;
+const search = document.getElementById('search').value.trim();
+const assignee = document.getElementById('assignee').value;
+const business = document.getElementById('business').value;
+const area = document.getElementById('area').value;
+const status = document.getElementById('status').value;
+const priority = document.getElementById('priority').value;
+const blocked = document.getElementById('blocked').checked;
+const overdue = document.getElementById('overdue').checked;
 
-            if (search) params.set('search', search);
-            if (assignee) params.set('assignee', assignee);
-            if (status) params.set('status', status);
-            if (priority) params.set('priority', priority);
-            if (blocked) params.set('blocked', 'true');
-            if (overdue) params.set('overdue', 'true');
+
+if (search) params.set('search', search);
+if (assignee) params.set('assignee', assignee);
+if (business) params.set('business', business);
+if (area) params.set('area', area);
+if (status) params.set('status', status);
+if (priority) params.set('priority', priority);
+if (blocked) params.set('blocked', 'true');
+if (overdue) params.set('overdue', 'true');
 
             document.getElementById('statusText').textContent = 'Loading tasks...';
 
@@ -7373,14 +7715,16 @@ const historyRows = (task.task_history || []).map(function (item) {
 document.getElementById('taskRows').innerHTML = rows.map(function(task) {
   return (
     '<tr onclick="openTaskDetail(' + task.id + ')">' +
-      '<td>#' + task.id + '</td>' +
-      '<td>' + (task.title || '') + '</td>' +
-      '<td>' + (task.assignee_name || '') + '</td>' +
-      '<td>' + (task.status || '') + '</td>' +
+      '<td>#' + (task.task_no || task.id) + '</td>' +
+      '<td>' + escapeHtml(task.title || '') + '</td>' +
+      '<td>' + escapeHtml(task.business || '-') + '</td>' +
+      '<td>' + escapeHtml(task.area || '-') + '</td>' +
+      '<td>' + escapeHtml(task.assignee_name || task.owner_names || '') + '</td>' +
+      '<td>' + escapeHtml(task.status || '') + '</td>' +
       '<td>' + (task.progress ?? 0) + '%</td>' +
-      '<td>' + (task.priority || '') + '</td>' +
-      '<td>' + (task.deadline || '-') + '</td>' +
-      '<td>' + (task.blocker_note || '-') + '</td>' +
+      '<td>' + escapeHtml(task.priority || '') + '</td>' +
+      '<td>' + escapeHtml(task.deadline || '-') + '</td>' +
+      '<td>' + escapeHtml(task.blocker_note || '-') + '</td>' +
     '</tr>'
   );
 }).join('');
@@ -8460,6 +8804,12 @@ app.post("/whatsapp", async (req, res) => {
     // ------------------------------------------------------------------
     // Task creation
     // ------------------------------------------------------------------
+
+    const advancedCreateTaskCommand = parseAdvancedCreateTaskCommand(body);
+    if (advancedCreateTaskCommand) {
+      return handleCreateTaskAdvanced(res, user, advancedCreateTaskCommand);
+    }
+
     let taskCommand = parseSimpleTaskCommand(body);
     let aiParsingAttempted = false;
 
