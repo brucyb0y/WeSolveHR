@@ -811,7 +811,7 @@ function parseEditTaskCommand(text) {
   }
 
   match = raw.match(
-    /^edit\s+task\s+(\d+)\s+status\s+(open|pending|in_progress|blocked|done|cancelled)$/i,
+    /^edit\s+task\s+(\d+)\s+status\s+(open|pending|in_progress|done|cancelled)$/i,
   );
   if (match) {
     return {
@@ -859,25 +859,11 @@ function parseEditTaskCommand(text) {
 }
 
 function parseBlockCommand(text) {
-  const raw = String(text || "").trim();
-  const match = raw.match(/^block\s+(\d+)\s+(.+)$/i);
-  if (!match) return null;
-
-  return {
-    taskId: Number(match[1]),
-    reason: match[2].trim(),
-  };
+  return null;
 }
 
 function parseUnblockCommand(text) {
-  const raw = String(text || "").trim();
-  const match = raw.match(/^unblock\s+(\d+)\s+(.+)$/i);
-  if (!match) return null;
-
-  return {
-    taskId: Number(match[1]),
-    note: match[2].trim(),
-  };
+  return null;
 }
 
 function parseDoneCommand(text) {
@@ -2174,13 +2160,10 @@ async function handleEditTask(res, user, editCommand) {
     patch.deadline = parsedDate;
     successMessage = `📅 Task ${taskRef(task)} deadline updated\nNew deadline: ${parsedDate}`;
   } else if (editCommand.field === "status") {
-    if (
-      (editCommand.value === "cancelled" || editCommand.value === "blocked") &&
-      !isManagerOrAdmin(user)
-    ) {
+    if (editCommand.value === "cancelled" && !isManagerOrAdmin(user)) {
       return sendTwiml(
         res,
-        `Only managers/admins can set status to ${editCommand.value}.`,
+        "Only managers/admins can set status to cancelled.",
       );
     }
 
@@ -2204,7 +2187,7 @@ async function handleEditTask(res, user, editCommand) {
       newValue.progress = 0;
     }
 
-    if (editCommand.value !== "blocked" && task.blocker_note) {
+    if (task.blocker_note) {
       patch.blocker_note = null;
       newValue.blocker_note = null;
     }
@@ -2234,10 +2217,6 @@ async function handleEditTask(res, user, editCommand) {
 
     successMessage = `📈 Task ${taskRef(task)} progress updated\nNew progress: ${progressValue}%`;
   } else if (editCommand.field === "blocker_note") {
-    if (!isManagerOrAdmin(user)) {
-      return sendTwiml(res, "Only managers/admins can add a blocker.");
-    }
-
     if (!editCommand.value) {
       return sendTwiml(res, "Blocker note cannot be empty.");
     }
@@ -2255,10 +2234,6 @@ async function handleEditTask(res, user, editCommand) {
     patch.detail = null;
     successMessage = `✏️ Task ${taskRef(task)} detail cleared`;
   } else if (editCommand.field === "clear_blocker") {
-    if (!isManagerOrAdmin(user)) {
-      return sendTwiml(res, "Only managers/admins can clear a blocker.");
-    }
-
     oldValue = { blocker_note: task.blocker_note, status: task.status };
     newValue = {
       blocker_note: null,
@@ -3051,8 +3026,6 @@ async function handleHelp(res, user, topic = "") {
           "",
           "Update tasks:",
           "progress 2 50% 20 mails sent no positive response",
-          "block 2 waiting on dependency",
-          "unblock 2 backend fix merged",
           "done 2 tested and verified",
           "deadline 2 11 april",
           "undo last task change",
@@ -3062,15 +3035,11 @@ async function handleHelp(res, user, topic = "") {
           "edit task 2 business joolian",
           "edit task 2 area parents",
           "edit task 2 deadline tomorrow",
-          "edit task 2 status blocked",
+          "edit task 2 status pending",
+          "edit task 2 status in_progress",
           "edit task 2 progress 70",
           "edit task 2 blocker waiting on backend fix",
           "edit task 2 clear blocker",
-          "edit task 2 clear detail",
-          "edit task 2 clear business",
-          "edit task 2 clear area",
-          "edit task 2 clear deadline",
-          "edit task 2 owner zoya, aj",
           "",
           "Manager/Admin only:",
           "cancel task 2",
@@ -3155,10 +3124,11 @@ async function handleHelp(res, user, topic = "") {
           "Task management:",
           "tasks Ruhab",
           "show task 2",
+          "Task examples:",
           "task Ruhab high present progress on Rasset by today",
-          "create task finalize parents pitch business joolian area parents owner zoya, niharika, aj priority high due 4 apr",
-          "block 2 waiting on dependency",
-          "unblock 2 backend fix merged",
+          "progress 2 50% 20 mails sent no positive response",
+          "edit task 2 blocker waiting on dependency",
+          "edit task 2 clear blocker",
           "done 2 tested and verified",
           "cancel task 2",
           "delete task 2",
@@ -3186,7 +3156,8 @@ async function handleHelp(res, user, topic = "") {
       "Task examples:",
       "task Ruhab high present progress on Rasset by today",
       "progress 2 50% 20 mails sent no positive response",
-      "block 2 waiting on dependency",
+      "edit task 2 blocker waiting on dependency",
+      "edit task 2 clear blocker",
       "done 2 tested and verified",
       "",
       "Advanced task example:",
@@ -4302,8 +4273,8 @@ async function handleBlockTask(res, user, taskId, reason) {
     );
   }
 
-  if (!isManagerOrAdmin(user)) {
-    return sendTwiml(res, "You are not allowed to block tasks.");
+  if (!(await canModifyTask(user, task))) {
+    return sendTwiml(res, "You are not allowed to block that task.");
   }
 
   if (task.status === "done" || task.status === "archived") {
@@ -4369,8 +4340,8 @@ async function handleUnblockTask(res, user, taskId, note) {
     return sendTwiml(res, `Task #${taskId} not found.`);
   }
 
-  if (!isManagerOrAdmin(user)) {
-    return sendTwiml(res, "You are not allowed to unblock tasks.");
+  if (!(await canModifyTask(user, task))) {
+    return sendTwiml(res, "You are not allowed to unblock that task.");
   }
 
   if (task.status !== "blocked") {
@@ -8997,9 +8968,10 @@ app.post("/whatsapp", async (req, res) => {
           "show task 2",
           "",
           "Update:",
-          "progress 2 50",
-          "block 2 waiting on dependency",
-          "unblock 2",
+          "progress 2 50% 20 mails sent no positive response",
+          "edit task 2 blocker waiting on dependency",
+          "edit task 2 clear blocker",
+          "done 2 tested and verified",
           "undo last task change",
           "",
           "Manager/Admin only:",
@@ -9286,16 +9258,6 @@ app.post("/whatsapp", async (req, res) => {
     // ------------------------------------------------------------------
     // Task blocking / team visibility
     // ------------------------------------------------------------------
-    const blockCommand = parseBlockCommand(body);
-    if (blockCommand) {
-      return handleBlockTask(
-        res,
-        user,
-        blockCommand.taskId,
-        blockCommand.reason,
-      );
-    }
-
     const cancelCmd = parseCancelTaskCommand(body);
 
     if (cancelCmd) {
@@ -9340,16 +9302,6 @@ app.post("/whatsapp", async (req, res) => {
       );
 
       return sendTwiml(res, `🗑️ Task ${taskRef(task)} cancelled successfully`);
-    }
-
-    const unblockCommand = parseUnblockCommand(body);
-    if (unblockCommand) {
-      return handleUnblockTask(
-        res,
-        user,
-        unblockCommand.taskId,
-        unblockCommand.note,
-      );
     }
 
     const tasksByNameCommand = parseTasksByNameCommand(body);
