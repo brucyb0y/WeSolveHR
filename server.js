@@ -1028,7 +1028,7 @@ function parseLateCommand(text) {
 }
 
 function formatTaskLine(task) {
-  return `#${task.id}${task.priority ? ` | ${task.priority}` : ""} | ${task.status} | ${task.title} | due ${task.deadline ?? "no deadline"} | ${task.progress}%`;
+  return `#${task.task_no || task.id}${task.priority ? ` | ${task.priority}` : ""} | ${task.status} | ${task.title} | due ${task.deadline ?? "no deadline"} | ${task.progress}%`;
 }
 
 function validateAttendanceTransition(lastAction, nextAction, subjectName) {
