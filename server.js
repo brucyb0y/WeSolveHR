@@ -766,6 +766,105 @@ function parseAdvancedCreateTaskCommand(text) {
   };
 }
 
+function parseEditTaskCommand(text) {
+  const raw = String(text || "").trim();
+
+  let match = raw.match(/^edit\s+task\s+(\d+)\s+title\s+(.+)$/i);
+  if (match) {
+    return { taskId: Number(match[1]), field: "title", value: match[2].trim() };
+  }
+
+  match = raw.match(/^edit\s+task\s+(\d+)\s+detail\s+(.+)$/i);
+  if (match) {
+    return {
+      taskId: Number(match[1]),
+      field: "detail",
+      value: match[2].trim(),
+    };
+  }
+
+  match = raw.match(
+    /^edit\s+task\s+(\d+)\s+priority\s+(low|medium|high|urgent)$/i,
+  );
+  if (match) {
+    return {
+      taskId: Number(match[1]),
+      field: "priority",
+      value: match[2].toLowerCase(),
+    };
+  }
+
+  match = raw.match(/^edit\s+task\s+(\d+)\s+business\s+(.+)$/i);
+  if (match) {
+    return {
+      taskId: Number(match[1]),
+      field: "business",
+      value: match[2].trim(),
+    };
+  }
+
+  match = raw.match(/^edit\s+task\s+(\d+)\s+area\s+(.+)$/i);
+  if (match) {
+    return { taskId: Number(match[1]), field: "area", value: match[2].trim() };
+  }
+
+  match = raw.match(/^edit\s+task\s+(\d+)\s+deadline\s+(.+)$/i);
+  if (match) {
+    return {
+      taskId: Number(match[1]),
+      field: "deadline",
+      value: match[2].trim(),
+    };
+  }
+
+  match = raw.match(
+    /^edit\s+task\s+(\d+)\s+status\s+(open|pending|in_progress|blocked|done|cancelled)$/i,
+  );
+  if (match) {
+    return {
+      taskId: Number(match[1]),
+      field: "status",
+      value: match[2].toLowerCase(),
+    };
+  }
+
+  match = raw.match(/^edit\s+task\s+(\d+)\s+progress\s+(\d{1,3}%?)$/i);
+  if (match) {
+    return {
+      taskId: Number(match[1]),
+      field: "progress",
+      value: parseProgressPercentToken(match[2]),
+    };
+  }
+
+  match = raw.match(/^edit\s+task\s+(\d+)\s+blocker\s+(.+)$/i);
+  if (match) {
+    return {
+      taskId: Number(match[1]),
+      field: "blocker_note",
+      value: match[2].trim(),
+    };
+  }
+
+  match = raw.match(/^edit\s+task\s+(\d+)\s+owner\s+(.+)$/i);
+  if (match) {
+    return { taskId: Number(match[1]), field: "owner", value: match[2].trim() };
+  }
+
+  match = raw.match(
+    /^edit\s+task\s+(\d+)\s+clear\s+(detail|blocker|business|area|deadline)$/i,
+  );
+  if (match) {
+    return {
+      taskId: Number(match[1]),
+      field: `clear_${match[2].toLowerCase()}`,
+      value: null,
+    };
+  }
+
+  return null;
+}
+
 function parseBlockCommand(text) {
   const raw = String(text || "").trim();
   const match = raw.match(/^block\s+(\d+)\s+(.+)$/i);
@@ -2015,6 +2114,281 @@ async function handleDeadlineUpdate(res, user, taskId, dateText) {
   );
 }
 
+async function handleEditTask(res, user, editCommand) {
+  const { task, error } = await getTaskById(editCommand.taskId);
+
+  if (error) {
+    return sendTwiml(res, "Failed to fetch that task.");
+  }
+
+  if (!task) {
+    return sendTwiml(res, `Task #${editCommand.taskId} not found.`);
+  }
+
+  if (!(await canModifyTask(user, task))) {
+    return sendTwiml(res, "You are not allowed to edit that task.");
+  }
+
+  const patch = {
+    last_updated_by_user_id: user.id,
+    updated_at: new Date().toISOString(),
+  };
+
+  let oldValue = {};
+  let newValue = {};
+  let successMessage = "";
+
+  if (editCommand.field === "title") {
+    if (!editCommand.value) return sendTwiml(res, "Title cannot be empty.");
+    oldValue = { title: task.title };
+    newValue = { title: editCommand.value };
+    patch.title = editCommand.value;
+    successMessage = `✏️ Task ${taskRef(task)} title updated\nNew title: ${editCommand.value}`;
+  } else if (editCommand.field === "detail") {
+    if (!editCommand.value) return sendTwiml(res, "Detail cannot be empty.");
+    oldValue = { detail: task.detail };
+    newValue = { detail: editCommand.value };
+    patch.detail = editCommand.value;
+    successMessage = `✏️ Task ${taskRef(task)} detail updated\nNew detail: ${editCommand.value}`;
+  } else if (editCommand.field === "priority") {
+    oldValue = { priority: task.priority };
+    newValue = { priority: editCommand.value };
+    patch.priority = editCommand.value;
+    successMessage = `✏️ Task ${taskRef(task)} priority updated\nNew priority: ${editCommand.value}`;
+  } else if (editCommand.field === "business") {
+    if (!editCommand.value) return sendTwiml(res, "Business cannot be empty.");
+    oldValue = { business: task.business };
+    newValue = { business: editCommand.value };
+    patch.business = editCommand.value;
+    successMessage = `✏️ Task ${taskRef(task)} business updated\nNew business: ${editCommand.value}`;
+  } else if (editCommand.field === "area") {
+    if (!editCommand.value) return sendTwiml(res, "Area cannot be empty.");
+    oldValue = { area: task.area };
+    newValue = { area: editCommand.value };
+    patch.area = editCommand.value;
+    successMessage = `✏️ Task ${taskRef(task)} area updated\nNew area: ${editCommand.value}`;
+  } else if (editCommand.field === "deadline") {
+    const parsedDate = parseDeadline(editCommand.value);
+    if (!parsedDate) {
+      return sendTwiml(
+        res,
+        `I could not understand the deadline "${editCommand.value}". Use today, tomorrow, friday, 11 april, or april 11.`,
+      );
+    }
+
+    oldValue = { deadline: task.deadline };
+    newValue = { deadline: parsedDate };
+    patch.deadline = parsedDate;
+    successMessage = `📅 Task ${taskRef(task)} deadline updated\nNew deadline: ${parsedDate}`;
+  } else if (editCommand.field === "status") {
+    if (
+      (editCommand.value === "cancelled" || editCommand.value === "blocked") &&
+      !isManagerOrAdmin(user)
+    ) {
+      return sendTwiml(
+        res,
+        `Only managers/admins can set status to ${editCommand.value}.`,
+      );
+    }
+
+    oldValue = {
+      status: task.status,
+      progress: task.progress,
+      blocker_note: task.blocker_note,
+    };
+
+    newValue = { status: editCommand.value };
+
+    patch.status = editCommand.value;
+
+    if (editCommand.value === "done") {
+      patch.progress = 100;
+      newValue.progress = 100;
+    }
+
+    if (editCommand.value === "open" && task.progress === 100) {
+      patch.progress = 0;
+      newValue.progress = 0;
+    }
+
+    if (editCommand.value !== "blocked" && task.blocker_note) {
+      patch.blocker_note = null;
+      newValue.blocker_note = null;
+    }
+
+    successMessage = `✏️ Task ${taskRef(task)} status updated\nNew status: ${editCommand.value}`;
+  } else if (editCommand.field === "progress") {
+    const progressValue = editCommand.value;
+
+    if (progressValue == null || progressValue < 0 || progressValue > 100) {
+      return sendTwiml(res, "Progress must be between 0 and 100.");
+    }
+
+    const newStatus =
+      progressValue === 100
+        ? "done"
+        : task.status === "open" ||
+            task.status === "pending" ||
+            task.status === "done"
+          ? "in_progress"
+          : task.status;
+
+    oldValue = { progress: task.progress, status: task.status };
+    newValue = { progress: progressValue, status: newStatus };
+
+    patch.progress = progressValue;
+    patch.status = newStatus;
+
+    successMessage = `📈 Task ${taskRef(task)} progress updated\nNew progress: ${progressValue}%`;
+  } else if (editCommand.field === "blocker_note") {
+    if (!isManagerOrAdmin(user)) {
+      return sendTwiml(res, "Only managers/admins can add a blocker.");
+    }
+
+    if (!editCommand.value) {
+      return sendTwiml(res, "Blocker note cannot be empty.");
+    }
+
+    oldValue = { blocker_note: task.blocker_note, status: task.status };
+    newValue = { blocker_note: editCommand.value, status: "blocked" };
+
+    patch.blocker_note = editCommand.value;
+    patch.status = "blocked";
+
+    successMessage = `⛔ Task ${taskRef(task)} blocker updated\nBlocker: ${editCommand.value}`;
+  } else if (editCommand.field === "clear_detail") {
+    oldValue = { detail: task.detail };
+    newValue = { detail: null };
+    patch.detail = null;
+    successMessage = `✏️ Task ${taskRef(task)} detail cleared`;
+  } else if (editCommand.field === "clear_blocker") {
+    if (!isManagerOrAdmin(user)) {
+      return sendTwiml(res, "Only managers/admins can clear a blocker.");
+    }
+
+    oldValue = { blocker_note: task.blocker_note, status: task.status };
+    newValue = {
+      blocker_note: null,
+      status: task.progress > 0 ? "in_progress" : "open",
+    };
+
+    patch.blocker_note = null;
+    patch.status = task.progress > 0 ? "in_progress" : "open";
+
+    successMessage = `✏️ Task ${taskRef(task)} blocker cleared`;
+  } else if (editCommand.field === "clear_business") {
+    oldValue = { business: task.business };
+    newValue = { business: null };
+    patch.business = null;
+    successMessage = `✏️ Task ${taskRef(task)} business cleared`;
+  } else if (editCommand.field === "clear_area") {
+    oldValue = { area: task.area };
+    newValue = { area: null };
+    patch.area = null;
+    successMessage = `✏️ Task ${taskRef(task)} area cleared`;
+  } else if (editCommand.field === "clear_deadline") {
+    oldValue = { deadline: task.deadline };
+    newValue = { deadline: null };
+    patch.deadline = null;
+    successMessage = `✏️ Task ${taskRef(task)} deadline cleared`;
+  } else if (editCommand.field === "owner") {
+    if (!isManagerOrAdmin(user)) {
+      return sendTwiml(res, "Only managers/admins can change task owners.");
+    }
+
+    const ownerNames = parseOwnerNames(editCommand.value);
+    if (!ownerNames.length) {
+      return sendTwiml(res, "Please provide at least one owner name.");
+    }
+
+    const { matchedUsers, missingNames } = await findUsersByNames(ownerNames);
+
+    if (missingNames.length) {
+      return sendTwiml(
+        res,
+        `❌ Could not find these users: ${missingNames.join(", ")}`,
+      );
+    }
+
+    const oldOwnerNames = task.owner_names || [];
+
+    const { error: deleteError } = await supabase
+      .from("task_owners")
+      .delete()
+      .eq("task_id", task.id);
+
+    if (deleteError) {
+      console.error("Task owner delete error:", deleteError);
+      return sendTwiml(res, "Failed to update task owners.");
+    }
+
+    const ownerRows = matchedUsers.map((owner) => ({
+      task_id: task.id,
+      user_id: owner.id,
+    }));
+
+    const { error: insertError } = await supabase
+      .from("task_owners")
+      .insert(ownerRows);
+
+    if (insertError) {
+      console.error("Task owner insert error:", insertError);
+      return sendTwiml(res, "Failed to update task owners.");
+    }
+
+    const { error: taskUpdateError } = await supabase
+      .from("tasks")
+      .update({
+        assigned_to_user_id: matchedUsers[0]?.id || null,
+        last_updated_by_user_id: user.id,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", task.id);
+
+    if (taskUpdateError) {
+      console.error("Task assigned_to update error:", taskUpdateError);
+      return sendTwiml(res, "Failed to finish owner update.");
+    }
+
+    await insertTaskHistory(
+      task.id,
+      user.id,
+      "owner_change",
+      "owner",
+      { owners: oldOwnerNames },
+      { owners: matchedUsers.map((x) => x.name) },
+    );
+
+    return sendTwiml(
+      res,
+      `👥 Task ${taskRef(task)} owners updated\nNew owners: ${matchedUsers.map((x) => x.name).join(", ")}`,
+    );
+  } else {
+    return sendTwiml(res, "That task field cannot be edited.");
+  }
+
+  const { error: updateError } = await supabase
+    .from("tasks")
+    .update(patch)
+    .eq("id", task.id);
+
+  if (updateError) {
+    console.error("Edit task update error:", updateError);
+    return sendTwiml(res, "Failed to edit that task.");
+  }
+
+  await insertTaskHistory(
+    task.id,
+    user.id,
+    "edit",
+    editCommand.field,
+    oldValue,
+    newValue,
+  );
+
+  return sendTwiml(res, successMessage);
+}
+
 async function handleTimelineAttendance(res, actingUser, command) {
   if (!isManagerOrAdmin(actingUser)) {
     return sendTwiml(res, "You are not allowed to view attendance timeline.");
@@ -2689,10 +3063,26 @@ async function handleHelp(res, user, topic = "") {
           "done 2 tested and verified",
           "deadline 2 11 april",
           "undo last task change",
+          "edit task 2 title final parents pitch v2",
+          "edit task 2 detail call parents and collect objections",
+          "edit task 2 priority urgent",
+          "edit task 2 business joolian",
+          "edit task 2 area parents",
+          "edit task 2 deadline tomorrow",
+          "edit task 2 status blocked",
+          "edit task 2 progress 70",
+          "edit task 2 blocker waiting on backend fix",
+          "edit task 2 clear blocker",
+          "edit task 2 clear detail",
+          "edit task 2 clear business",
+          "edit task 2 clear area",
+          "edit task 2 clear deadline",
+          "edit task 2 owner zoya, aj",
           "",
           "Manager/Admin only:",
           "cancel task 2",
           "delete task 2",
+          "edit task 2 owner zoya, aj",
           "",
           "Notes:",
           "• Use task number like show task 2",
@@ -3960,7 +4350,7 @@ async function handleBlockTask(res, user, taskId, reason) {
 
   return sendTwiml(
     res,
-    `⛔ Task #${taskRef(task)} blocked
+    `⛔ Task ${taskRef(task)} blocked
 Title: ${task.title}
 Reason: ${cleanNote}`,
   );
@@ -4513,6 +4903,50 @@ async function insertAttendanceAudit(
   }
 }
 
+async function getTaskByDbId(taskDbId) {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select(
+      `
+      id,
+      task_no,
+      title,
+      detail,
+      priority,
+      status,
+      progress,
+      deadline,
+      blocker_note,
+      business,
+      area,
+      assigned_to_user_id,
+      created_by_user_id,
+      last_updated_by_user_id
+    `,
+    )
+    .eq("id", taskDbId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Get task by db id error:", error);
+    return { task: null, error };
+  }
+
+  if (!data) {
+    return { task: null, error: null };
+  }
+
+  const ownerNames = await getTaskOwnerNames(data.id);
+
+  return {
+    task: {
+      ...data,
+      owner_names: ownerNames,
+    },
+    error: null,
+  };
+}
+
 async function handleUndoLastTaskChange(res, user) {
   if (!isManagerOrAdmin(user)) {
     return sendTwiml(res, "Undo is only available to managers/admins.");
@@ -4542,7 +4976,7 @@ async function handleUndoLastTaskChange(res, user) {
     return sendTwiml(res, "No reversible task change found.");
   }
 
-  const { task, error: taskError } = await getTaskById(history.task_id);
+  const { task, error: taskError } = await getTaskByDbId(history.task_id);
   if (taskError || !task) {
     return sendTwiml(res, "Failed to fetch the task for undo.");
   }
@@ -4592,7 +5026,7 @@ async function handleUndoLastTaskChange(res, user) {
 
   return sendTwiml(
     res,
-    `Reverted your last task change on task #${history.task_id}.`,
+    `Reverted your last task change on task ${taskRef(task)}.`,
   );
 }
 
@@ -6110,10 +6544,11 @@ function renderDashboardPage(data) {
         .map(
           (task) => `
           <tr>
-            #${escapeHtml(task.task_no || task.id)}
+            <td>#${escapeHtml(task.task_no || task.id)}</td>
             <td><div class="primary-text">${escapeHtml(task.title || "-")}</div></td>
-<td>${escapeHtml(task.assignee_name || "-")}</td>
-</tr>
+            <td>${escapeHtml(task.assignee_name || "-")}</td>
+            <td>${escapeHtml(task.blocker_note || "-")}</td>
+          </tr>
         `,
         )
         .join("")
@@ -6128,10 +6563,10 @@ function renderDashboardPage(data) {
         .map(
           (task) => `
           <tr>
-#${escapeHtml(task.task_no || task.id)}
-<td><div class="primary-text">${escapeHtml(task.title || "-")}</div></td>
-<td>${escapeHtml(task.assignee_name || "-")}</td>
-<td><span class="${badgeClass(task.priority || "")}">${escapeHtml(task.priority || "-")}</span></td>
+            <td>#${escapeHtml(task.task_no || task.id)}</td>
+            <td><div class="primary-text">${escapeHtml(task.title || "-")}</div></td>
+            <td>${escapeHtml(task.assignee_name || "-")}</td>
+            <td><span class="${badgeClass(task.priority || "")}">${escapeHtml(task.priority || "-")}</span></td>
             <td>${escapeHtml(task.deadline ? formatDateOnly(task.deadline) : "-")}</td>
             <td>${escapeHtml(task.overdue_text || task.days_overdue || task.overdue || "-")}</td>
           </tr>
@@ -8613,6 +9048,17 @@ app.post("/whatsapp", async (req, res) => {
           "task Ruhab high present progress on Rasset by today",
           "cancel task 2",
           "delete task 2",
+          "edit task 2 title final parents pitch v2",
+          "edit task 2 deadline tomorrow",
+          "edit task 2 owner zoya, aj",
+          "edit task 2 title final parents pitch v2",
+          "edit task 2 deadline tomorrow",
+          "edit task 2 owner zoya, aj",
+          "edit task 2 status blocked",
+          "edit task 2 title final parents pitch v2",
+          "edit task 2 deadline tomorrow",
+          "edit task 2 owner zoya, aj",
+          "edit task 2 status blocked",
           "",
           "Notes:",
           "• Use clear unique names",
@@ -8883,7 +9329,7 @@ app.post("/whatsapp", async (req, res) => {
           last_updated_by_user_id: user.id,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", cancelCmd.taskId);
+        .eq("id", task.id);
 
       if (updateError) {
         console.error(updateError);
@@ -8892,7 +9338,7 @@ app.post("/whatsapp", async (req, res) => {
 
       // History tracking
       await insertTaskHistory(
-        cancelCmd.taskId,
+        task.id,
         user.id,
         "status_change",
         "status",
@@ -8900,10 +9346,7 @@ app.post("/whatsapp", async (req, res) => {
         "cancelled",
       );
 
-      return sendTwiml(
-        res,
-        `🗑️ Task #${cancelCmd.taskId} cancelled successfully`,
-      );
+      return sendTwiml(res, `🗑️ Task ${taskRef(task)} cancelled successfully`);
     }
 
     const unblockCommand = parseUnblockCommand(body);
@@ -9004,8 +9447,13 @@ app.post("/whatsapp", async (req, res) => {
     }
 
     // ------------------------------------------------------------------
-    // Task creation
+    // Task edit / creation
     // ------------------------------------------------------------------
+
+    const editTaskCommand = parseEditTaskCommand(body);
+    if (editTaskCommand) {
+      return handleEditTask(res, user, editTaskCommand);
+    }
 
     const advancedCreateTaskCommand = parseAdvancedCreateTaskCommand(body);
     if (advancedCreateTaskCommand) {
