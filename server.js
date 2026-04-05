@@ -725,41 +725,34 @@ function parseProgressCommand(text) {
 function parseAdvancedCreateTaskCommand(text) {
   const raw = String(text || "").trim();
 
-  if (!/^create task\s+/i.test(raw)) return null;
+  const match = raw.match(
+    /^create task\s+(.+?)\s+business\s+(.+?)\s+area\s+(.+?)\s+owner\s+(.+?)\s+priority\s+(low|medium|high|urgent)\s+due\s+(.+)$/i,
+  );
 
-  const body = raw.replace(/^create task\s+/i, "").trim();
-
-  const ownerMatch = body.match(/\sowner\s+(.+?)\spriority\s+/i);
-  const priorityMatch = body.match(/\spriority\s+(low|medium|high|urgent)\s+/i);
-  const dueMatch = body.match(/\sdue\s+(.+)$/i);
-  const businessMatch = body.match(/\sbusiness\s+(.+?)\sarea\s+/i);
-  const areaMatch = body.match(/\sarea\s+(.+?)\sowner\s+/i);
-
-  if (!ownerMatch || !priorityMatch || !dueMatch) {
+  if (!match) {
     return {
       error:
         "Use: create task <title> business <business> area <area> owner <a, b> priority <level> due <date>",
     };
   }
 
-  const titleEnd = body.toLowerCase().indexOf(" business ");
-  if (titleEnd === -1) {
-    return { error: "Business is required in this format." };
-  }
-
-  const title = body.slice(0, titleEnd).trim();
-  const owners = parseOwnerNames(ownerMatch[1]);
-  const priority = priorityMatch[1].toLowerCase();
-  const deadline = parseDeadline(dueMatch[1].trim());
+  const title = match[1].trim();
+  const business = match[2].trim();
+  const area = match[3].trim();
+  const owners = parseOwnerNames(match[4]);
+  const priority = match[5].toLowerCase();
+  const deadline = parseDeadline(match[6].trim());
 
   if (!title) return { error: "Task title is required." };
+  if (!business) return { error: "Business is required." };
+  if (!area) return { error: "Area is required." };
   if (!owners.length) return { error: "At least one owner is required." };
   if (!deadline) return { error: "Could not understand due date." };
 
   return {
     title,
-    business: businessMatch?.[1]?.trim() || null,
-    area: areaMatch?.[1]?.trim() || null,
+    business,
+    area,
     owner_names: owners,
     priority,
     deadline,
