@@ -1032,28 +1032,42 @@ function formatTaskLine(task) {
 }
 
 function validateAttendanceTransition(lastAction, nextAction, subjectName) {
-  if (nextAction === "login" && lastAction === "login") {
-    return `❌ ${subjectName} ${subjectName === "You" ? "are" : "is"} already logged in\nNo action was taken`;
+  const isYou = subjectName === "You";
+
+  if (nextAction === "login") {
+    if (lastAction === "login" || lastAction === "back") {
+      return `❌ ${isYou ? "You are" : `${subjectName} is`} already logged in\nNo action was taken`;
+    }
+
+    if (lastAction === "break") {
+      return `❌ Could not log in\nReason: ${isYou ? "you are currently on break, use 'back' first" : `${subjectName} is currently on break, use 'back' first`}`;
+    }
   }
 
-  if (
-    nextAction === "break" &&
-    lastAction !== "login" &&
-    lastAction !== "back"
-  ) {
-    return `❌ Could not start break\nReason: ${subjectName === "You" ? "you must be logged in first" : `${subjectName} must be logged in first`}`;
+  if (nextAction === "break") {
+    if (lastAction === "break") {
+      return `❌ Could not start break\nReason: ${isYou ? "you are already on break" : `${subjectName} is already on break`}`;
+    }
+
+    if (lastAction !== "login" && lastAction !== "back") {
+      return `❌ Could not start break\nReason: ${isYou ? "you must be logged in first" : `${subjectName} must be logged in first`}`;
+    }
   }
 
-  if (nextAction === "back" && lastAction !== "break") {
-    return `❌ Could not return from break\nReason: ${subjectName === "You" ? "you are not currently on break" : `${subjectName} is not currently on break`}`;
+  if (nextAction === "back") {
+    if (lastAction !== "break") {
+      return `❌ Could not return from break\nReason: ${isYou ? "you are not currently on break" : `${subjectName} is not currently on break`}`;
+    }
   }
 
-  if (
-    nextAction === "logout" &&
-    lastAction !== "login" &&
-    lastAction !== "back"
-  ) {
-    return `❌ Could not log out\nReason: ${subjectName === "You" ? "you are not currently logged in" : `${subjectName} is not currently logged in`}`;
+  if (nextAction === "logout") {
+    if (lastAction === "break") {
+      return `❌ Could not log out\nReason: ${isYou ? "you are currently on break, use 'back' first" : `${subjectName} is currently on break, use 'back' first`}`;
+    }
+
+    if (lastAction !== "login" && lastAction !== "back") {
+      return `❌ Could not log out\nReason: ${isYou ? "you are not currently logged in" : `${subjectName} is not currently logged in`}`;
+    }
   }
 
   return null;
@@ -8884,6 +8898,16 @@ app.post("/whatsapp", async (req, res) => {
     const normalizedBody = normalizeText(body).replace(/\s+/g, " ");
     const rateLimitKey = from || req.ip || "unknown";
 
+    const inboundMessageSid =
+      req.body.MessageSid || req.body.SmsMessageSid || null;
+    const requestTag = `[wa:${inboundMessageSid || "no-sid"}]`;
+
+    console.log(`${requestTag} Incoming message`, {
+      from,
+      body,
+      profileName: req.body.ProfileName || null,
+    });
+
     if (!checkRateLimit(rateLimitKey)) {
       console.warn("Rate limit exceeded for:", rateLimitKey);
       return sendTwiml(
@@ -8903,7 +8927,16 @@ app.post("/whatsapp", async (req, res) => {
 
     const logResult = await logIncomingMessage(user, req.body, body, from);
     if (logResult.duplicate) {
-      return sendEmptyTwiml(res);
+      console.log("Duplicate inbound WhatsApp message detected", {
+        from,
+        messageSid: req.body.MessageSid || req.body.SmsMessageSid || null,
+        body,
+      });
+
+      return sendTwiml(
+        res,
+        "⚠️ We already received this message. If your attendance did not update, send 'status'.",
+      );
     }
 
     if (!user) {
