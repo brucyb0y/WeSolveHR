@@ -208,41 +208,41 @@ function escapeHtml(value) {
 }
 
 const UI_THEME = {
-  bg0: "#0b1020",
-  bg1: "#11162a",
-  bg2: "#1a2038",
+  bg0: "#151a2e",
+  bg1: "#1b2238",
+  bg2: "#242c47",
 
-  text: "#eef2ff",
+  text: "#f3f6ff",
   textStrong: "#ffffff",
-  muted: "#b6bfd9",
+  muted: "#c4cce0",
 
-  border: "rgba(255,255,255,0.10)",
-  borderStrong: "rgba(255,255,255,0.18)",
+  border: "rgba(255,255,255,0.12)",
+  borderStrong: "rgba(255,255,255,0.20)",
 
-  panel: "rgba(20, 26, 46, 0.88)",
-  panelStrong: "rgba(17, 22, 40, 0.94)",
-  panelSoft: "rgba(26, 32, 56, 0.86)",
+  panel: "rgba(31, 39, 63, 0.88)",
+  panelStrong: "rgba(26, 33, 55, 0.94)",
+  panelSoft: "rgba(38, 47, 74, 0.88)",
 
-  shadowSoft: "0 0 0 1px rgba(255,255,255,0.04), 0 10px 30px rgba(0,0,0,0.35)",
-  shadowCard: "0 0 0 1px rgba(255,255,255,0.05), 0 8px 26px rgba(0,0,0,0.30)",
+  shadowSoft: "0 0 0 1px rgba(255,255,255,0.03), 0 10px 30px rgba(0,0,0,0.22)",
+  shadowCard: "0 0 0 1px rgba(255,255,255,0.04), 0 8px 24px rgba(0,0,0,0.18)",
 
-  primary: "#7c3aed", // violet
-  secondary: "#06b6d4", // cyan
-  accent: "#f59e0b", // amber
-  accent2: "#ec4899", // pink
-  success: "#22c55e",
-  danger: "#ef4444",
-  info: "#3b82f6",
-  neutral: "#94a3b8",
+  primary: "#8b7cf6",
+  secondary: "#56c7d9",
+  accent: "#f3b562",
+  accent2: "#f28bc1",
+  success: "#58c98a",
+  danger: "#ef6b73",
+  info: "#6ea8ff",
+  neutral: "#aab6cf",
 
-  primarySoft: "rgba(124,58,237,0.16)",
-  secondarySoft: "rgba(6,182,212,0.16)",
-  accentSoft: "rgba(245,158,11,0.16)",
-  accent2Soft: "rgba(236,72,153,0.16)",
-  successSoft: "rgba(34,197,94,0.16)",
-  dangerSoft: "rgba(239,68,68,0.16)",
-  infoSoft: "rgba(59,130,246,0.16)",
-  neutralSoft: "rgba(148,163,184,0.16)",
+  primarySoft: "rgba(139,124,246,0.16)",
+  secondarySoft: "rgba(86,199,217,0.16)",
+  accentSoft: "rgba(243,181,98,0.16)",
+  accent2Soft: "rgba(242,139,193,0.16)",
+  successSoft: "rgba(88,201,138,0.16)",
+  dangerSoft: "rgba(239,107,115,0.16)",
+  infoSoft: "rgba(110,168,255,0.16)",
+  neutralSoft: "rgba(170,182,207,0.16)",
 
   radiusXl: "22px",
   radiusLg: "18px",
@@ -279,6 +279,26 @@ function buildBasePageCss() {
       background-size: 100% 4px;
       opacity: 0.08;
     }
+    
+.task-row-overdue {
+  background-color: rgba(239, 107, 115, 0.08);
+}
+
+.task-row-blocked {
+  background-color: rgba(243, 181, 98, 0.10);
+}
+
+.task-row-blocked.task-row-overdue {
+  background-color: rgba(239, 107, 115, 0.14);
+}
+
+.task-row-overdue td:first-child {
+  border-left: 4px solid #ef6b73;
+}
+
+.task-row-blocked td:first-child {
+  border-left: 4px solid #f3b562;
+}
 
     .muted { color: var(--muted); }
     .empty-cell { text-align: center; color: var(--muted); padding: 18px; }
@@ -7923,6 +7943,36 @@ ${buildBasePageCss()}
             gap: 10px;
             flex-wrap: wrap;
           }
+          
+.task-row-overdue {
+  background-color: rgba(239, 107, 115, 0.08);
+}
+
+.task-row-blocked {
+  background-color: rgba(243, 181, 98, 0.10);
+}
+
+.task-row-blocked.task-row-overdue {
+  background-color: rgba(239, 107, 115, 0.14);
+}
+
+.task-row-overdue td:first-child {
+  border-left: 4px solid #ef6b73;
+}
+
+.task-row-blocked td:first-child {
+  border-left: 4px solid #f3b562;
+}
+
+tbody tr:hover {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+tbody tr.task-row-overdue:hover,
+tbody tr.task-row-blocked:hover,
+tbody tr.task-row-blocked.task-row-overdue:hover {
+  background: color-mix(in srgb, var(--danger) 24%, var(--primary) 6%);
+}
 
 .actions a {
   color: var(--text);
@@ -7994,6 +8044,17 @@ button {
             font-size: 14px;
           }
 
+.wrap {
+  max-width: 1800px;
+  margin: 0 auto;
+  padding: 20px 18px 32px;
+}
+
+.panel.task-table-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--line);
@@ -8001,21 +8062,29 @@ button {
   background: rgba(255,255,255,0.03);
 }
 
-th, td {
-  padding: 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  text-align: left;
+table {
+  width: 100%;
+  min-width: 1500px;
+  border-collapse: collapse;
 }
 
-th {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  background: rgba(255,255,255,0.04);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+th, td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  text-align: left;
+  vertical-align: top;
 }
+
+th:nth-child(1), td:nth-child(1) { min-width: 80px; }   /* ID */
+th:nth-child(2), td:nth-child(2) { min-width: 300px; }  /* Title */
+th:nth-child(3), td:nth-child(3) { min-width: 120px; }  /* Business */
+th:nth-child(4), td:nth-child(4) { min-width: 160px; }  /* Area */
+th:nth-child(5), td:nth-child(5) { min-width: 150px; }  /* Assignee */
+th:nth-child(6), td:nth-child(6) { min-width: 120px; }  /* Status */
+th:nth-child(7), td:nth-child(7) { min-width: 100px; }  /* Progress */
+th:nth-child(8), td:nth-child(8) { min-width: 110px; }  /* Priority */
+th:nth-child(9), td:nth-child(9) { min-width: 130px; }  /* Deadline */
+th:nth-child(10), td:nth-child(10) { min-width: 260px; } /* Blocker */
 
 tbody tr:hover {
   background: color-mix(in srgb, var(--primary) 10%, transparent);
@@ -8049,7 +8118,7 @@ tbody tr:hover {
             </div>
           </div>
 
-<div class="panel">
+<div class="panel task-table-panel">
   <div class="controls">
   <input id="search" placeholder="Search task title or ID" />
   <select id="assignee"><option value="">All assignees</option></select>
@@ -8303,8 +8372,23 @@ if (overdue) params.set('overdue', 'true');
             document.getElementById('statusText').textContent = rows.length ? '' : 'No tasks found';
 
 document.getElementById('taskRows').innerHTML = rows.map(function(task) {
+  const status = String(task.status || '').toLowerCase();
+
+  const isBlocked = status === 'blocked';
+
+  const isOverdue =
+    !!task.deadline &&
+    status !== 'done' &&
+    status !== 'cancelled' &&
+    new Date(task.deadline + 'T23:59:59') < new Date();
+
+  const rowClasses = [
+    isBlocked ? 'task-row-blocked' : '',
+    isOverdue ? 'task-row-overdue' : ''
+  ].filter(Boolean).join(' ');
+
   return (
-    '<tr onclick="openTaskDetail(' + task.id + ')">' +
+    '<tr class="' + rowClasses + '" onclick="openTaskDetail(' + task.id + ')">' +
       '<td>#' + (task.task_no || task.id) + '</td>' +
       '<td>' + escapeHtml(task.title || '') + '</td>' +
       '<td>' + escapeHtml(task.business || '-') + '</td>' +
