@@ -8401,7 +8401,7 @@ document.getElementById('taskRows').innerHTML = rows.map(function(task) {
       '<td>' + escapeHtml(task.status || '') + '</td>' +
       '<td>' + (task.progress ?? 0) + '%</td>' +
       '<td>' + escapeHtml(task.priority || '') + '</td>' +
-      '<td>' + escapeHtml(task.deadline ? formatTime(task.deadline) : '-') + '</td>' +
+      '<td>' + escapeHtml(task.deadline || '-') + '</td>' +
       '<td>' + escapeHtml(task.blocker_note || '-') + '</td>' +
     '</tr>'
   );
