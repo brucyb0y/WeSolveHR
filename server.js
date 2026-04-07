@@ -113,7 +113,7 @@ function safeParseJson(text) {
 }
 
 function parseDeadlineCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
   const match = raw.match(/^deadline\s+(\d+)\s+(.+)$/i);
   if (!match) return null;
 
@@ -446,7 +446,7 @@ function monthNameToNumber(monthText) {
 }
 
 function parseLateForOtherCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   const match = raw.match(
     /^late\s+(.+?)\s+(\d{1,2}(:\d{2})?\s*(am|pm))(?:\s+(.+))?$/i,
@@ -528,7 +528,7 @@ function parseFlexibleDateText(input) {
 }
 
 function parseCancelTaskCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
   const match = raw.match(/^(cancel|delete)\s+task\s+(\d+)$/i);
 
   if (!match) return null;
@@ -605,7 +605,7 @@ function getOpenBreakFromEvents(events) {
 }
 
 function parseMarkAttendanceCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   let match = raw.match(
     /^mark\s+(.+?)\s+(login|logout|back)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
@@ -675,7 +675,7 @@ function parseMarkAttendanceCommand(text) {
 }
 
 function parseDirectManagerAttendanceCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   let match = raw.match(
     /^(login|logout|back)\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
@@ -766,7 +766,7 @@ function parseDirectManagerAttendanceCommand(text) {
 }
 
 function parseSimpleTaskCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   let match = raw.match(
     /^task\s+(.+?)\s+(low|medium|high|urgent)\s+(.+?)\s+by\s+(.+)$/i,
@@ -826,7 +826,7 @@ function parseStatusCommand(text) {
 }
 
 function parseProgressCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   let match = raw.match(/^progress\s+task\s+(\d+)\s+(\d{1,3}%?)\s+(.+)$/i);
   if (match) {
@@ -848,7 +848,7 @@ function parseProgressCommand(text) {
 }
 
 function parseAdvancedCreateTaskCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   const match = raw.match(
     /^create task\s+(.+?)\s+business\s+(.+?)\s+area\s+(.+?)\s+owner\s+(.+?)\s+priority\s+(low|medium|high|urgent)\s+due\s+(.+)$/i,
@@ -885,7 +885,7 @@ function parseAdvancedCreateTaskCommand(text) {
 }
 
 function parseEditTaskCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   let match = raw.match(/^edit\s+task\s+(\d+)\s+title\s+(.+)$/i);
   if (match) {
@@ -992,7 +992,7 @@ function parseUnblockCommand(text) {
 }
 
 function parseDoneCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
   const match = raw.match(/^done\s+(\d+)\s+(.+)$/i);
   if (!match) return null;
 
@@ -1003,7 +1003,7 @@ function parseDoneCommand(text) {
 }
 
 function parseTasksByNameCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
   const match = raw.match(/^tasks\s+(.+)$/i);
   if (!match) return null;
 
@@ -1031,7 +1031,7 @@ function parseUndoLastTaskChangeCommand(text) {
 }
 
 function parseOffDayCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   const match = raw.match(/^(off|leave)\s+(.+)$/i);
   if (!match) return null;
@@ -1048,7 +1048,7 @@ function parseOffDayCommand(text) {
 }
 
 function parseOffDayForOtherCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   const match = raw.match(
     /^(off|leave)\s+(.+?)\s+(?:on\s+)?(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
@@ -1065,7 +1065,7 @@ function parseOffDayForOtherCommand(text) {
 }
 
 function parseAttendanceCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   if (/^login$/i.test(raw)) {
     return {
@@ -1139,7 +1139,7 @@ function parseAttendanceCommand(text) {
 }
 
 function parseLateCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   const match = raw.match(
     /^late\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))(?:\s+(.+))?$/i,
@@ -5208,7 +5208,7 @@ function getCurrentAttendanceDayRange() {
 }
 
 function parseEmployeeSummaryCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   if (/^employee\s+summary$/i.test(raw)) {
     return {
@@ -5243,7 +5243,7 @@ function parseProgressPercentToken(token) {
 }
 
 function parseLateUnsureCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   if (/^late\s+unsure$/i.test(raw)) {
     return {
@@ -5262,7 +5262,7 @@ function parseLateUnsureCommand(text) {
 }
 
 function parseTimelineCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
   let match = raw.match(
     /^timeline\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
   );
@@ -5284,7 +5284,7 @@ function parseTimelineCommand(text) {
 }
 
 function parseAuditAttendanceCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
   let match = raw.match(
     /^audit\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
   );
@@ -5306,7 +5306,7 @@ function parseAuditAttendanceCommand(text) {
 }
 
 function parseUndoAttendanceCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   if (/^undo\s+my\s+attendance$/i.test(raw)) {
     return {
@@ -5325,7 +5325,7 @@ function parseUndoAttendanceCommand(text) {
 }
 
 function parseResetAttendanceCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   let match = raw.match(
     /^reset\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
@@ -5339,7 +5339,7 @@ function parseResetAttendanceCommand(text) {
 }
 
 function parseForceAttendanceCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   let match = raw.match(
     /^force\s+(logout|back)\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
@@ -5363,7 +5363,7 @@ function parseForceAttendanceCommand(text) {
 }
 
 function parseFixAttendanceCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   const match = raw.match(
     /^fix\s+(.+?)\s+(login|logout|break|back)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
@@ -5378,7 +5378,7 @@ function parseFixAttendanceCommand(text) {
 }
 
 function parseRemoveAttendanceCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   const match = raw.match(/^remove\s+(.+?)\s+(login|logout|break|back)$/i);
   if (!match) return null;
@@ -5390,7 +5390,7 @@ function parseRemoveAttendanceCommand(text) {
 }
 
 function parseAutoFixAttendanceCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   let match = raw.match(
     /^auto\s+fix\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
@@ -5412,7 +5412,7 @@ function parseAutoFixAttendanceCommand(text) {
 }
 
 function parseLockAttendanceCommand(text) {
-  const raw = String(text || "").trim();
+  const raw = normalizeText(text);
 
   let match = raw.match(
     /^(lock|unlock)\s+(.+?)\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
