@@ -8393,11 +8393,15 @@ document.getElementById('taskRows').innerHTML = rows.map(function(task) {
       '<td>' + escapeHtml(task.title || '') + '</td>' +
       '<td>' + escapeHtml(task.business || '-') + '</td>' +
       '<td>' + escapeHtml(task.area || '-') + '</td>' +
-      '<td>' + escapeHtml(task.assignee_name || task.owner_names || '') + '</td>' +
+      '<td>' + escapeHtml(
+  task.assignee_name ||
+  (Array.isArray(task.owner_names) ? task.owner_names.join(', ') : task.owner_names) ||
+  '-'
+) + '</td>' +
       '<td>' + escapeHtml(task.status || '') + '</td>' +
       '<td>' + (task.progress ?? 0) + '%</td>' +
       '<td>' + escapeHtml(task.priority || '') + '</td>' +
-      '<td>' + escapeHtml(task.deadline || '-') + '</td>' +
+      '<td>' + escapeHtml(task.deadline ? formatTime(task.deadline) : '-') + '</td>' +
       '<td>' + escapeHtml(task.blocker_note || '-') + '</td>' +
     '</tr>'
   );
