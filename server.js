@@ -2673,24 +2673,6 @@ async function failInboundProcessing(messageSid, errorMessage, orgId = null) {
   if (error) console.error("failInboundProcessing error:", error);
 }
 
-async function runInboundAction({
-  messageSid,
-  successType,
-  successRefId = null,
-  failureType = "command_failed",
-  action,
-}) {
-  try {
-    const result = await action();
-    await completeInboundProcessing(messageSid, successType, successRefId);
-    return result;
-  } catch (error) {
-    console.error(`runInboundAction failed [${failureType}]:`, error);
-    await failInboundProcessing(messageSid, failureType);
-    throw error;
-  }
-}
-
 async function handleEmployeeSummary(res, actingUser, command) {
   const targetUser = command.target_name
     ? await findUniqueUserByName(command.target_name, actingUser.org_id)
@@ -10068,11 +10050,16 @@ app.post("/whatsapp", async (req, res) => {
   }) {
     try {
       const result = await action();
-      await completeInboundProcessing(messageSid, successType, successRefId);
+      await completeInboundProcessing(
+        messageSid,
+        successType,
+        successRefId,
+        resolvedOrgId,
+      );
       return result;
     } catch (error) {
       console.error(`runInboundAction failed [${failureType}]:`, error);
-      await failInboundProcessing(messageSid, failureType);
+      await failInboundProcessing(messageSid, failureType, resolvedOrgId);
       throw error;
     }
   }
@@ -10090,6 +10077,46 @@ app.post("/whatsapp", async (req, res) => {
     messageSid = req.body.MessageSid || null;
     const normalizedBody = normalizeText(body).replace(/\s+/g, " ");
 
+    const rateLimitKey = from || req.ip || "unknown";
+    const inboundMessageSid =
+      req.body.MessageSid || req.body.SmsMessageSid || null;
+    const requestTag = `[wa:${inboundMessageSid || "no-sid"}]`;
+
+    console.log(`${requestTag} Incoming message`, {
+      from,
+      body,
+      profileName: req.body.ProfileName || null,
+    });
+
+    if (!checkRateLimit(rateLimitKey)) {
+      console.warn("Rate limit exceeded for:", rateLimitKey);
+      return sendTwiml(
+        res,
+        "Too many requests. Please wait a minute and try again.",
+      );
+    }
+
+    const { user, error: userError } = await getActiveUserByPhone(from);
+    const resolvedOrgId = user?.org_id ?? DASHBOARD_ORG_ID;
+
+    async function runInboundAction({
+      messageSid,
+      successType,
+      successRefId = null,
+      failureType = "command_failed",
+      action,
+    }) {
+      try {
+        const result = await action();
+        await completeInboundProcessing(messageSid, successType, successRefId);
+        return result;
+      } catch (error) {
+        console.error(`runInboundAction failed [${failureType}]:`, error);
+        await failInboundProcessing(messageSid, failureType);
+        throw error;
+      }
+    }
+
     async function logParse({
       intentDetected,
       parserUsed,
@@ -10099,7 +10126,7 @@ app.post("/whatsapp", async (req, res) => {
       actionTaken = null,
     }) {
       await insertMessageParsingLog({
-        orgId: user?.org_id ?? DASHBOARD_ORG_ID,
+        orgId: resolvedOrgId,
         messageSid,
         phoneNumber: from,
         rawText: body,
@@ -10117,8 +10144,32 @@ app.post("/whatsapp", async (req, res) => {
       messageSid,
       from,
       normalizedBody,
-      user?.org_id ?? DASHBOARD_ORG_ID,
+      resolvedOrgId,
     );
+
+    if (processingStart.error) {
+      console.error("Inbound processing start error:", processingStart.error);
+      return sendTwiml(res, "❌ System error while processing message");
+    }
+
+    if (processingStart.duplicate) {
+      return sendTwiml(
+        res,
+        "Duplicate message detected. No action was repeated.",
+      );
+    }
+
+    if (userError) {
+      await failInboundProcessing(
+        messageSid,
+        "user_lookup_failed",
+        resolvedOrgId,
+      );
+      return sendTwiml(
+        res,
+        "❌ Could not verify your account right now\nReason: user lookup failed\nTry: please message again in a minute",
+      );
+    }
 
     if (processingStart.error) {
       console.error("Inbound processing start error:", processingStart.error);
@@ -10145,7 +10196,7 @@ app.post("/whatsapp", async (req, res) => {
 
     if (!checkRateLimit(rateLimitKey)) {
       console.warn("Rate limit exceeded for:", rateLimitKey);
-      await failInboundProcessing(messageSid, "rate_limited");
+      await failInboundProcessing(messageSid, "rate_limited", resolvedOrgId);
       return sendTwiml(
         res,
         "Too many requests. Please wait a minute and try again.",
@@ -10166,7 +10217,11 @@ app.post("/whatsapp", async (req, res) => {
 
     if (logResult.error) {
       console.error("Incoming message log failed:", logResult.error);
-      await failInboundProcessing(messageSid, "message_log_failed");
+      await failInboundProcessing(
+        messageSid,
+        "message_log_failed",
+        resolvedOrgId,
+      );
       return sendTwiml(
         res,
         "❌ Could not process your message right now\nReason: message logging failed\nTry: please send it again in a minute",
@@ -10184,6 +10239,7 @@ app.post("/whatsapp", async (req, res) => {
         messageSid,
         "duplicate_message_log",
         null,
+        resolvedOrgId,
       );
 
       return sendTwiml(
@@ -10194,7 +10250,7 @@ app.post("/whatsapp", async (req, res) => {
 
     if (!user) {
       console.log("Unknown sender:", from);
-      await failInboundProcessing(messageSid, "unknown_user");
+      await failInboundProcessing(messageSid, "unknown_user", resolvedOrgId);
       return sendTwiml(
         res,
         "❌ Your number is not registered in this system\nPlease contact admin to get added",
@@ -10933,14 +10989,18 @@ app.post("/whatsapp", async (req, res) => {
       actionTaken: "unknown_command_reply",
     });
 
-    await failInboundProcessing(messageSid, "unknown_command");
+    await failInboundProcessing(messageSid, "unknown_command", resolvedOrgId);
     return sendTwiml(
       res,
       "❌ I did not understand that command\nTry: help\nExamples:\nlogin\nmy tasks\ntask Aj high test dashboard by tomorrow",
     );
   } catch (error) {
     if (messageSid) {
-      await failInboundProcessing(messageSid, "webhook_exception");
+      await failInboundProcessing(
+        messageSid,
+        "webhook_exception",
+        resolvedOrgId,
+      );
     }
     console.error("Unhandled /whatsapp error:", error);
     return sendTwiml(res, "Something went wrong.");
