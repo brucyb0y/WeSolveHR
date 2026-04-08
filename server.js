@@ -10042,28 +10042,6 @@ th {
 app.post("/whatsapp", async (req, res) => {
   let messageSid = null;
 
-  async function runInboundAction({
-    successType,
-    successRefId = null,
-    failureType = "command_failed",
-    action,
-  }) {
-    try {
-      const result = await action();
-      await completeInboundProcessing(
-        messageSid,
-        successType,
-        successRefId,
-        resolvedOrgId,
-      );
-      return result;
-    } catch (error) {
-      console.error(`runInboundAction failed [${failureType}]:`, error);
-      await failInboundProcessing(messageSid, failureType, resolvedOrgId);
-      throw error;
-    }
-  }
-
   try {
     if (!validateTwilioRequest(req)) {
       console.warn("Rejected request due to invalid Twilio signature.");
@@ -10099,24 +10077,6 @@ app.post("/whatsapp", async (req, res) => {
     const { user, error: userError } = await getActiveUserByPhone(from);
     const resolvedOrgId = user?.org_id ?? DASHBOARD_ORG_ID;
 
-    async function runInboundAction({
-      messageSid,
-      successType,
-      successRefId = null,
-      failureType = "command_failed",
-      action,
-    }) {
-      try {
-        const result = await action();
-        await completeInboundProcessing(messageSid, successType, successRefId);
-        return result;
-      } catch (error) {
-        console.error(`runInboundAction failed [${failureType}]:`, error);
-        await failInboundProcessing(messageSid, failureType);
-        throw error;
-      }
-    }
-
     async function logParse({
       intentDetected,
       parserUsed,
@@ -10140,6 +10100,35 @@ app.post("/whatsapp", async (req, res) => {
       });
     }
 
+    async function runInboundAction({
+      successType,
+      successRefId = null,
+      failureType = "command_failed",
+      action,
+    }) {
+      try {
+        const result = await action();
+        await completeInboundProcessing(
+          messageSid,
+          successType,
+          successRefId,
+          resolvedOrgId,
+        );
+        return result;
+      } catch (error) {
+        console.error(`runInboundAction failed [${failureType}]:`, error);
+        await failInboundProcessing(messageSid, failureType, resolvedOrgId);
+        throw error;
+      }
+    }
+
+    if (userError) {
+      return sendTwiml(
+        res,
+        "❌ Could not verify your account right now\nReason: user lookup failed\nTry: please message again in a minute",
+      );
+    }
+
     const processingStart = await beginInboundProcessing(
       messageSid,
       from,
@@ -10159,60 +10148,6 @@ app.post("/whatsapp", async (req, res) => {
       );
     }
 
-    if (userError) {
-      await failInboundProcessing(
-        messageSid,
-        "user_lookup_failed",
-        resolvedOrgId,
-      );
-      return sendTwiml(
-        res,
-        "❌ Could not verify your account right now\nReason: user lookup failed\nTry: please message again in a minute",
-      );
-    }
-
-    if (processingStart.error) {
-      console.error("Inbound processing start error:", processingStart.error);
-      return sendTwiml(res, "❌ System error while processing message");
-    }
-
-    if (processingStart.duplicate) {
-      return sendTwiml(
-        res,
-        "Duplicate message detected. No action was repeated.",
-      );
-    }
-
-    const rateLimitKey = from || req.ip || "unknown";
-    const inboundMessageSid =
-      req.body.MessageSid || req.body.SmsMessageSid || null;
-    const requestTag = `[wa:${inboundMessageSid || "no-sid"}]`;
-
-    console.log(`${requestTag} Incoming message`, {
-      from,
-      body,
-      profileName: req.body.ProfileName || null,
-    });
-
-    if (!checkRateLimit(rateLimitKey)) {
-      console.warn("Rate limit exceeded for:", rateLimitKey);
-      await failInboundProcessing(messageSid, "rate_limited", resolvedOrgId);
-      return sendTwiml(
-        res,
-        "Too many requests. Please wait a minute and try again.",
-      );
-    }
-
-    const { user, error: userError } = await getActiveUserByPhone(from);
-
-    if (userError) {
-      await failInboundProcessing(messageSid, "user_lookup_failed");
-      return sendTwiml(
-        res,
-        "❌ Could not verify your account right now\nReason: user lookup failed\nTry: please message again in a minute",
-      );
-    }
-
     const logResult = await logIncomingMessage(user, req.body, body, from);
 
     if (logResult.error) {
@@ -10229,19 +10164,12 @@ app.post("/whatsapp", async (req, res) => {
     }
 
     if (logResult.duplicate) {
-      console.log("Duplicate inbound WhatsApp message detected", {
-        from,
-        messageSid: req.body.MessageSid || req.body.SmsMessageSid || null,
-        body,
-      });
-
       await completeInboundProcessing(
         messageSid,
         "duplicate_message_log",
         null,
         resolvedOrgId,
       );
-
       return sendTwiml(
         res,
         "⚠️ We already received this message. If your attendance did not update, send 'status'.",
@@ -10249,7 +10177,6 @@ app.post("/whatsapp", async (req, res) => {
     }
 
     if (!user) {
-      console.log("Unknown sender:", from);
       await failInboundProcessing(messageSid, "unknown_user", resolvedOrgId);
       return sendTwiml(
         res,
