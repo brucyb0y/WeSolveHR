@@ -1780,11 +1780,12 @@ async function getActiveUserByPhone(phoneNumber) {
   return { user: data || null, error: null };
 }
 
-async function getLastAction(userId) {
+async function getLastAction(userId, orgId) {
   const { data, error } = await supabase
     .from("attendance_events")
     .select("action")
     .eq("user_id", userId)
+    .eq("org_id", orgId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -1797,11 +1798,12 @@ async function getLastAction(userId) {
   return data?.action || null;
 }
 
-async function getLastActionAtOrBefore(userId, occurredAtIso = null) {
+async function getLastActionAtOrBefore(userId, orgId, occurredAtIso = null) {
   let query = supabase
     .from("attendance_events")
     .select("action, created_at")
     .eq("user_id", userId)
+    .eq("org_id", orgId)
     .order("created_at", { ascending: false })
     .limit(1);
 
@@ -1939,16 +1941,17 @@ async function getTaskOwnerNames(taskId, orgId) {
   return (data || []).map((x) => x.users?.name).filter(Boolean);
 }
 
-async function getTaskAssignedCount(userId) {
+async function getTaskAssignedCount(userId, orgId) {
   const { data, error } = await supabase
     .from("task_owners")
     .select(
       `
       task_id,
-      tasks!inner(id, status)
+      tasks!inner(id, org_id, status)
     `,
     )
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("org_id", orgId);
 
   if (error) {
     console.error("Assigned task count error:", error);
@@ -1958,6 +1961,7 @@ async function getTaskAssignedCount(userId) {
   return (data || []).filter(
     (row) =>
       row.tasks &&
+      row.tasks.org_id === orgId &&
       !["done", "archived", "cancelled"].includes(row.tasks.status),
   ).length;
 }
@@ -2082,13 +2086,14 @@ function formatDurationMinutes(totalMinutes) {
   return `${hours}h ${rem}m`;
 }
 
-async function getLatestAttendanceEvent(userId) {
+async function getLatestAttendanceEvent(userId, orgId) {
   const { data, error } = await supabase
     .from("attendance_events")
     .select(
-      "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
+      "id, org_id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
     )
     .eq("user_id", userId)
+    .eq("org_id", orgId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -2101,13 +2106,14 @@ async function getLatestAttendanceEvent(userId) {
   return data || null;
 }
 
-async function getLatestBreakEvent(userId) {
+async function getLatestBreakEvent(userId, orgId) {
   const { data, error } = await supabase
     .from("attendance_events")
     .select(
-      "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
+      "id, org_id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
     )
     .eq("user_id", userId)
+    .eq("org_id", orgId)
     .eq("action", "break")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -2121,14 +2127,18 @@ async function getLatestBreakEvent(userId) {
   return data || null;
 }
 
-async function getAttendanceEventsForAttendanceDay(attendanceDateString) {
+async function getAttendanceEventsForAttendanceDay(
+  attendanceDateString,
+  orgId,
+) {
   const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
 
   const { data, error } = await supabase
     .from("attendance_events")
     .select(
-      "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note, acted_by_phone, target_phone",
+      "id, org_id, user_id, action, created_at, duration_min, expected_duration_min, reason, note, acted_by_phone, target_phone",
     )
+    .eq("org_id", orgId)
     .gte("created_at", startUtc)
     .lt("created_at", endUtc)
     .order("created_at", { ascending: true });
@@ -2143,15 +2153,17 @@ async function getAttendanceEventsForAttendanceDay(attendanceDateString) {
 async function getAttendanceEventsForUserOnAttendanceDay(
   userId,
   attendanceDateString,
+  orgId,
 ) {
   const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
 
   const { data, error } = await supabase
     .from("attendance_events")
     .select(
-      "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note, acted_by_phone, target_phone",
+      "id, org_id, user_id, action, created_at, duration_min, expected_duration_min, reason, note, acted_by_phone, target_phone",
     )
     .eq("user_id", userId)
+    .eq("org_id", orgId)
     .gte("created_at", startUtc)
     .lt("created_at", endUtc)
     .order("created_at", { ascending: true });
@@ -2163,13 +2175,18 @@ async function getAttendanceEventsForUserOnAttendanceDay(
   return data || [];
 }
 
-async function getLatestBreakEventAtOrBefore(userId, occurredAtIso = null) {
+async function getLatestBreakEventAtOrBefore(
+  userId,
+  orgId,
+  occurredAtIso = null,
+) {
   let query = supabase
     .from("attendance_events")
     .select(
-      "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
+      "id, org_id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
     )
     .eq("user_id", userId)
+    .eq("org_id", orgId)
     .eq("action", "break")
     .order("created_at", { ascending: false })
     .limit(1);
@@ -2190,15 +2207,17 @@ async function getLatestBreakEventAtOrBefore(userId, occurredAtIso = null) {
 
 async function getLatestAttendanceEventByAction(
   userId,
+  orgId,
   action,
   attendanceDateString = null,
 ) {
   let query = supabase
     .from("attendance_events")
     .select(
-      "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
+      "id, org_id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
     )
     .eq("user_id", userId)
+    .eq("org_id", orgId)
     .eq("action", action)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -2218,11 +2237,12 @@ async function getLatestAttendanceEventByAction(
   return data || null;
 }
 
-async function deleteAttendanceEventById(eventId) {
+async function deleteAttendanceEventById(eventId, orgId) {
   const { error } = await supabase
     .from("attendance_events")
     .delete()
-    .eq("id", eventId);
+    .eq("id", eventId)
+    .eq("org_id", orgId);
 
   return error;
 }
@@ -2230,6 +2250,7 @@ async function deleteAttendanceEventById(eventId) {
 async function deleteAttendanceEventsForUserOnAttendanceDay(
   userId,
   attendanceDateString,
+  orgId,
 ) {
   const { startUtc, endUtc } = getAttendanceDayUtcRange(attendanceDateString);
 
@@ -2237,37 +2258,49 @@ async function deleteAttendanceEventsForUserOnAttendanceDay(
     .from("attendance_events")
     .delete()
     .eq("user_id", userId)
+    .eq("org_id", orgId)
     .gte("created_at", startUtc)
     .lt("created_at", endUtc);
 
   return error;
 }
 
-async function deleteLateArrivalForUserOnDate(userId, attendanceDateString) {
+async function deleteLateArrivalForUserOnDate(
+  userId,
+  attendanceDateString,
+  orgId,
+) {
   const { error } = await supabase
     .from("late_arrivals")
     .delete()
     .eq("user_id", userId)
+    .eq("org_id", orgId)
     .eq("late_date", attendanceDateString);
 
   return error;
 }
 
-async function deletePlannedOffForUserOnDate(userId, attendanceDateString) {
+async function deletePlannedOffForUserOnDate(
+  userId,
+  attendanceDateString,
+  orgId,
+) {
   const { error } = await supabase
     .from("planned_time_off")
     .delete()
     .eq("user_id", userId)
+    .eq("org_id", orgId)
     .eq("off_date", attendanceDateString);
 
   return error;
 }
 
-async function isAttendanceDayLocked(userId, attendanceDateString) {
+async function isAttendanceDayLocked(userId, attendanceDateString, orgId) {
   const { data, error } = await supabase
     .from("attendance_day_locks")
     .select("id, is_locked")
     .eq("user_id", userId)
+    .eq("org_id", orgId)
     .eq("attendance_date", attendanceDateString)
     .maybeSingle();
 
@@ -2406,9 +2439,9 @@ function analyzeAttendanceIssues(events) {
   return issues;
 }
 
-async function getTodayAttendanceEventsForAllUsers() {
+async function getTodayAttendanceEventsForAllUsers(orgId) {
   const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
-  return getAttendanceEventsForAttendanceDay(attendanceDate);
+  return getAttendanceEventsForAttendanceDay(attendanceDate, orgId);
 }
 
 function computeWorkedMinutesFromEvents(events) {
@@ -2660,7 +2693,10 @@ async function handleEmployeeSummary(res, actingUser, command) {
   }
 
   try {
-    const monthly = await getEmployeeMonthlyAttendanceSummary(targetUser.id);
+    const monthly = await getEmployeeMonthlyAttendanceSummary(
+      targetUser.id,
+      actingUser.org_id,
+    );
 
     const lines = [
       `📊 Employee summary: ${targetUser.name}`,
@@ -2933,7 +2969,8 @@ async function handleEditTask(res, user, editCommand) {
     const { error: deleteError } = await supabase
       .from("task_owners")
       .delete()
-      .eq("task_id", task.id);
+      .eq("task_id", task.id)
+      .eq("org_id", user.org_id);
 
     if (deleteError) {
       console.error("Task owner delete error:", deleteError);
@@ -3034,10 +3071,17 @@ async function handleTimelineAttendance(res, actingUser, command) {
     );
   }
 
+  const events = await getAttendanceEventsForUserOnAttendanceDay(
+    targetUser.id,
+    attendanceDate,
+    actingUser.org_id,
+  );
+
   try {
     const events = await getAttendanceEventsForUserOnAttendanceDay(
       targetUser.id,
       attendanceDate,
+      actingUser.org_id,
     );
 
     const lines = [
@@ -3082,6 +3126,7 @@ async function handleAuditAttendance(res, actingUser, command) {
     const events = await getAttendanceEventsForUserOnAttendanceDay(
       targetUser.id,
       attendanceDate,
+      actingUser.org_id,
     );
 
     const issues = analyzeAttendanceIssues(events);
@@ -3123,7 +3168,10 @@ async function handleUndoAttendance(res, actingUser, command) {
   }
 
   try {
-    const latestEvent = await getLatestAttendanceEvent(targetUser.id);
+    const latestEvent = await getLatestAttendanceEvent(
+      targetUser.id,
+      actingUser.org_id,
+    );
     if (!latestEvent) {
       return sendTwiml(
         res,
@@ -3134,7 +3182,11 @@ async function handleUndoAttendance(res, actingUser, command) {
     const attendanceDate = getAttendanceDayDateStringFromDate(
       new Date(latestEvent.created_at),
     );
-    const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+    const locked = await isAttendanceDayLocked(
+      targetUser.id,
+      attendanceDate,
+      actingUser.org_id,
+    );
 
     if (locked) {
       return sendTwiml(
@@ -3143,7 +3195,10 @@ async function handleUndoAttendance(res, actingUser, command) {
       );
     }
 
-    const deleteError = await deleteAttendanceEventById(latestEvent.id);
+    const deleteError = await deleteAttendanceEventById(
+      latestEvent.id,
+      actingUser.org_id,
+    );
     if (deleteError) {
       console.error("Undo attendance delete error:", deleteError);
       return sendTwiml(res, "Failed to undo attendance.");
@@ -3193,7 +3248,11 @@ async function handleResetAttendance(res, actingUser, command) {
     );
   }
 
-  const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+  const locked = await isAttendanceDayLocked(
+    targetUser.id,
+    attendanceDate,
+    actingUser.org_id,
+  );
   if (locked) {
     return sendTwiml(
       res,
@@ -3205,15 +3264,25 @@ async function handleResetAttendance(res, actingUser, command) {
     const oldEvents = await getAttendanceEventsForUserOnAttendanceDay(
       targetUser.id,
       attendanceDate,
+      actingUser.org_id,
     );
 
     const [attendanceError, lateError, offError] = await Promise.all([
       deleteAttendanceEventsForUserOnAttendanceDay(
         targetUser.id,
         attendanceDate,
+        actingUser.org_id,
       ),
-      deleteLateArrivalForUserOnDate(targetUser.id, attendanceDate),
-      deletePlannedOffForUserOnDate(targetUser.id, attendanceDate),
+      deleteLateArrivalForUserOnDate(
+        targetUser.id,
+        attendanceDate,
+        actingUser.org_id,
+      ),
+      deletePlannedOffForUserOnDate(
+        targetUser.id,
+        attendanceDate,
+        actingUser.org_id,
+      ),
     ]);
 
     if (attendanceError || lateError || offError) {
@@ -3285,7 +3354,11 @@ async function handleForceAttendance(res, actingUser, command) {
   const attendanceDate = getAttendanceDayDateStringFromDate(
     new Date(occurredAtIso),
   );
-  const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+  const locked = await isAttendanceDayLocked(
+    targetUser.id,
+    attendanceDate,
+    actingUser.org_id,
+  );
 
   if (locked) {
     return sendTwiml(
@@ -3300,6 +3373,7 @@ async function handleForceAttendance(res, actingUser, command) {
   if (command.action === "back") {
     const lastBreak = await getLatestBreakEventAtOrBefore(
       targetUser.id,
+      actingUser.org_id,
       occurredAtIso,
     );
     if (lastBreak) {
@@ -3377,7 +3451,11 @@ async function handleFixAttendance(res, actingUser, command) {
   const attendanceDate = getAttendanceDayDateStringFromDate(
     new Date(correctedIso),
   );
-  const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+  const locked = await isAttendanceDayLocked(
+    targetUser.id,
+    attendanceDate,
+    actingUser.org_id,
+  );
 
   if (locked) {
     return sendTwiml(
@@ -3388,6 +3466,7 @@ async function handleFixAttendance(res, actingUser, command) {
 
   const latestActionEvent = await getLatestAttendanceEventByAction(
     targetUser.id,
+    actingUser.org_id,
     command.action,
     attendanceDate,
   );
@@ -3411,6 +3490,7 @@ async function handleFixAttendance(res, actingUser, command) {
   if (command.action === "back") {
     const lastBreak = await getLatestBreakEventAtOrBefore(
       targetUser.id,
+      actingUser.org_id,
       correctedIso,
     );
     if (lastBreak) {
@@ -3465,7 +3545,11 @@ async function handleRemoveAttendance(res, actingUser, command) {
   }
 
   const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
-  const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+  const locked = await isAttendanceDayLocked(
+    targetUser.id,
+    attendanceDate,
+    actingUser.org_id,
+  );
 
   if (locked) {
     return sendTwiml(
@@ -3476,6 +3560,7 @@ async function handleRemoveAttendance(res, actingUser, command) {
 
   const latestActionEvent = await getLatestAttendanceEventByAction(
     targetUser.id,
+    actingUser.org_id,
     command.action,
     attendanceDate,
   );
@@ -3487,7 +3572,11 @@ async function handleRemoveAttendance(res, actingUser, command) {
     );
   }
 
-  const deleteError = await deleteAttendanceEventById(latestActionEvent.id);
+  const deleteError = await deleteAttendanceEventById(
+    latestActionEvent.id,
+    actingUser.org_id,
+  );
+
   if (deleteError) {
     console.error("Remove attendance delete error:", deleteError);
     return sendTwiml(res, "Failed to remove attendance event.");
@@ -3533,7 +3622,12 @@ async function handleAutoFixAttendance(res, actingUser, command) {
     );
   }
 
-  const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+  const locked = await isAttendanceDayLocked(
+    targetUser.id,
+    attendanceDate,
+    actingUser.org_id,
+  );
+
   if (locked) {
     return sendTwiml(
       res,
@@ -3545,6 +3639,7 @@ async function handleAutoFixAttendance(res, actingUser, command) {
     const events = await getAttendanceEventsForUserOnAttendanceDay(
       targetUser.id,
       attendanceDate,
+      actingUser.org_id,
     );
 
     if (!events.length) {
@@ -3582,7 +3677,9 @@ async function handleAutoFixAttendance(res, actingUser, command) {
     const refreshedEvents = await getAttendanceEventsForUserOnAttendanceDay(
       targetUser.id,
       attendanceDate,
+      actingUser.org_id,
     );
+
     const refreshedLatest = refreshedEvents[refreshedEvents.length - 1];
 
     if (
@@ -3873,7 +3970,8 @@ async function handleMyTasks(res, user) {
       tasks!inner(id, task_no, title, priority, status, progress, deadline)
     `,
     )
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .eq("org_id", user.org_id);
 
   if (error) {
     console.error("My tasks query error:", error);
@@ -4060,6 +4158,7 @@ async function handleShowOverdue(res, user) {
   const { data, error } = await supabase
     .from("overdue_tasks_view")
     .select("*")
+    .eq("org_id", user.org_id)
     .order("days_overdue", { ascending: false });
 
   if (error) {
@@ -4083,7 +4182,7 @@ async function handleShowOverdue(res, user) {
 }
 
 async function handleWhoAmI(res, user) {
-  const openTaskCount = await getTaskAssignedCount(user.id);
+  const openTaskCount = await getTaskAssignedCount(user.id, user.org_id);
 
   return sendTwiml(
     res,
@@ -4097,17 +4196,18 @@ async function handleStatus(res, user) {
     const { startUtc, endUtc } = getCurrentAttendanceDayRange();
 
     const [latestEvent, eventsResult, lateRows] = await Promise.all([
-      getLatestAttendanceEvent(user.id),
+      getLatestAttendanceEvent(user.id, user.org_id),
       supabase
         .from("attendance_events")
         .select(
-          "id, user_id, action, created_at, expected_duration_min, reason, note",
+          "id, org_id, user_id, action, created_at, expected_duration_min, reason, note",
         )
         .eq("user_id", user.id)
+        .eq("org_id", user.org_id)
         .gte("created_at", startUtc)
         .lt("created_at", endUtc)
         .order("created_at", { ascending: true }),
-      getLateArrivalRowsForDate(attendanceDate),
+      getLateArrivalRowsForDate(attendanceDate, user.org_id),
     ]);
 
     if (eventsResult.error) {
@@ -4195,7 +4295,11 @@ async function handleLateCommand(res, user, lateCommand) {
   }
 
   const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
-  const locked = await isAttendanceDayLocked(user.id, attendanceDate);
+  const locked = await isAttendanceDayLocked(
+    user.id,
+    attendanceDate,
+    user.org_id,
+  );
 
   if (locked) {
     return sendTwiml(
@@ -4244,7 +4348,11 @@ async function handleLateUnsureCommand(res, actingUser, lateUnsureCommand) {
   }
 
   const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
-  const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+  const locked = await isAttendanceDayLocked(
+    targetUser.id,
+    attendanceDate,
+    actingUser.org_id,
+  );
 
   if (locked) {
     return sendTwiml(
@@ -4342,7 +4450,11 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     new Date(occurredAtIso),
   );
 
-  const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+  const locked = await isAttendanceDayLocked(
+    targetUser.id,
+    attendanceDate,
+    actingUser.org_id,
+  );
   if (locked) {
     return sendTwiml(
       res,
@@ -4352,6 +4464,7 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
 
   const lastAction = await getLastActionAtOrBefore(
     targetUser.id,
+    actingUser.org_id,
     occurredAtIso,
   );
 
@@ -4381,6 +4494,7 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
   if (markCommand.action === "back") {
     const lastBreak = await getLatestBreakEventAtOrBefore(
       targetUser.id,
+      actingUser.org_id,
       occurredAtIso,
     );
 
@@ -4472,7 +4586,7 @@ async function handleSelfOffDay(res, user, offCommand) {
       `I could not understand the off date "${offCommand.off_date_text}". Use today, tomorrow, 11 april, or april 11.`,
     );
   }
-  const locked = await isAttendanceDayLocked(user.id, offDate);
+  const locked = await isAttendanceDayLocked(user.id, offDate, user.org_id);
   if (locked) {
     return sendTwiml(
       res,
@@ -4518,7 +4632,12 @@ async function handleOffDayForOther(res, actingUser, offCommand) {
     );
   }
 
-  const locked = await isAttendanceDayLocked(targetUser.id, offDate);
+  const locked = await isAttendanceDayLocked(
+    targetUser.id,
+    offDate,
+    actingUser.org_id,
+  );
+
   if (locked) {
     return sendTwiml(
       res,
@@ -4557,7 +4676,7 @@ async function handleOffDayForOther(res, actingUser, offCommand) {
 }
 
 async function handleSelfAttendance(res, user, attendanceCommand) {
-  const lastAction = await getLastAction(user.id);
+  const lastAction = await getLastAction(user.id, user.org_id);
   const validationError = validateAttendanceTransition(
     lastAction,
     attendanceCommand.action,
@@ -4569,7 +4688,11 @@ async function handleSelfAttendance(res, user, attendanceCommand) {
   }
 
   const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
-  const locked = await isAttendanceDayLocked(user.id, attendanceDate);
+  const locked = await isAttendanceDayLocked(
+    user.id,
+    attendanceDate,
+    user.org_id,
+  );
 
   if (locked) {
     return sendTwiml(
@@ -4617,7 +4740,7 @@ async function handleSelfAttendance(res, user, attendanceCommand) {
   }
 
   if (attendanceCommand.action === "back") {
-    const lastBreak = await getLatestBreakEvent(user.id);
+    const lastBreak = await getLatestBreakEvent(user.id, user.org_id);
     const actualMinutes = lastBreak ? minutesBetween(lastBreak.created_at) : 0;
 
     return sendTwiml(
@@ -4629,7 +4752,7 @@ async function handleSelfAttendance(res, user, attendanceCommand) {
   if (attendanceCommand.action === "login") {
     try {
       const today = getAttendanceDayDateStringFromDate(new Date());
-      const plannedOffRows = await getPlannedOffRowsForDate(today);
+      const plannedOffRows = await getPlannedOffRowsForDate(today, user.org_id);
       const otherNames = (plannedOffRows || [])
         .filter((x) => x.user_id !== user.id)
         .map((x) => x.users?.name || "Unknown");
@@ -4641,7 +4764,7 @@ async function handleSelfAttendance(res, user, attendanceCommand) {
         Math.round((new Date(loginIso) - new Date(shiftStartIso)) / 60000),
       );
 
-      const lateRows = await getLateArrivalRowsForDate(today);
+      const lateRows = await getLateArrivalRowsForDate(today, user.org_id);
       const myLate = lateRows.find((x) => x.user_id === user.id) || null;
 
       let lateLine = "";
@@ -4701,19 +4824,21 @@ async function createPlannedOffDay(
   return error;
 }
 
-async function getPlannedOffRowsForDate(dateString) {
+async function getPlannedOffRowsForDate(dateString, orgId) {
   const { data, error } = await supabase
     .from("planned_time_off")
     .select(
       `
       id,
+      org_id,
       user_id,
       off_date,
       note,
       users!planned_time_off_user_id_fkey(name)
     `,
     )
-    .eq("off_date", dateString);
+    .eq("off_date", dateString)
+    .eq("org_id", orgId);
 
   if (error) {
     throw error;
@@ -4722,12 +4847,13 @@ async function getPlannedOffRowsForDate(dateString) {
   return data || [];
 }
 
-async function getLateArrivalRowsForDate(dateString) {
+async function getLateArrivalRowsForDate(dateString, orgId) {
   const { data, error } = await supabase
     .from("late_arrivals")
     .select(
       `
       id,
+      org_id,
       user_id,
       late_date,
       expected_login_at,
@@ -4738,7 +4864,8 @@ async function getLateArrivalRowsForDate(dateString) {
       users!late_arrivals_user_id_fkey(name)
     `,
     )
-    .eq("late_date", dateString);
+    .eq("late_date", dateString)
+    .eq("org_id", orgId);
 
   if (error) {
     throw error;
@@ -5152,7 +5279,8 @@ async function handleTasksByName(res, actingUser, assigneeName) {
       tasks!inner(id, task_no, title, priority, status, progress, deadline)
     `,
     )
-    .eq("user_id", targetUser.id);
+    .eq("user_id", targetUser.id)
+    .eq("org_id", actingUser.org_id);
 
   if (error) {
     console.error("Tasks by name query error:", error);
@@ -5190,6 +5318,7 @@ async function handleWhoIsOnBreak(res, actingUser) {
   const { data: users, error: usersError } = await supabase
     .from("users")
     .select("id, name")
+    .eq("org_id", actingUser.org_id)
     .eq("is_active", true)
     .order("name", { ascending: true });
 
@@ -5201,6 +5330,7 @@ async function handleWhoIsOnBreak(res, actingUser) {
   const { data: events, error: eventsError } = await supabase
     .from("attendance_events")
     .select("user_id, action, created_at")
+    .eq("org_id", actingUser.org_id)
     .order("created_at", { ascending: false });
 
   if (eventsError) {
@@ -5237,7 +5367,10 @@ async function handleWhoIsOffToday(res, actingUser) {
 
   try {
     const today = getAttendanceDayDateStringFromDate(new Date());
-    const plannedOffRows = await getPlannedOffRowsForDate(today);
+    const plannedOffRows = await getPlannedOffRowsForDate(
+      today,
+      actingUser.org_id,
+    );
     const plannedOff = plannedOffRows || [];
 
     if (plannedOff.length === 0) {
@@ -5264,11 +5397,12 @@ async function handleNowSummary(res, actingUser) {
       supabase
         .from("users")
         .select("id, name")
+        .eq("org_id", actingUser.org_id)
         .eq("is_active", true)
         .order("name", { ascending: true }),
-      getTodayAttendanceEventsForAllUsers(),
-      getPlannedOffRowsForDate(attendanceDate),
-      getLateArrivalRowsForDate(attendanceDate),
+      getTodayAttendanceEventsForAllUsers(actingUser.org_id),
+      getPlannedOffRowsForDate(attendanceDate, actingUser.org_id),
+      getLateArrivalRowsForDate(attendanceDate, actingUser.org_id),
     ]);
 
     if (usersResult.error) {
@@ -5448,11 +5582,12 @@ async function handleSummaryToday(res, actingUser) {
       supabase
         .from("users")
         .select("id, name, role")
+        .eq("org_id", actingUser.org_id)
         .eq("is_active", true)
         .order("name", { ascending: true }),
-      getTodayAttendanceEventsForAllUsers(),
-      getPlannedOffRowsForDate(today),
-      getLateArrivalRowsForDate(today),
+      getTodayAttendanceEventsForAllUsers(actingUser.org_id),
+      getPlannedOffRowsForDate(today, actingUser.org_id),
+      getLateArrivalRowsForDate(today, actingUser.org_id),
     ]);
 
     if (usersResult.error) {
@@ -5617,12 +5752,13 @@ async function insertAttendanceAudit(
   }
 }
 
-async function getTaskByDbId(taskDbId) {
+async function getTaskByDbId(taskDbId, orgId) {
   const { data, error } = await supabase
     .from("tasks")
     .select(
       `
       id,
+      org_id,
       task_no,
       title,
       detail,
@@ -5639,6 +5775,7 @@ async function getTaskByDbId(taskDbId) {
     `,
     )
     .eq("id", taskDbId)
+    .eq("org_id", orgId)
     .maybeSingle();
 
   if (error) {
@@ -5650,7 +5787,7 @@ async function getTaskByDbId(taskDbId) {
     return { task: null, error: null };
   }
 
-  const ownerNames = await getTaskOwnerNames(data.id);
+  const ownerNames = await getTaskOwnerNames(data.id, orgId);
 
   return {
     task: {
@@ -5672,6 +5809,7 @@ async function handleUndoLastTaskChange(res, user) {
       "id, task_id, changed_by_user_id, change_type, old_value, new_value",
     )
     .eq("changed_by_user_id", user.id)
+    .eq("org_id", user.org_id)
     .order("id", { ascending: false })
     .limit(10);
 
@@ -5690,7 +5828,11 @@ async function handleUndoLastTaskChange(res, user) {
     return sendTwiml(res, "No reversible task change found.");
   }
 
-  const { task, error: taskError } = await getTaskByDbId(history.task_id);
+  const { task, error: taskError } = await getTaskByDbId(
+    history.task_id,
+    user.org_id,
+  );
+
   if (taskError || !task) {
     return sendTwiml(res, "Failed to fetch the task for undo.");
   }
@@ -6112,16 +6254,17 @@ function buildDateForCurrentYear(month, day) {
   return d;
 }
 
-async function getLatestAttendanceByUser() {
+async function getLatestAttendanceByUser(orgId) {
   const today = getAttendanceDayDateStringFromDate(new Date());
   const [usersResult, events, plannedOffRows] = await Promise.all([
     supabase
       .from("users")
-      .select("id, name, role, phone_number")
+      .select("id, org_id, name, role, phone_number")
+      .eq("org_id", orgId)
       .eq("is_active", true)
       .order("name", { ascending: true }),
-    getTodayAttendanceEventsForAllUsers(),
-    getPlannedOffRowsForDate(today),
+    getTodayAttendanceEventsForAllUsers(orgId),
+    getPlannedOffRowsForDate(today, orgId),
   ]);
 
   if (usersResult.error) {
@@ -6175,7 +6318,7 @@ async function getLatestAttendanceByUser() {
   });
 }
 
-async function getEmployeeMonthlyAttendanceSummary(userId) {
+async function getEmployeeMonthlyAttendanceSummary(userId, orgId) {
   const { startDate, endDateExclusive } = getMonthDateRangeForTimeZone(
     new Date(),
     APP_TIMEZONE,
@@ -6199,6 +6342,7 @@ async function getEmployeeMonthlyAttendanceSummary(userId) {
         .select(
           "id, user_id, action, created_at, expected_duration_min, reason, note",
         )
+        .eq("org_id", orgId)
         .eq("user_id", userId)
         .gte("created_at", startUtc)
         .lt("created_at", endUtc)
@@ -6208,6 +6352,7 @@ async function getEmployeeMonthlyAttendanceSummary(userId) {
         .from("planned_time_off")
         .select("id, off_date")
         .eq("user_id", userId)
+        .eq("org_id", orgId)
         .gte("off_date", startDate)
         .lt("off_date", endDateExclusive)
         .order("off_date", { ascending: true }),
@@ -6216,12 +6361,14 @@ async function getEmployeeMonthlyAttendanceSummary(userId) {
         .from("late_arrivals")
         .select("id, late_date, is_approved")
         .eq("user_id", userId)
+        .eq("org_id", orgId)
         .gte("late_date", startDate)
         .lte("late_date", todayAttendanceDate),
 
       supabase
         .from("attendance_audit")
         .select("id, action_type, created_at")
+        .eq("org_id", orgId)
         .eq("target_user_id", userId)
         .gte("created_at", startUtc)
         .lt("created_at", endUtc),
@@ -6347,7 +6494,7 @@ async function getEmployeeMonthlyAttendanceSummary(userId) {
   };
 }
 
-async function getEmployeeAttendanceOverview(userId) {
+async function getEmployeeAttendanceOverview(userId, orgId) {
   const todayAttendanceDate = getAttendanceDayDateStringFromDate(new Date());
   const { startUtc, endUtc } = getCurrentAttendanceDayRange();
   const { startDate, endDateExclusive } = getMonthDateRangeForTimeZone(
@@ -6368,6 +6515,7 @@ async function getEmployeeAttendanceOverview(userId) {
       .from("users")
       .select("id, name, role, phone_number")
       .eq("id", userId)
+      .eq("org_id", orgId)
       .eq("is_active", true)
       .maybeSingle(),
 
@@ -6377,6 +6525,7 @@ async function getEmployeeAttendanceOverview(userId) {
         "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
       )
       .eq("user_id", userId)
+      .eq("org_id", orgId)
       .gte("created_at", startUtc)
       .lt("created_at", endUtc)
       .order("created_at", { ascending: true }),
@@ -6387,6 +6536,7 @@ async function getEmployeeAttendanceOverview(userId) {
         "id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
       )
       .eq("user_id", userId)
+      .eq("org_id", orgId)
       .gte(
         "created_at",
         new Date(
@@ -6405,6 +6555,7 @@ async function getEmployeeAttendanceOverview(userId) {
       .from("planned_time_off")
       .select("id, off_date, note")
       .eq("user_id", userId)
+      .eq("org_id", orgId)
       .gte("off_date", startDate)
       .lt("off_date", endDateExclusive)
       .order("off_date", { ascending: true }),
@@ -6415,6 +6566,7 @@ async function getEmployeeAttendanceOverview(userId) {
         "id, late_date, expected_login_at, informed_at, shift_start_at, is_approved, note",
       )
       .eq("user_id", userId)
+      .eq("org_id", orgId)
       .gte("late_date", startDate)
       .lt("late_date", endDateExclusive)
       .order("late_date", { ascending: true }),
@@ -6425,6 +6577,7 @@ async function getEmployeeAttendanceOverview(userId) {
         "id, action_type, old_value, new_value, note, created_at, acted_by_user_id",
       )
       .eq("target_user_id", userId)
+      .eq("org_id", orgId)
       .gte(
         "created_at",
         new Date(
@@ -6438,7 +6591,7 @@ async function getEmployeeAttendanceOverview(userId) {
         ).toISOString(),
       )
       .order("created_at", { ascending: false }),
-    getEmployeeMonthlyAttendanceSummary(userId),
+    getEmployeeMonthlyAttendanceSummary(userId, orgId),
   ]);
 
   if (userResult.error) throw userResult.error;
@@ -9868,10 +10021,10 @@ app.post("/whatsapp", async (req, res) => {
       });
     }
 
-    await beginInboundProcessing(
+    const processingStart = await beginInboundProcessing(
       messageSid,
-      phoneNumber,
-      normalizedText,
+      from,
+      normalizedBody,
       user?.org_id ?? DASHBOARD_ORG_ID,
     );
 
