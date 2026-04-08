@@ -158,7 +158,9 @@ function renderStage0BugBoardPage(data) {
                   </div>
 
                   ${
-                    bug.source_message_sid || bug.source_phone_number || bug.source_message_text
+                    bug.source_message_sid ||
+                    bug.source_phone_number ||
+                    bug.source_message_text
                       ? `
                         <div class="bug-source">
                           ${bug.source_message_sid ? `<div><strong>SID:</strong> ${escapeHtml(bug.source_message_sid)}</div>` : ""}
@@ -172,31 +174,45 @@ function renderStage0BugBoardPage(data) {
                   <div class="bug-actions" style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
                     <select onchange="updateBug(${bug.id}, { board_column: this.value })"
                       style="padding:8px; border-radius:8px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);">
-                      ${STAGE0_BUG_COLUMNS.map(col => `
+                      ${STAGE0_BUG_COLUMNS.map(
+                        (col) => `
                         <option value="${escapeHtml(col)}" ${bug.board_column === col ? "selected" : ""}>${escapeHtml(col)}</option>
-                      `).join("")}
+                      `,
+                      ).join("")}
                     </select>
 
                     <select onchange="updateBug(${bug.id}, { severity: this.value })"
                       style="padding:8px; border-radius:8px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);">
-                      ${["P0","P1","P2"].map(sev => `
+                      ${["P0", "P1", "P2"]
+                        .map(
+                          (sev) => `
                         <option value="${sev}" ${bug.severity === sev ? "selected" : ""}>${sev}</option>
-                      `).join("")}
+                      `,
+                        )
+                        .join("")}
                     </select>
 
                     <select onchange="updateBug(${bug.id}, { status: this.value })"
                       style="padding:8px; border-radius:8px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);">
-                      ${["open","in_progress","blocked","done"].map(st => `
+                      ${["open", "in_progress", "blocked", "done"]
+                        .map(
+                          (st) => `
                         <option value="${st}" ${bug.status === st ? "selected" : ""}>${st}</option>
-                      `).join("")}
+                      `,
+                        )
+                        .join("")}
                     </select>
 
                     <select onchange="updateBug(${bug.id}, { assigned_to_user_id: this.value || null })"
                       style="padding:8px; border-radius:8px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);">
                       <option value="">Unassigned</option>
-                      ${users.map(u => `
+                      ${users
+                        .map(
+                          (u) => `
                         <option value="${u.id}" ${String(bug.assigned_to_user_id || "") === String(u.id) ? "selected" : ""}>${escapeHtml(u.name)}</option>
-                      `).join("")}
+                      `,
+                        )
+                        .join("")}
                     </select>
                   </div>
                 </div>
@@ -342,7 +358,7 @@ function renderStage0BugBoardPage(data) {
             <div style="display:grid; grid-template-columns: 2fr 1.2fr 1fr 1fr; gap:10px; margin-bottom:10px;">
               <input id="bugTitle" placeholder="Bug title" style="padding:10px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);" />
               <select id="bugColumn" style="padding:10px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);">
-                ${STAGE0_BUG_COLUMNS.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}
+                ${STAGE0_BUG_COLUMNS.map((x) => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}
               </select>
               <select id="bugSeverity" style="padding:10px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);">
                 <option value="P0">P0</option>
@@ -1304,7 +1320,6 @@ function parseEditTaskCommand(text) {
 
   return null;
 }
-
 
 function parseDoneCommand(text) {
   const raw = normalizeText(text);
@@ -2555,7 +2570,11 @@ async function beginInboundProcessing(messageSid, phoneNumber, normalizedText) {
   return { duplicate: false, row: data, error: null };
 }
 
-async function completeInboundProcessing(messageSid, resultType, resultRefId = null) {
+async function completeInboundProcessing(
+  messageSid,
+  resultType,
+  resultRefId = null,
+) {
   const { error } = await supabase
     .from("inbound_message_processing")
     .update({
@@ -2646,7 +2665,7 @@ async function handleDeadlineUpdate(res, user, taskId, dateText) {
     return sendTwiml(res, "Only managers can change deadlines.");
   }
 
-const parsedDate = parseDeadline(dateText);
+  const parsedDate = parseDeadline(dateText);
   if (!parsedDate) {
     return sendTwiml(
       res,
@@ -2654,7 +2673,7 @@ const parsedDate = parseDeadline(dateText);
     );
   }
 
-const isoDate = parsedDate;
+  const isoDate = parsedDate;
 
   const { task, error } = await getTaskById(taskId);
 
@@ -4714,16 +4733,16 @@ async function handleCreateTaskAdvanced(res, user, taskCommand) {
     .from("task_owners")
     .insert(ownerRows);
 
-if (ownerInsertError) {
-  console.error("Task owners insert error:", ownerInsertError);
+  if (ownerInsertError) {
+    console.error("Task owners insert error:", ownerInsertError);
 
-  await supabase
-    .from("tasks")
-    .delete()
-    .eq("id", createdTask.id);
-    
-  return sendTwiml(res, "❌ Task could not be completed because owners failed to save. Nothing was created.");
-}
+    await supabase.from("tasks").delete().eq("id", createdTask.id);
+
+    return sendTwiml(
+      res,
+      "❌ Task could not be completed because owners failed to save. Nothing was created.",
+    );
+  }
 
   await insertTaskHistory(
     createdTask.id,
@@ -4825,20 +4844,19 @@ async function handleCreateTask(res, user, taskCommand) {
     );
   }
 
-  const { error: ownerUpsertError } = await supabase.from("task_owners").upsert([
-    {
-      task_id: createdTask.id,
-      user_id: assignee.id,
-    },
-  ]);
+  const { error: ownerUpsertError } = await supabase
+    .from("task_owners")
+    .upsert([
+      {
+        task_id: createdTask.id,
+        user_id: assignee.id,
+      },
+    ]);
 
   if (ownerUpsertError) {
     console.error("Simple task owner upsert error:", ownerUpsertError);
 
-    await supabase
-      .from("tasks")
-      .delete()
-      .eq("id", createdTask.id);
+    await supabase.from("tasks").delete().eq("id", createdTask.id);
 
     return sendTwiml(
       res,
@@ -7698,7 +7716,9 @@ app.get("/health/ready", async (_req, res) => {
   try {
     const { error } = await supabase.from("users").select("id").limit(1);
     if (error) {
-      return res.status(500).json({ ok: false, status: "db_error", error: error.message });
+      return res
+        .status(500)
+        .json({ ok: false, status: "db_error", error: error.message });
     }
 
     return res.status(200).json({
@@ -8186,7 +8206,8 @@ async function getLogsPageData() {
 async function getStage0BugBoardData() {
   const { data, error } = await supabase
     .from("stage0_bug_board")
-    .select(`
+    .select(
+      `
       id,
       title,
       description,
@@ -8202,7 +8223,8 @@ async function getStage0BugBoardData() {
       updated_at,
       creator:users!stage0_bug_board_created_by_user_id_fkey(name),
       assignee:users!stage0_bug_board_assigned_to_user_id_fkey(name)
-    `)
+    `,
+    )
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -8239,7 +8261,9 @@ async function getStage0BugBoardData() {
       const sevDiff =
         bugSeveritySortWeight(a.severity) - bugSeveritySortWeight(b.severity);
       if (sevDiff !== 0) return sevDiff;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      return (
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
     });
   }
 
@@ -8360,7 +8384,6 @@ app.get("/dashboard", requireDashboardAuth, async (_req, res) => {
     `);
   }
 });
-
 
 app.get("/bugs", requireDashboardAuth, async (_req, res) => {
   try {
@@ -8551,9 +8574,15 @@ app.post("/api/bugs", async (req, res) => {
       board_column: String(board_column).trim(),
       severity: String(severity).trim(),
       status: String(finalStatus).trim(),
-      source_message_sid: source_message_sid ? String(source_message_sid).trim() : null,
-      source_phone_number: source_phone_number ? String(source_phone_number).trim() : null,
-      source_message_text: source_message_text ? String(source_message_text).trim() : null,
+      source_message_sid: source_message_sid
+        ? String(source_message_sid).trim()
+        : null,
+      source_phone_number: source_phone_number
+        ? String(source_phone_number).trim()
+        : null,
+      source_message_text: source_message_text
+        ? String(source_message_text).trim()
+        : null,
       created_by_user_id: null,
       assigned_to_user_id: finalAssignedToUserId,
       updated_at: new Date().toISOString(),
@@ -9669,7 +9698,6 @@ th {
   `);
 });
 
-
 app.post("/whatsapp", async (req, res) => {
   let messageSid = null;
 
@@ -9689,8 +9717,6 @@ app.post("/whatsapp", async (req, res) => {
       throw error;
     }
   }
-  
-  
 
   try {
     if (!validateTwilioRequest(req)) {
@@ -9704,28 +9730,28 @@ app.post("/whatsapp", async (req, res) => {
     const body = String(req.body.Body || "").trim();
     messageSid = req.body.MessageSid || null;
     const normalizedBody = normalizeText(body).replace(/\s+/g, " ");
-    
-      async function logParse({
-    intentDetected,
-    parserUsed,
-    parsedJson = null,
-    validationPassed = true,
-    validationError = null,
-    actionTaken = null,
-  }) {
-    await insertMessageParsingLog({
-      messageSid,
-      phoneNumber: from,
-      rawText: body,
-      normalizedText: normalizedBody,
+
+    async function logParse({
       intentDetected,
       parserUsed,
-      parsedJson,
-      validationPassed,
-      validationError,
-      actionTaken,
-    });
-  }
+      parsedJson = null,
+      validationPassed = true,
+      validationError = null,
+      actionTaken = null,
+    }) {
+      await insertMessageParsingLog({
+        messageSid,
+        phoneNumber: from,
+        rawText: body,
+        normalizedText: normalizedBody,
+        intentDetected,
+        parserUsed,
+        parsedJson,
+        validationPassed,
+        validationError,
+        actionTaken,
+      });
+    }
 
     const processingStart = await beginInboundProcessing(
       messageSid,
@@ -9739,7 +9765,10 @@ app.post("/whatsapp", async (req, res) => {
     }
 
     if (processingStart.duplicate) {
-      return sendTwiml(res, "Duplicate message detected. No action was repeated.");
+      return sendTwiml(
+        res,
+        "Duplicate message detected. No action was repeated.",
+      );
     }
 
     const rateLimitKey = from || req.ip || "unknown";
@@ -9774,16 +9803,14 @@ app.post("/whatsapp", async (req, res) => {
 
     const logResult = await logIncomingMessage(user, req.body, body, from);
 
-
-
-if (logResult.error) {
-  console.error("Incoming message log failed:", logResult.error);
-  await failInboundProcessing(messageSid, "message_log_failed");
-  return sendTwiml(
-    res,
-    "❌ Could not process your message right now\nReason: message logging failed\nTry: please send it again in a minute",
-  );
-}
+    if (logResult.error) {
+      console.error("Incoming message log failed:", logResult.error);
+      await failInboundProcessing(messageSid, "message_log_failed");
+      return sendTwiml(
+        res,
+        "❌ Could not process your message right now\nReason: message logging failed\nTry: please send it again in a minute",
+      );
+    }
 
     if (logResult.duplicate) {
       console.log("Duplicate inbound WhatsApp message detected", {
@@ -9792,7 +9819,11 @@ if (logResult.error) {
         body,
       });
 
-      await completeInboundProcessing(messageSid, "duplicate_message_log", null);
+      await completeInboundProcessing(
+        messageSid,
+        "duplicate_message_log",
+        null,
+      );
 
       return sendTwiml(
         res,
@@ -9814,52 +9845,52 @@ if (logResult.error) {
     // ------------------------------------------------------------------
     // Basic / utility commands
     // ------------------------------------------------------------------
-if (normalizedBody === "help attendance") {
-  await logParse({
-    intentDetected: "help_attendance",
-    parserUsed: "normalizedBody === help attendance",
-    parsedJson: { normalizedBody },
-    validationPassed: true,
-    actionTaken: "show_help_attendance",
-  });
+    if (normalizedBody === "help attendance") {
+      await logParse({
+        intentDetected: "help_attendance",
+        parserUsed: "normalizedBody === help attendance",
+        parsedJson: { normalizedBody },
+        validationPassed: true,
+        actionTaken: "show_help_attendance",
+      });
 
-  return runInboundAction({
-    successType: "help_shown",
-    failureType: "help_failed",
-    action: () =>
-      sendTwiml(
-        res,
-        [
-          "🕒 Attendance Help",
-          "",
-          "Your commands:",
-          "login",
-          "logout",
-          "break",
-          "back",
-          "status",
-          "now",
-          "leave today",
-          "leave tomorrow",
-          "late 11:00 am",
-          "",
-          "Examples:",
-          "login",
-          "break",
-          "back",
-          "logout",
-          "status",
-          "now",
-          "leave today",
-          "late 10:45 am",
-          "",
-          "Notes:",
-          "• Use actual clock time for late",
-          "• Do not use: late 30 min",
-        ].join("\n"),
-      ),
-  });
-}
+      return runInboundAction({
+        successType: "help_shown",
+        failureType: "help_failed",
+        action: () =>
+          sendTwiml(
+            res,
+            [
+              "🕒 Attendance Help",
+              "",
+              "Your commands:",
+              "login",
+              "logout",
+              "break",
+              "back",
+              "status",
+              "now",
+              "leave today",
+              "leave tomorrow",
+              "late 11:00 am",
+              "",
+              "Examples:",
+              "login",
+              "break",
+              "back",
+              "logout",
+              "status",
+              "now",
+              "leave today",
+              "late 10:45 am",
+              "",
+              "Notes:",
+              "• Use actual clock time for late",
+              "• Do not use: late 30 min",
+            ].join("\n"),
+          ),
+      });
+    }
 
     if (normalizedBody === "help tasks") {
       return runInboundAction({
@@ -10024,28 +10055,28 @@ if (normalizedBody === "help attendance") {
       });
     }
 
-const deadlineCommand = parseDeadlineCommand(body);
-if (deadlineCommand) {
-  await logParse({
-    intentDetected: "deadline_update",
-    parserUsed: "parseDeadlineCommand",
-    parsedJson: deadlineCommand,
-    validationPassed: true,
-    actionTaken: "handleDeadlineUpdate",
-  });
+    const deadlineCommand = parseDeadlineCommand(body);
+    if (deadlineCommand) {
+      await logParse({
+        intentDetected: "deadline_update",
+        parserUsed: "parseDeadlineCommand",
+        parsedJson: deadlineCommand,
+        validationPassed: true,
+        actionTaken: "handleDeadlineUpdate",
+      });
 
-  return runInboundAction({
-    successType: "task_updated",
-    failureType: "task_update_failed",
-    action: () =>
-      handleDeadlineUpdate(
-        res,
-        user,
-        deadlineCommand.taskId,
-        deadlineCommand.dateText,
-      ),
-  });
-}
+      return runInboundAction({
+        successType: "task_updated",
+        failureType: "task_update_failed",
+        action: () =>
+          handleDeadlineUpdate(
+            res,
+            user,
+            deadlineCommand.taskId,
+            deadlineCommand.dateText,
+          ),
+      });
+    }
 
     const undoAttendanceCommand = parseUndoAttendanceCommand(body);
     if (undoAttendanceCommand) {
@@ -10088,7 +10119,8 @@ if (deadlineCommand) {
       return runInboundAction({
         successType: "attendance_updated",
         failureType: "attendance_update_failed",
-        action: () => handleRemoveAttendance(res, user, removeAttendanceCommand),
+        action: () =>
+          handleRemoveAttendance(res, user, removeAttendanceCommand),
       });
     }
 
@@ -10198,7 +10230,10 @@ if (deadlineCommand) {
         failureType: "attendance_update_failed",
         action: async () => {
           const shiftStartIso = getShiftStartIsoForToday();
-          const approved = isLateApproved(new Date().toISOString(), shiftStartIso);
+          const approved = isLateApproved(
+            new Date().toISOString(),
+            shiftStartIso,
+          );
           const informedAtIso = new Date().toISOString();
 
           const { error } = await supabase.from("late_arrivals").upsert(
@@ -10433,70 +10468,70 @@ if (deadlineCommand) {
     // ------------------------------------------------------------------
     // Task edit / creation
     // ------------------------------------------------------------------
-const editTaskCommand = parseEditTaskCommand(body);
-if (editTaskCommand) {
-  await logParse({
-    intentDetected: "edit_task",
-    parserUsed: "parseEditTaskCommand",
-    parsedJson: editTaskCommand,
-    validationPassed: true,
-    actionTaken: "handleEditTask",
-  });
+    const editTaskCommand = parseEditTaskCommand(body);
+    if (editTaskCommand) {
+      await logParse({
+        intentDetected: "edit_task",
+        parserUsed: "parseEditTaskCommand",
+        parsedJson: editTaskCommand,
+        validationPassed: true,
+        actionTaken: "handleEditTask",
+      });
 
-  return runInboundAction({
-    successType: "task_updated",
-    failureType: "task_update_failed",
-    action: () => handleEditTask(res, user, editTaskCommand),
-  });
-}
+      return runInboundAction({
+        successType: "task_updated",
+        failureType: "task_update_failed",
+        action: () => handleEditTask(res, user, editTaskCommand),
+      });
+    }
 
-const advancedCreateTaskCommand = parseAdvancedCreateTaskCommand(body);
-if (advancedCreateTaskCommand) {
-  await logParse({
-    intentDetected: "create_task_advanced",
-    parserUsed: "parseAdvancedCreateTaskCommand",
-    parsedJson: advancedCreateTaskCommand,
-    validationPassed: !advancedCreateTaskCommand.error,
-    validationError: advancedCreateTaskCommand.error || null,
-    actionTaken: advancedCreateTaskCommand.error
-      ? "advanced_create_validation_failed"
-      : "handleCreateTaskAdvanced",
-  });
+    const advancedCreateTaskCommand = parseAdvancedCreateTaskCommand(body);
+    if (advancedCreateTaskCommand) {
+      await logParse({
+        intentDetected: "create_task_advanced",
+        parserUsed: "parseAdvancedCreateTaskCommand",
+        parsedJson: advancedCreateTaskCommand,
+        validationPassed: !advancedCreateTaskCommand.error,
+        validationError: advancedCreateTaskCommand.error || null,
+        actionTaken: advancedCreateTaskCommand.error
+          ? "advanced_create_validation_failed"
+          : "handleCreateTaskAdvanced",
+      });
 
-  return runInboundAction({
-    successType: "task_created",
-    failureType: "task_create_failed",
-    action: () =>
-      handleCreateTaskAdvanced(res, user, advancedCreateTaskCommand),
-  });
-}
+      return runInboundAction({
+        successType: "task_created",
+        failureType: "task_create_failed",
+        action: () =>
+          handleCreateTaskAdvanced(res, user, advancedCreateTaskCommand),
+      });
+    }
 
-let taskCommand = parseSimpleTaskCommand(body);
-let aiParsingAttempted = false;
+    let taskCommand = parseSimpleTaskCommand(body);
+    let aiParsingAttempted = false;
 
-if (taskCommand) {
-  await logParse({
-    intentDetected: "create_task_simple",
-    parserUsed: "parseSimpleTaskCommand",
-    parsedJson: taskCommand,
-    validationPassed: true,
-    actionTaken: "handleCreateTask",
-  });
-}
+    if (taskCommand) {
+      await logParse({
+        intentDetected: "create_task_simple",
+        parserUsed: "parseSimpleTaskCommand",
+        parsedJson: taskCommand,
+        validationPassed: true,
+        actionTaken: "handleCreateTask",
+      });
+    }
 
-if (!taskCommand && looksLikeTask(body)) {
-  aiParsingAttempted = true;
-  taskCommand = await parseTaskWithAI(body);
+    if (!taskCommand && looksLikeTask(body)) {
+      aiParsingAttempted = true;
+      taskCommand = await parseTaskWithAI(body);
 
-  await logParse({
-    intentDetected: "create_task_ai_attempt",
-    parserUsed: "parseTaskWithAI",
-    parsedJson: taskCommand,
-    validationPassed: !!taskCommand,
-    validationError: taskCommand ? null : "ai_task_parse_failed",
-    actionTaken: taskCommand ? "handleCreateTask" : "reply_ai_parse_failed",
-  });
-}
+      await logParse({
+        intentDetected: "create_task_ai_attempt",
+        parserUsed: "parseTaskWithAI",
+        parsedJson: taskCommand,
+        validationPassed: !!taskCommand,
+        validationError: taskCommand ? null : "ai_task_parse_failed",
+        actionTaken: taskCommand ? "handleCreateTask" : "reply_ai_parse_failed",
+      });
+    }
 
     console.log("Body received for task parsing:", body);
     console.log("Final task command:", taskCommand);
@@ -10524,20 +10559,20 @@ if (!taskCommand && looksLikeTask(body)) {
       from,
     });
 
-await logParse({
-  intentDetected: "unknown_command",
-  parserUsed: "no_parser_matched",
-  parsedJson: null,
-  validationPassed: false,
-  validationError: "unknown_command",
-  actionTaken: "unknown_command_reply",
-});
+    await logParse({
+      intentDetected: "unknown_command",
+      parserUsed: "no_parser_matched",
+      parsedJson: null,
+      validationPassed: false,
+      validationError: "unknown_command",
+      actionTaken: "unknown_command_reply",
+    });
 
-await failInboundProcessing(messageSid, "unknown_command");
-return sendTwiml(
-  res,
-  "❌ I did not understand that command\nTry: help\nExamples:\nlogin\nmy tasks\ntask Aj high test dashboard by tomorrow",
-);
+    await failInboundProcessing(messageSid, "unknown_command");
+    return sendTwiml(
+      res,
+      "❌ I did not understand that command\nTry: help\nExamples:\nlogin\nmy tasks\ntask Aj high test dashboard by tomorrow",
+    );
   } catch (error) {
     if (messageSid) {
       await failInboundProcessing(messageSid, "webhook_exception");
@@ -10546,7 +10581,6 @@ return sendTwiml(
     return sendTwiml(res, "Something went wrong.");
   }
 });
-
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
