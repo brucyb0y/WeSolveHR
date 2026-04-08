@@ -10,6 +10,7 @@ console.log("OPENAI KEY LOADED:", !!process.env.OPENAI_API_KEY);
 
 const app = express();
 const port = process.env.PORT || 3000;
+const DASHBOARD_ORG_ID = Number(process.env.DASHBOARD_ORG_ID || 1);
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY =
@@ -1685,15 +1686,19 @@ function bugStatusBadgeClass(status) {
 
 async function canReadTask(user, task) {
   if (!user || !task) return false;
+
+  if (user.org_id !== task.org_id) return false;
   if (isManagerOrAdmin(user)) return true;
   if (task.created_by_user_id === user.id) return true;
 
-  const ownerIds = await getTaskOwnerIds(task.id);
+  const ownerIds = await getTaskOwnerIds(task.id, user.org_id);
   return ownerIds.includes(user.id);
 }
 
 async function canModifyTask(user, task) {
   if (!user || !task) return false;
+
+  if (user.org_id !== task.org_id) return false;
 
   if (task.status === "cancelled") {
     return isManagerOrAdmin(user);
@@ -1701,7 +1706,7 @@ async function canModifyTask(user, task) {
 
   if (isManagerOrAdmin(user)) return true;
 
-  const ownerIds = await getTaskOwnerIds(task.id);
+  const ownerIds = await getTaskOwnerIds(task.id, user.org_id);
   return ownerIds.includes(user.id);
 }
 
@@ -1762,7 +1767,7 @@ Rules:
 async function getActiveUserByPhone(phoneNumber) {
   const { data, error } = await supabase
     .from("users")
-    .select("id, name, phone_number, role, is_active")
+    .select("id, org_id, name, phone_number, role, is_active")
     .eq("phone_number", phoneNumber)
     .eq("is_active", true)
     .maybeSingle();
@@ -1815,6 +1820,7 @@ async function getLastActionAtOrBefore(userId, occurredAtIso = null) {
 }
 
 async function insertMessageParsingLog({
+  orgId = null,
   messageSid,
   phoneNumber,
   rawText,
@@ -1828,6 +1834,7 @@ async function insertMessageParsingLog({
 }) {
   const { error } = await supabase.from("message_parsing_logs").insert([
     {
+      org_id: orgId,
       message_sid: messageSid || null,
       phone_number: phoneNumber || null,
       raw_text: rawText || null,
@@ -1846,12 +1853,13 @@ async function insertMessageParsingLog({
   }
 }
 
-async function findUsersByName(name) {
+async function findUsersByName(name, orgId) {
   const trimmed = String(name || "").trim();
 
   const { data, error } = await supabase
     .from("users")
-    .select("id, name, phone_number, role, is_active")
+    .select("id, org_id, name, phone_number, role, is_active")
+    .eq("org_id", orgId)
     .ilike("name", trimmed)
     .eq("is_active", true);
 
@@ -1864,7 +1872,8 @@ async function findUsersByName(name) {
 
   const { data: fuzzyData, error: fuzzyError } = await supabase
     .from("users")
-    .select("id, name, phone_number, role, is_active")
+    .select("id, org_id, name, phone_number, role, is_active")
+    .eq("org_id", orgId)
     .ilike("name", `%${trimmed}%`)
     .eq("is_active", true);
 
@@ -1876,18 +1885,18 @@ async function findUsersByName(name) {
   return fuzzyData || [];
 }
 
-async function findUniqueUserByName(name) {
-  const users = await findUsersByName(name);
+async function findUniqueUserByName(name, orgId) {
+  const users = await findUsersByName(name, orgId);
   if (users.length !== 1) return null;
   return users[0];
 }
 
-async function findUsersByNames(names) {
+async function findUsersByNames(names, orgId) {
   const matchedUsers = [];
   const missingNames = [];
 
   for (const name of names) {
-    const user = await findUniqueUserByName(name);
+    const user = await findUniqueUserByName(name, orgId);
     if (user) matchedUsers.push(user);
     else missingNames.push(name);
   }
@@ -1895,11 +1904,12 @@ async function findUsersByNames(names) {
   return { matchedUsers, missingNames };
 }
 
-async function getTaskOwnerIds(taskId) {
+async function getTaskOwnerIds(taskId, orgId) {
   const { data, error } = await supabase
     .from("task_owners")
     .select("user_id")
-    .eq("task_id", taskId);
+    .eq("task_id", taskId)
+    .eq("org_id", orgId);
 
   if (error) {
     console.error("getTaskOwnerIds error:", error);
@@ -1909,7 +1919,7 @@ async function getTaskOwnerIds(taskId) {
   return (data || []).map((x) => x.user_id);
 }
 
-async function getTaskOwnerNames(taskId) {
+async function getTaskOwnerNames(taskId, orgId) {
   const { data, error } = await supabase
     .from("task_owners")
     .select(
@@ -1918,7 +1928,8 @@ async function getTaskOwnerNames(taskId) {
       users!task_owners_user_id_fkey(name)
     `,
     )
-    .eq("task_id", taskId);
+    .eq("task_id", taskId)
+    .eq("org_id", orgId);
 
   if (error) {
     console.error("getTaskOwnerNames error:", error);
@@ -1951,11 +1962,15 @@ async function getTaskAssignedCount(userId) {
   ).length;
 }
 
-async function getTaskById(taskId) {
+async function getTaskById(taskId, orgId) {
   const numericTaskNo = Number(taskId);
 
-  let query = supabase.from("tasks").select(`
+  let query = supabase
+    .from("tasks")
+    .select(
+      `
       id,
+      org_id,
       task_no,
       title,
       detail,
@@ -1969,7 +1984,9 @@ async function getTaskById(taskId) {
       assigned_to_user_id,
       created_by_user_id,
       last_updated_by_user_id
-    `);
+    `,
+    )
+    .eq("org_id", orgId);
 
   if (!Number.isNaN(numericTaskNo) && Number.isFinite(numericTaskNo)) {
     query = query.eq("task_no", numericTaskNo);
@@ -1988,7 +2005,7 @@ async function getTaskById(taskId) {
     return { task: null, error: null };
   }
 
-  const ownerNames = await getTaskOwnerNames(data.id);
+  const ownerNames = await getTaskOwnerNames(data.id, orgId);
 
   return {
     task: {
@@ -2006,9 +2023,11 @@ async function insertTaskHistory(
   fieldName,
   oldValue,
   newValue,
+  orgId,
 ) {
   const { error } = await supabase.from("task_history").insert([
     {
+      org_id: orgId,
       task_id: taskId,
       changed_by_user_id: changedByUserId,
       change_type: changeType,
@@ -2265,11 +2284,13 @@ async function setAttendanceDayLock(
   attendanceDateString,
   isLocked,
   actedByUserId,
+  orgId,
   note = null,
 ) {
   const { error } = await supabase.from("attendance_day_locks").upsert(
     [
       {
+        org_id: orgId,
         user_id: userId,
         attendance_date: attendanceDateString,
         is_locked: isLocked,
@@ -2515,6 +2536,7 @@ function getAttendanceSummaryFromEvents(events, options = {}) {
 
 async function logIncomingMessage(user, reqBody, body, from) {
   const incoming = {
+    org_id: user?.org_id ?? DASHBOARD_ORG_ID,
     user_id: user?.id ?? null,
     phone_number: from,
     wa_id: reqBody.WaId || null,
@@ -2545,8 +2567,14 @@ async function logIncomingMessage(user, reqBody, body, from) {
   return { duplicate: false, error: null };
 }
 
-async function beginInboundProcessing(messageSid, phoneNumber, normalizedText) {
+async function beginInboundProcessing(
+  messageSid,
+  phoneNumber,
+  normalizedText,
+  orgId = null,
+) {
   const row = {
+    org_id: orgId,
     message_sid: messageSid,
     phone_number: phoneNumber || null,
     normalized_text: normalizedText || null,
@@ -2621,7 +2649,7 @@ async function runInboundAction({
 
 async function handleEmployeeSummary(res, actingUser, command) {
   const targetUser = command.target_name
-    ? await findUniqueUserByName(command.target_name)
+    ? await findUniqueUserByName(command.target_name, actingUser.org_id)
     : actingUser;
 
   if (!targetUser) {
@@ -2675,7 +2703,7 @@ async function handleDeadlineUpdate(res, user, taskId, dateText) {
 
   const isoDate = parsedDate;
 
-  const { task, error } = await getTaskById(taskId);
+  const { task, error } = await getTaskById(taskId, user.org_id);
 
   if (error) return sendTwiml(res, "Failed to fetch task.");
   if (!task) return sendTwiml(res, `Task #${taskId} not found.`);
@@ -2703,6 +2731,7 @@ async function handleDeadlineUpdate(res, user, taskId, dateText) {
     "deadline",
     { deadline: oldDeadline },
     { deadline: isoDate },
+    user.org_id,
   );
 
   return sendTwiml(
@@ -2712,7 +2741,7 @@ async function handleDeadlineUpdate(res, user, taskId, dateText) {
 }
 
 async function handleEditTask(res, user, editCommand) {
-  const { task, error } = await getTaskById(editCommand.taskId);
+  const { task, error } = await getTaskById(editCommand.taskId, user.org_id);
 
   if (error) {
     return sendTwiml(res, "Failed to fetch that task.");
@@ -2887,7 +2916,10 @@ async function handleEditTask(res, user, editCommand) {
       return sendTwiml(res, "Please provide at least one owner name.");
     }
 
-    const { matchedUsers, missingNames } = await findUsersByNames(ownerNames);
+    const { matchedUsers, missingNames } = await findUsersByNames(
+      ownerNames,
+      user.org_id,
+    );
 
     if (missingNames.length) {
       return sendTwiml(
@@ -2909,6 +2941,7 @@ async function handleEditTask(res, user, editCommand) {
     }
 
     const ownerRows = matchedUsers.map((owner) => ({
+      org_id: user.org_id,
       task_id: task.id,
       user_id: owner.id,
     }));
@@ -2943,6 +2976,7 @@ async function handleEditTask(res, user, editCommand) {
       "owner",
       { owners: oldOwnerNames },
       { owners: matchedUsers.map((x) => x.name) },
+      user.org_id,
     );
 
     return sendTwiml(
@@ -2970,6 +3004,7 @@ async function handleEditTask(res, user, editCommand) {
     editCommand.field,
     oldValue,
     newValue,
+    user.org_id,
   );
 
   return sendTwiml(res, successMessage);
@@ -2980,7 +3015,10 @@ async function handleTimelineAttendance(res, actingUser, command) {
     return sendTwiml(res, "You are not allowed to view attendance timeline.");
   }
 
-  const targetUser = await findUniqueUserByName(command.target_name);
+  const targetUser = await findUniqueUserByName(
+    command.target_name,
+    actingUser.org_id,
+  );
   if (!targetUser) {
     return sendTwiml(
       res,
@@ -3021,7 +3059,10 @@ async function handleAuditAttendance(res, actingUser, command) {
     return sendTwiml(res, "You are not allowed to audit attendance.");
   }
 
-  const targetUser = await findUniqueUserByName(command.target_name);
+  const targetUser = await findUniqueUserByName(
+    command.target_name,
+    actingUser.org_id,
+  );
   if (!targetUser) {
     return sendTwiml(
       res,
@@ -3065,7 +3106,7 @@ async function handleUndoAttendance(res, actingUser, command) {
   const isSelf = command.mode === "self";
   const targetUser = isSelf
     ? actingUser
-    : await findUniqueUserByName(command.target_name);
+    : await findUniqueUserByName(command.target_name, actingUser.org_id);
 
   if (!isSelf && !isManagerOrAdmin(actingUser)) {
     return sendTwiml(
@@ -3115,6 +3156,7 @@ async function handleUndoAttendance(res, actingUser, command) {
       latestEvent,
       null,
       `Deleted latest attendance event (${latestEvent.action})`,
+      actingUser.org_id,
     );
 
     return sendTwiml(
@@ -3132,7 +3174,10 @@ async function handleResetAttendance(res, actingUser, command) {
     return sendTwiml(res, "You are not allowed to reset attendance.");
   }
 
-  const targetUser = await findUniqueUserByName(command.target_name);
+  const targetUser = await findUniqueUserByName(
+    command.target_name,
+    actingUser.org_id,
+  );
   if (!targetUser) {
     return sendTwiml(
       res,
@@ -3193,6 +3238,7 @@ async function handleResetAttendance(res, actingUser, command) {
         reset: true,
       },
       `Attendance reset by ${actingUser.name}`,
+      actingUser.org_id,
     );
 
     return sendTwiml(
@@ -3210,7 +3256,10 @@ async function handleForceAttendance(res, actingUser, command) {
     return sendTwiml(res, "You are not allowed to force attendance changes.");
   }
 
-  const targetUser = await findUniqueUserByName(command.target_name);
+  const targetUser = await findUniqueUserByName(
+    command.target_name,
+    actingUser.org_id,
+  );
   if (!targetUser) {
     return sendTwiml(
       res,
@@ -3260,6 +3309,7 @@ async function handleForceAttendance(res, actingUser, command) {
   }
 
   const attendanceRow = {
+    org_id: actingUser.org_id,
     user_id: targetUser.id,
     target_phone: targetUser.phone_number,
     acted_by_phone: actingUser.phone_number,
@@ -3287,6 +3337,7 @@ async function handleForceAttendance(res, actingUser, command) {
     null,
     attendanceRow,
     note,
+    actingUser.org_id,
   );
 
   return sendTwiml(
@@ -3300,7 +3351,10 @@ async function handleFixAttendance(res, actingUser, command) {
     return sendTwiml(res, "You are not allowed to fix attendance.");
   }
 
-  const targetUser = await findUniqueUserByName(command.target_name);
+  const targetUser = await findUniqueUserByName(
+    command.target_name,
+    actingUser.org_id,
+  );
   if (!targetUser) {
     return sendTwiml(
       res,
@@ -3385,6 +3439,7 @@ async function handleFixAttendance(res, actingUser, command) {
       ...patch,
     },
     `Fixed ${command.action} time by ${actingUser.name}`,
+    actingUser.org_id,
   );
 
   return sendTwiml(
@@ -3398,7 +3453,10 @@ async function handleRemoveAttendance(res, actingUser, command) {
     return sendTwiml(res, "You are not allowed to remove attendance events.");
   }
 
-  const targetUser = await findUniqueUserByName(command.target_name);
+  const targetUser = await findUniqueUserByName(
+    command.target_name,
+    actingUser.org_id,
+  );
   if (!targetUser) {
     return sendTwiml(
       res,
@@ -3442,6 +3500,7 @@ async function handleRemoveAttendance(res, actingUser, command) {
     latestActionEvent,
     null,
     `Removed latest ${command.action} event by ${actingUser.name}`,
+    actingUser.org_id,
   );
 
   return sendTwiml(
@@ -3455,7 +3514,10 @@ async function handleAutoFixAttendance(res, actingUser, command) {
     return sendTwiml(res, "You are not allowed to auto-fix attendance.");
   }
 
-  const targetUser = await findUniqueUserByName(command.target_name);
+  const targetUser = await findUniqueUserByName(
+    command.target_name,
+    actingUser.org_id,
+  );
   if (!targetUser) {
     return sendTwiml(
       res,
@@ -3497,6 +3559,7 @@ async function handleAutoFixAttendance(res, actingUser, command) {
 
     if (latest.action === "break") {
       const forcedBackRow = {
+        org_id: actingUser.org_id,
         user_id: targetUser.id,
         target_phone: targetUser.phone_number,
         acted_by_phone: actingUser.phone_number,
@@ -3527,6 +3590,7 @@ async function handleAutoFixAttendance(res, actingUser, command) {
       (refreshedLatest.action === "login" || refreshedLatest.action === "back")
     ) {
       const forcedLogoutRow = {
+        org_id: actingUser.org_id,
         user_id: targetUser.id,
         target_phone: targetUser.phone_number,
         acted_by_phone: actingUser.phone_number,
@@ -3553,6 +3617,7 @@ async function handleAutoFixAttendance(res, actingUser, command) {
       { attendance_date: attendanceDate, before: events },
       { attendance_date: attendanceDate, actions_applied: applied },
       `Auto-fix by ${actingUser.name}`,
+      actingUser.org_id,
     );
 
     return sendTwiml(
@@ -3574,7 +3639,10 @@ async function handleLockAttendanceDay(res, actingUser, command) {
     return sendTwiml(res, "You are not allowed to lock or unlock attendance.");
   }
 
-  const targetUser = await findUniqueUserByName(command.target_name);
+  const targetUser = await findUniqueUserByName(
+    command.target_name,
+    actingUser.org_id,
+  );
   if (!targetUser) {
     return sendTwiml(
       res,
@@ -3596,6 +3664,7 @@ async function handleLockAttendanceDay(res, actingUser, command) {
     attendanceDate,
     isLock,
     actingUser.id,
+    actingUser.org_id,
     `${command.mode} by ${actingUser.name}`,
   );
 
@@ -3614,6 +3683,7 @@ async function handleLockAttendanceDay(res, actingUser, command) {
       is_locked: isLock,
     },
     `${command.mode} attendance by ${actingUser.name}`,
+    actingUser.org_id,
   );
 
   return sendTwiml(
@@ -3831,7 +3901,7 @@ async function handleMyTasks(res, user) {
 }
 
 async function handleShowTask(res, user, taskId) {
-  const { task, error } = await getTaskById(taskId);
+  const { task, error } = await getTaskById(taskId, user.org_id);
 
   if (error) {
     return sendTwiml(res, "Failed to fetch that task.");
@@ -3867,7 +3937,7 @@ async function handleDoneTask(res, user, taskId, note) {
     );
   }
 
-  const { task, error } = await getTaskById(taskId);
+  const { task, error } = await getTaskById(taskId, user.org_id);
 
   if (error) {
     return sendTwiml(res, "Failed to fetch that task.");
@@ -3907,6 +3977,7 @@ async function handleDoneTask(res, user, taskId, note) {
     "status",
     { status: task.status, progress: task.progress, note: null },
     { status: "done", progress: 100, note: cleanNote },
+    user.org_id,
   );
 
   return sendTwiml(
@@ -3929,7 +4000,7 @@ async function handleProgressTask(res, user, taskId, progressValue, note) {
     return sendTwiml(res, "Progress must be between 0 and 100.");
   }
 
-  const { task, error } = await getTaskById(taskId);
+  const { task, error } = await getTaskById(taskId, user.org_id);
 
   if (error) {
     return sendTwiml(res, "Failed to fetch that task.");
@@ -3972,6 +4043,7 @@ async function handleProgressTask(res, user, taskId, progressValue, note) {
     "progress",
     { progress: task.progress, status: task.status, note: null },
     { progress: progressValue, status: newStatus, note: cleanNote },
+    user.org_id,
   );
 
   return sendTwiml(
@@ -4137,6 +4209,7 @@ async function handleLateCommand(res, user, lateCommand) {
     expectedLoginAtIso,
     lateCommand.note,
     user.id,
+    user.org_id,
   );
 
   if (error) {
@@ -4158,8 +4231,10 @@ async function handleLateUnsureCommand(res, actingUser, lateUnsureCommand) {
       return sendTwiml(res, "Only managers can mark late for others.");
     }
 
-    targetUser = await findUniqueUserByName(lateUnsureCommand.target_name);
-
+    targetUser = await findUniqueUserByName(
+      lateUnsureCommand.target_name,
+      actingUser.org_id,
+    );
     if (!targetUser) {
       return sendTwiml(
         res,
@@ -4191,6 +4266,7 @@ async function handleLateUnsureCommand(res, actingUser, lateUnsureCommand) {
   const { error } = await supabase.from("late_arrivals").upsert(
     [
       {
+        org_id: actingUser.org_id,
         user_id: targetUser.id,
         late_date: attendanceDate,
         expected_login_at: shiftStartIso,
@@ -4232,7 +4308,10 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
     return sendTwiml(res, "You are not allowed to mark attendance for others.");
   }
 
-  const targetUser = await findUniqueUserByName(markCommand.target_name);
+  const targetUser = await findUniqueUserByName(
+    markCommand.target_name,
+    actingUser.org_id,
+  );
 
   if (!targetUser) {
     return sendTwiml(
@@ -4312,6 +4391,7 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
   }
 
   const attendanceRow = {
+    org_id: actingUser.org_id,
     user_id: targetUser.id,
     target_phone: targetUser.phone_number,
     acted_by_phone: actingUser.phone_number,
@@ -4350,6 +4430,7 @@ async function handleMarkedAttendance(res, actingUser, markCommand) {
       created_at: occurredAtIso,
     },
     `Marked by ${actingUser.name}`,
+    actingUser.org_id,
   );
 
   if (markCommand.action === "break") {
@@ -4398,7 +4479,12 @@ async function handleSelfOffDay(res, user, offCommand) {
       `❌ Leave could not be changed because ${offDate} is locked`,
     );
   }
-  const error = await createPlannedOffDay(user.id, offDate, user.id);
+  const error = await createPlannedOffDay(
+    user.id,
+    offDate,
+    user.id,
+    user.org_id,
+  );
   if (error) {
     console.error("Create self off day error:", error);
     return sendTwiml(res, "Failed to save your day off.");
@@ -4412,7 +4498,10 @@ async function handleOffDayForOther(res, actingUser, offCommand) {
     return sendTwiml(res, "You are not allowed to mark day off for others.");
   }
 
-  const targetUser = await findUniqueUserByName(offCommand.target_name);
+  const targetUser = await findUniqueUserByName(
+    offCommand.target_name,
+    actingUser.org_id,
+  );
 
   if (!targetUser) {
     return sendTwiml(
@@ -4441,7 +4530,9 @@ async function handleOffDayForOther(res, actingUser, offCommand) {
     targetUser.id,
     offDate,
     actingUser.id,
+    actingUser.org_id,
   );
+
   if (error) {
     console.error("Create off day for other error:", error);
     return sendTwiml(res, "Failed to save day off.");
@@ -4456,6 +4547,7 @@ async function handleOffDayForOther(res, actingUser, offCommand) {
       off_date: offDate,
     },
     `Leave marked by ${actingUser.name}`,
+    actingUser.org_id,
   );
 
   return sendTwiml(
@@ -4487,6 +4579,7 @@ async function handleSelfAttendance(res, user, attendanceCommand) {
   }
 
   const attendanceRow = {
+    org_id: user.org_id,
     user_id: user.id,
     target_phone: user.phone_number,
     acted_by_phone: user.phone_number,
@@ -4589,11 +4682,13 @@ async function createPlannedOffDay(
   userId,
   offDate,
   createdByUserId,
+  orgId,
   note = null,
 ) {
   const { error } = await supabase.from("planned_time_off").upsert(
     [
       {
+        org_id: orgId,
         user_id: userId,
         off_date: offDate,
         note,
@@ -4657,6 +4752,7 @@ async function upsertLateArrival(
   expectedLoginAtIso,
   note = null,
   createdByUserId = null,
+  orgId,
 ) {
   const todayDb = getAttendanceDayDateStringFromDate(new Date());
   const shiftStartIso = getShiftStartIsoForToday();
@@ -4666,6 +4762,7 @@ async function upsertLateArrival(
   const { error } = await supabase.from("late_arrivals").upsert(
     [
       {
+        org_id: orgId,
         user_id: userId,
         late_date: todayDb,
         expected_login_at: expectedLoginAtIso,
@@ -4689,6 +4786,7 @@ async function handleCreateTaskAdvanced(res, user, taskCommand) {
 
   const { matchedUsers, missingNames } = await findUsersByNames(
     taskCommand.owner_names,
+    user.org_id,
   );
 
   if (missingNames.length) {
@@ -4705,6 +4803,7 @@ async function handleCreateTaskAdvanced(res, user, taskCommand) {
     detail: null,
     priority: taskCommand.priority || "medium",
     status: "open",
+    org_id: user.org_id,
     progress: 0,
     deadline: taskCommand.deadline,
     blocker_note: null,
@@ -4725,6 +4824,7 @@ async function handleCreateTaskAdvanced(res, user, taskCommand) {
   }
 
   const ownerRows = matchedUsers.map((owner) => ({
+    org_id: user.org_id,
     task_id: createdTask.id,
     user_id: owner.id,
   }));
@@ -4758,6 +4858,7 @@ async function handleCreateTaskAdvanced(res, user, taskCommand) {
       area: createdTask.area,
       owners: matchedUsers.map((x) => x.name),
     },
+    user.org_id,
   );
 
   return sendTwiml(
@@ -4791,8 +4892,10 @@ async function handleCreateTask(res, user, taskCommand) {
     );
   }
 
-  const assignee = await findUniqueUserByName(taskCommand.assignee_name);
-
+  const assignee = await findUniqueUserByName(
+    taskCommand.assignee_name,
+    user.org_id,
+  );
   if (!assignee) {
     return sendTwiml(
       res,
@@ -4818,6 +4921,7 @@ async function handleCreateTask(res, user, taskCommand) {
 
   const taskRow = {
     assigned_to_user_id: assignee.id,
+    org_id: user.org_id,
     created_by_user_id: user.id,
     last_updated_by_user_id: user.id,
     title: taskCommand.title,
@@ -4848,6 +4952,7 @@ async function handleCreateTask(res, user, taskCommand) {
     .from("task_owners")
     .upsert([
       {
+        org_id: user.org_id,
         task_id: createdTask.id,
         user_id: assignee.id,
       },
@@ -4876,6 +4981,7 @@ async function handleCreateTask(res, user, taskCommand) {
       deadline: createdTask.deadline,
       assigned_to_user_id: assignee.id,
     },
+    user.org_id,
   );
 
   return sendTwiml(
@@ -4894,7 +5000,7 @@ async function handleBlockTask(res, user, taskId, reason) {
     );
   }
 
-  const { task, error } = await getTaskById(taskId);
+  const { task, error } = await getTaskById(taskId, user.org_id);
 
   if (error) {
     return sendTwiml(
@@ -4947,6 +5053,7 @@ async function handleBlockTask(res, user, taskId, reason) {
     "status",
     { status: task.status, blocker_note: task.blocker_note, note: null },
     { status: "blocked", blocker_note: cleanNote, note: cleanNote },
+    user.org_id,
   );
 
   return sendTwiml(
@@ -4967,7 +5074,7 @@ async function handleUnblockTask(res, user, taskId, note) {
     );
   }
 
-  const { task, error } = await getTaskById(taskId);
+  const { task, error } = await getTaskById(taskId, user.org_id);
 
   if (error) {
     return sendTwiml(res, "Failed to fetch that task.");
@@ -5009,6 +5116,7 @@ async function handleUnblockTask(res, user, taskId, note) {
     "status",
     { status: task.status, blocker_note: task.blocker_note, note: null },
     { status: nextStatus, blocker_note: null, note: cleanNote },
+    user.org_id,
   );
 
   return sendTwiml(
@@ -5024,7 +5132,10 @@ async function handleTasksByName(res, actingUser, assigneeName) {
     return sendTwiml(res, "You are not allowed to view other people's tasks.");
   }
 
-  const targetUser = await findUniqueUserByName(assigneeName);
+  const targetUser = await findUniqueUserByName(
+    assigneeName,
+    actingUser.org_id,
+  );
 
   if (!targetUser) {
     return sendTwiml(
@@ -5487,9 +5598,11 @@ async function insertAttendanceAudit(
   oldValue,
   newValue,
   note = null,
+  orgId,
 ) {
   const { error } = await supabase.from("attendance_audit").insert([
     {
+      org_id: orgId,
       target_user_id: targetUserId,
       acted_by_user_id: actedByUserId,
       action_type: actionType,
@@ -5623,6 +5736,7 @@ async function handleUndoLastTaskChange(res, user) {
     "task",
     history.new_value,
     history.old_value,
+    user.org_id,
   );
 
   return sendTwiml(
@@ -9740,6 +9854,7 @@ app.post("/whatsapp", async (req, res) => {
       actionTaken = null,
     }) {
       await insertMessageParsingLog({
+        orgId: user?.org_id ?? DASHBOARD_ORG_ID,
         messageSid,
         phoneNumber: from,
         rawText: body,
@@ -9753,10 +9868,11 @@ app.post("/whatsapp", async (req, res) => {
       });
     }
 
-    const processingStart = await beginInboundProcessing(
+    await beginInboundProcessing(
       messageSid,
-      from,
-      normalizedBody,
+      phoneNumber,
+      normalizedText,
+      user?.org_id ?? DASHBOARD_ORG_ID,
     );
 
     if (processingStart.error) {
@@ -10288,7 +10404,10 @@ app.post("/whatsapp", async (req, res) => {
         successType: "task_updated",
         failureType: "task_update_failed",
         action: async () => {
-          const { task, error } = await getTaskById(cancelCmd.taskId);
+          const { task, error } = await getTaskById(
+            cancelCmd.taskId,
+            user.org_id,
+          );
 
           if (error || !task) {
             return sendTwiml(res, "❌ Task not found");
@@ -10321,6 +10440,7 @@ app.post("/whatsapp", async (req, res) => {
             "status",
             oldStatus,
             "cancelled",
+            user.org_id,
           );
 
           return sendTwiml(
