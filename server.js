@@ -10056,7 +10056,6 @@ app.post("/whatsapp", async (req, res) => {
     }
 
     const deadlineCommand = parseDeadlineCommand(body);
-    const deadlineCommand = parseDeadlineCommand(body);
     if (deadlineCommand) {
       await logParse({
         intentDetected: "deadline_update",
