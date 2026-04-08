@@ -2635,8 +2635,9 @@ async function completeInboundProcessing(
   messageSid,
   resultType,
   resultRefId = null,
+  orgId = null,
 ) {
-  const { error } = await supabase
+  let query = supabase
     .from("inbound_message_processing")
     .update({
       status: "completed",
@@ -2646,11 +2647,16 @@ async function completeInboundProcessing(
     })
     .eq("message_sid", messageSid);
 
+  if (orgId != null) {
+    query = query.eq("org_id", orgId);
+  }
+
+  const { error } = await query;
   if (error) console.error("completeInboundProcessing error:", error);
 }
 
-async function failInboundProcessing(messageSid, errorMessage) {
-  const { error } = await supabase
+async function failInboundProcessing(messageSid, errorMessage, orgId = null) {
+  let query = supabase
     .from("inbound_message_processing")
     .update({
       status: "failed",
@@ -2659,6 +2665,11 @@ async function failInboundProcessing(messageSid, errorMessage) {
     })
     .eq("message_sid", messageSid);
 
+  if (orgId != null) {
+    query = query.eq("org_id", orgId);
+  }
+
+  const { error } = await query;
   if (error) console.error("failInboundProcessing error:", error);
 }
 
@@ -3070,12 +3081,6 @@ async function handleTimelineAttendance(res, actingUser, command) {
       `I could not understand the date "${command.date_text}".`,
     );
   }
-
-  const events = await getAttendanceEventsForUserOnAttendanceDay(
-    targetUser.id,
-    attendanceDate,
-    actingUser.org_id,
-  );
 
   try {
     const events = await getAttendanceEventsForUserOnAttendanceDay(
@@ -8673,7 +8678,8 @@ app.get("/api/users", async (_req, res) => {
   try {
     const { data, error } = await supabase
       .from("users")
-      .select("id, name, role, is_active")
+      .select("id, org_id, name, role, is_active")
+      .eq("org_id", DASHBOARD_ORG_ID)
       .eq("is_active", true)
       .order("name", { ascending: true });
 
@@ -8686,6 +8692,90 @@ app.get("/api/users", async (_req, res) => {
   } catch (error) {
     console.error("API /api/users fatal error:", error);
     return sendApiError(res, 500, "Failed to load users");
+  }
+});
+
+app.get("/api/summary", async (_req, res) => {
+  try {
+    const data = await getDashboardSummaryData(DASHBOARD_ORG_ID);
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("API /api/summary error:", error);
+    return sendApiError(res, 500, "Failed to load summary");
+  }
+});
+
+app.get("/api/tasks", async (req, res) => {
+  try {
+    const data = await getTasksPageData(req.query, DASHBOARD_ORG_ID);
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("API /api/tasks error:", error);
+    return sendApiError(res, 500, "Failed to load tasks");
+  }
+});
+
+app.get("/api/tasks/:id", async (req, res) => {
+  try {
+    const taskId = Number(req.params.id);
+    if (!taskId) {
+      return sendApiError(res, 400, "Invalid task id");
+    }
+
+    const detail = await getTaskDetailData(taskId, DASHBOARD_ORG_ID);
+    if (!detail) {
+      return sendApiError(res, 404, "Task not found");
+    }
+
+    return sendApiSuccess(res, detail);
+  } catch (error) {
+    console.error("API /api/tasks/:id error:", error);
+    return sendApiError(res, 500, "Failed to load task");
+  }
+});
+
+app.get("/api/attendance", async (_req, res) => {
+  try {
+    const data = await getAttendancePageData(DASHBOARD_ORG_ID);
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("API /api/attendance error:", error);
+    return sendApiError(res, 500, "Failed to load attendance");
+  }
+});
+
+app.get("/api/attendance/:userId", async (req, res) => {
+  try {
+    const userId = Number(req.params.userId);
+    if (!userId) {
+      return sendApiError(res, 400, "Invalid user id");
+    }
+
+    const data = await getEmployeeAttendanceOverview(userId, DASHBOARD_ORG_ID);
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("API /api/attendance/:userId error:", error);
+    return sendApiError(res, 500, "Failed to load employee attendance");
+  }
+});
+
+app.get("/api/logs", async (_req, res) => {
+  try {
+    const data = await getLogsPageData(DASHBOARD_ORG_ID);
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("API /api/logs error:", error);
+    return sendApiError(res, 500, "Failed to load logs");
+  }
+});
+
+app.get("/api/bugs", async (_req, res) => {
+  try {
+    const data = await getStage0BugBoardData(DASHBOARD_ORG_ID);
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("API /api/bugs error:", error);
+    return sendApiError(res, 500, "Failed to load bug board");
   }
 });
 
@@ -8818,8 +8908,9 @@ app.post("/api/bugs", async (req, res) => {
 
       const { data: assigneeUser, error: assigneeError } = await supabase
         .from("users")
-        .select("id, is_active")
+        .select("id, org_id, is_active")
         .eq("id", numericUserId)
+        .eq("org_id", DASHBOARD_ORG_ID)
         .eq("is_active", true)
         .maybeSingle();
 
@@ -8836,6 +8927,7 @@ app.post("/api/bugs", async (req, res) => {
     }
 
     const insertRow = {
+      org_id: DASHBOARD_ORG_ID,
       title: String(title).trim(),
       description: description ? String(description).trim() : null,
       board_column: String(board_column).trim(),
