@@ -123,6 +123,324 @@ function parseDeadlineCommand(text) {
   };
 }
 
+function renderStage0BugBoardPage(data) {
+  const summary = data?.summary || {};
+  const columns = data?.columns || [];
+  const users = data?.users || [];
+
+  const columnHtml = columns
+    .map((column) => {
+      const cardsHtml = (column.items || []).length
+        ? column.items
+            .map((bug) => {
+              return `
+                <div class="bug-card" data-id="${escapeHtml(bug.id)}">
+                  <div class="bug-top">
+                    <div class="bug-id">#${escapeHtml(bug.id)}</div>
+                    <div class="bug-badges">
+                      <span class="${bugSeverityBadgeClass(bug.severity)}">${escapeHtml(bug.severity)}</span>
+                      <span class="${bugStatusBadgeClass(bug.status)}">${escapeHtml(bug.status)}</span>
+                    </div>
+                  </div>
+
+                  <div class="bug-title">${escapeHtml(bug.title)}</div>
+
+                  ${
+                    bug.description
+                      ? `<div class="bug-desc">${escapeHtml(bug.description)}</div>`
+                      : ""
+                  }
+
+                  <div class="bug-meta">
+                    <div><strong>Assignee:</strong> ${escapeHtml(bug.assigned_to_name || "-")}</div>
+                    <div><strong>Created by:</strong> ${escapeHtml(bug.created_by_name || "-")}</div>
+                    <div><strong>Created:</strong> ${escapeHtml(bug.created_at_text || "-")}</div>
+                  </div>
+
+                  ${
+                    bug.source_message_sid ||
+                    bug.source_phone_number ||
+                    bug.source_message_text
+                      ? `
+                        <div class="bug-source">
+                          ${bug.source_message_sid ? `<div><strong>SID:</strong> ${escapeHtml(bug.source_message_sid)}</div>` : ""}
+                          ${bug.source_phone_number ? `<div><strong>Phone:</strong> ${escapeHtml(bug.source_phone_number)}</div>` : ""}
+                          ${bug.source_message_text ? `<div><strong>Message:</strong> ${escapeHtml(bug.source_message_text)}</div>` : ""}
+                        </div>
+                      `
+                      : ""
+                  }
+
+                  <div class="bug-actions" style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+                    <select onchange="updateBug(${bug.id}, { board_column: this.value })"
+                      style="padding:8px; border-radius:8px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);">
+                      ${STAGE0_BUG_COLUMNS.map(
+                        (col) => `
+                        <option value="${escapeHtml(col)}" ${bug.board_column === col ? "selected" : ""}>${escapeHtml(col)}</option>
+                      `,
+                      ).join("")}
+                    </select>
+
+                    <select onchange="updateBug(${bug.id}, { severity: this.value })"
+                      style="padding:8px; border-radius:8px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);">
+                      ${["P0", "P1", "P2"]
+                        .map(
+                          (sev) => `
+                        <option value="${sev}" ${bug.severity === sev ? "selected" : ""}>${sev}</option>
+                      `,
+                        )
+                        .join("")}
+                    </select>
+
+                    <select onchange="updateBug(${bug.id}, { status: this.value })"
+                      style="padding:8px; border-radius:8px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);">
+                      ${["open", "in_progress", "blocked", "done"]
+                        .map(
+                          (st) => `
+                        <option value="${st}" ${bug.status === st ? "selected" : ""}>${st}</option>
+                      `,
+                        )
+                        .join("")}
+                    </select>
+
+                    <select onchange="updateBug(${bug.id}, { assigned_to_user_id: this.value || null })"
+                      style="padding:8px; border-radius:8px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);">
+                      <option value="">Unassigned</option>
+                      ${users
+                        .map(
+                          (u) => `
+                        <option value="${u.id}" ${String(bug.assigned_to_user_id || "") === String(u.id) ? "selected" : ""}>${escapeHtml(u.name)}</option>
+                      `,
+                        )
+                        .join("")}
+                    </select>
+                  </div>
+                </div>
+              `;
+            })
+            .join("")
+        : `<div class="empty-col">No bugs here</div>`;
+
+      return `
+        <div class="board-col">
+          <div class="board-col-head">
+            <div class="board-col-title">${escapeHtml(column.name)}</div>
+            <div class="board-col-count">${escapeHtml(column.count)}</div>
+          </div>
+          <div class="board-col-body">
+            ${cardsHtml}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  return `
+    <html>
+      <head>
+        <title>Stage 0 Bug Board</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+
+          .wrap { max-width: 1600px; margin: 0 auto; padding: 24px 18px 36px; }
+          .topbar, .panel, .stat-card, .board-col, .bug-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+          .topbar {
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 16px; flex-wrap: wrap; margin-bottom: 20px; padding: 18px 20px;
+          }
+          .eyebrow {
+            font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+            color: var(--primary); font-weight: 700; margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+          h1 { margin: 0; font-size: 30px; letter-spacing: -0.04em; }
+          .subtitle { color: var(--muted); margin-top: 8px; font-size: 14px; }
+          .links { display: flex; gap: 10px; flex-wrap: wrap; }
+          .links a {
+            color: var(--text); text-decoration: none; padding: 10px 14px;
+            border-radius: 12px; border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
+            background: var(--secondary-soft); font-weight: 600;
+          }
+          .stats {
+            display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 12px; margin-bottom: 20px;
+          }
+          .stat-card { padding: 14px; }
+          .stat-label {
+            color: var(--muted); font-size: 12px; text-transform: uppercase;
+            letter-spacing: 0.08em; font-weight: 700;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+          .stat-value { margin-top: 10px; font-size: 28px; font-weight: 700; }
+          .board {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(250px, 1fr));
+            gap: 14px;
+            align-items: start;
+            overflow-x: auto;
+          }
+          .board-col { min-height: 300px; display: flex; flex-direction: column; }
+          .board-col-head {
+            padding: 14px 14px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+          }
+          .board-col-title { font-size: 14px; font-weight: 700; }
+          .board-col-count {
+            min-width: 28px; height: 28px; border-radius: 999px;
+            display: grid; place-items: center;
+            background: var(--primary-soft);
+            border: 1px solid rgba(255,255,255,0.08);
+            font-size: 12px; font-weight: 700;
+          }
+          .board-col-body { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+          .bug-card { padding: 12px; }
+          .bug-top {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 8px; margin-bottom: 10px;
+          }
+          .bug-id {
+            color: var(--muted); font-size: 12px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+          .bug-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+          .bug-title { font-weight: 700; margin-bottom: 8px; line-height: 1.35; }
+          .bug-desc {
+            color: var(--muted); font-size: 13px; line-height: 1.5;
+            margin-bottom: 10px; white-space: pre-wrap;
+          }
+          .bug-meta, .bug-source { color: var(--muted); font-size: 12px; line-height: 1.5; }
+          .bug-source {
+            margin-top: 10px; padding-top: 10px;
+            border-top: 1px dashed rgba(255,255,255,0.08);
+          }
+          .empty-col {
+            color: var(--muted); text-align: center; padding: 20px 12px;
+            border: 1px dashed rgba(255,255,255,0.12); border-radius: 12px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="wrap">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Stage 0 Stability</div>
+              <h1>Bug Board</h1>
+              <div class="subtitle">Parsing, idempotency, Twilio, DB failures, dashboard/logs, infra, unknown issues.</div>
+            </div>
+            <div class="links">
+              <a href="/dashboard">Dashboard</a>
+              <a href="/tasks">Tasks</a>
+              <a href="/attendance">Attendance</a>
+              <a href="/logs">Logs</a>
+              <a href="/bugs">Bug Board</a>
+            </div>
+          </div>
+
+          <div class="stats">
+            <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${escapeHtml(summary.total ?? 0)}</div></div>
+            <div class="stat-card"><div class="stat-label">P0</div><div class="stat-value">${escapeHtml(summary.p0 ?? 0)}</div></div>
+            <div class="stat-card"><div class="stat-label">P1</div><div class="stat-value">${escapeHtml(summary.p1 ?? 0)}</div></div>
+            <div class="stat-card"><div class="stat-label">P2</div><div class="stat-value">${escapeHtml(summary.p2 ?? 0)}</div></div>
+            <div class="stat-card"><div class="stat-label">Open</div><div class="stat-value">${escapeHtml(summary.open ?? 0)}</div></div>
+            <div class="stat-card"><div class="stat-label">In Progress</div><div class="stat-value">${escapeHtml(summary.in_progress ?? 0)}</div></div>
+            <div class="stat-card"><div class="stat-label">Blocked</div><div class="stat-value">${escapeHtml(summary.blocked ?? 0)}</div></div>
+          </div>
+
+          <div class="panel" style="margin-bottom: 18px; padding: 16px;">
+            <h2 style="margin-top:0;">Create bug</h2>
+            <div style="display:grid; grid-template-columns: 2fr 1.2fr 1fr 1fr; gap:10px; margin-bottom:10px;">
+              <input id="bugTitle" placeholder="Bug title" style="padding:10px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);" />
+              <select id="bugColumn" style="padding:10px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);">
+                ${STAGE0_BUG_COLUMNS.map((x) => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join("")}
+              </select>
+              <select id="bugSeverity" style="padding:10px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);">
+                <option value="P0">P0</option>
+                <option value="P1">P1</option>
+                <option value="P2">P2</option>
+              </select>
+              <button onclick="createBug()" style="padding:10px 14px; border-radius:10px; border:1px solid var(--line); background:var(--primary-soft); color:var(--text); font-weight:700;">Create</button>
+            </div>
+
+            <textarea id="bugDescription" placeholder="Description" style="width:100%; min-height:90px; padding:10px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);"></textarea>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:10px;">
+              <input id="bugSourceSid" placeholder="Source Message SID (optional)" style="padding:10px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);" />
+              <input id="bugSourcePhone" placeholder="Source Phone (optional)" style="padding:10px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);" />
+            </div>
+            <textarea id="bugSourceText" placeholder="Source message text (optional)" style="width:100%; min-height:70px; margin-top:10px; padding:10px; border-radius:10px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);"></textarea>
+          </div>
+
+          <div class="board">
+            ${columnHtml}
+          </div>
+        </div>
+
+        <script>
+          async function createBug() {
+            const title = document.getElementById("bugTitle").value.trim();
+            const description = document.getElementById("bugDescription").value.trim();
+            const board_column = document.getElementById("bugColumn").value;
+            const severity = document.getElementById("bugSeverity").value;
+            const source_message_sid = document.getElementById("bugSourceSid").value.trim();
+            const source_phone_number = document.getElementById("bugSourcePhone").value.trim();
+            const source_message_text = document.getElementById("bugSourceText").value.trim();
+
+            if (!title) {
+              alert("Title is required");
+              return;
+            }
+
+            const res = await fetch("/api/bugs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title,
+                description,
+                board_column,
+                severity,
+                source_message_sid,
+                source_phone_number,
+                source_message_text
+              })
+            });
+
+            const json = await res.json();
+            if (!json.ok) {
+              alert(json.error || "Failed to create bug");
+              return;
+            }
+
+            location.reload();
+          }
+
+          async function updateBug(id, patch) {
+            const res = await fetch("/api/bugs/" + id, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(patch)
+            });
+
+            const json = await res.json();
+            if (!json.ok) {
+              alert(json.error || "Failed to update bug");
+              return;
+            }
+
+            location.reload();
+          }
+        </script>
+      </body>
+    </html>
+  `;
+}
+
 function parseFlexibleDate(input) {
   const raw = String(input || "")
     .toLowerCase()
@@ -1003,14 +1321,6 @@ function parseEditTaskCommand(text) {
   return null;
 }
 
-function parseBlockCommand(text) {
-  return null;
-}
-
-function parseUnblockCommand(text) {
-  return null;
-}
-
 function parseDoneCommand(text) {
   const raw = normalizeText(text);
   const match = raw.match(/^done\s+(\d+)\s+(.+)$/i);
@@ -1329,6 +1639,50 @@ function requireDashboardAuth(req, res, next) {
   return next();
 }
 
+const STAGE0_BUG_COLUMNS = [
+  "Parsing",
+  "Duplicate / idempotency",
+  "Webhook / Twilio",
+  "DB / save failure",
+  "Dashboard / logs",
+  "Infra / regional access",
+  "Unknown",
+];
+
+const STAGE0_BUG_SEVERITIES = ["P0", "P1", "P2"];
+const STAGE0_BUG_STATUSES = ["open", "in_progress", "blocked", "done"];
+
+function isValidStage0BugColumn(value) {
+  return STAGE0_BUG_COLUMNS.includes(String(value || "").trim());
+}
+
+function isValidStage0BugSeverity(value) {
+  return STAGE0_BUG_SEVERITIES.includes(String(value || "").trim());
+}
+
+function isValidStage0BugStatus(value) {
+  return STAGE0_BUG_STATUSES.includes(String(value || "").trim());
+}
+
+function bugSeveritySortWeight(severity) {
+  if (severity === "P0") return 0;
+  if (severity === "P1") return 1;
+  return 2;
+}
+
+function bugSeverityBadgeClass(severity) {
+  if (severity === "P0") return "badge badge-danger";
+  if (severity === "P1") return "badge badge-warn";
+  return "badge badge-info";
+}
+
+function bugStatusBadgeClass(status) {
+  if (status === "done") return "badge badge-ok";
+  if (status === "blocked") return "badge badge-danger";
+  if (status === "in_progress") return "badge badge-info";
+  return "badge badge-warn";
+}
+
 async function canReadTask(user, task) {
   if (!user || !task) return false;
   if (isManagerOrAdmin(user)) return true;
@@ -1458,6 +1812,38 @@ async function getLastActionAtOrBefore(userId, occurredAtIso = null) {
   }
 
   return data?.action || null;
+}
+
+async function insertMessageParsingLog({
+  messageSid,
+  phoneNumber,
+  rawText,
+  normalizedText,
+  intentDetected,
+  parserUsed,
+  parsedJson,
+  validationPassed,
+  validationError,
+  actionTaken,
+}) {
+  const { error } = await supabase.from("message_parsing_logs").insert([
+    {
+      message_sid: messageSid || null,
+      phone_number: phoneNumber || null,
+      raw_text: rawText || null,
+      normalized_text: normalizedText || null,
+      intent_detected: intentDetected || null,
+      parser_used: parserUsed || null,
+      parsed_json: parsedJson || null,
+      validation_passed: !!validationPassed,
+      validation_error: validationError || null,
+      action_taken: actionTaken || null,
+    },
+  ]);
+
+  if (error) {
+    console.error("insertMessageParsingLog error:", error);
+  }
 }
 
 async function findUsersByName(name) {
@@ -2159,6 +2545,80 @@ async function logIncomingMessage(user, reqBody, body, from) {
   return { duplicate: false, error: null };
 }
 
+async function beginInboundProcessing(messageSid, phoneNumber, normalizedText) {
+  const row = {
+    message_sid: messageSid,
+    phone_number: phoneNumber || null,
+    normalized_text: normalizedText || null,
+    status: "processing",
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from("inbound_message_processing")
+    .insert([row])
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === "23505") {
+      return { duplicate: true, row: null, error: null };
+    }
+    return { duplicate: false, row: null, error };
+  }
+
+  return { duplicate: false, row: data, error: null };
+}
+
+async function completeInboundProcessing(
+  messageSid,
+  resultType,
+  resultRefId = null,
+) {
+  const { error } = await supabase
+    .from("inbound_message_processing")
+    .update({
+      status: "completed",
+      result_type: resultType || null,
+      result_ref_id: resultRefId || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("message_sid", messageSid);
+
+  if (error) console.error("completeInboundProcessing error:", error);
+}
+
+async function failInboundProcessing(messageSid, errorMessage) {
+  const { error } = await supabase
+    .from("inbound_message_processing")
+    .update({
+      status: "failed",
+      error_message: errorMessage || "unknown_error",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("message_sid", messageSid);
+
+  if (error) console.error("failInboundProcessing error:", error);
+}
+
+async function runInboundAction({
+  messageSid,
+  successType,
+  successRefId = null,
+  failureType = "command_failed",
+  action,
+}) {
+  try {
+    const result = await action();
+    await completeInboundProcessing(messageSid, successType, successRefId);
+    return result;
+  } catch (error) {
+    console.error(`runInboundAction failed [${failureType}]:`, error);
+    await failInboundProcessing(messageSid, failureType);
+    throw error;
+  }
+}
+
 async function handleEmployeeSummary(res, actingUser, command) {
   const targetUser = command.target_name
     ? await findUniqueUserByName(command.target_name)
@@ -2205,8 +2665,7 @@ async function handleDeadlineUpdate(res, user, taskId, dateText) {
     return sendTwiml(res, "Only managers can change deadlines.");
   }
 
-  const parsedDate = parseFlexibleDate(dateText);
-
+  const parsedDate = parseDeadline(dateText);
   if (!parsedDate) {
     return sendTwiml(
       res,
@@ -2214,7 +2673,7 @@ async function handleDeadlineUpdate(res, user, taskId, dateText) {
     );
   }
 
-  const isoDate = parsedDate.toISOString().slice(0, 10);
+  const isoDate = parsedDate;
 
   const { task, error } = await getTaskById(taskId);
 
@@ -4276,7 +4735,13 @@ async function handleCreateTaskAdvanced(res, user, taskCommand) {
 
   if (ownerInsertError) {
     console.error("Task owners insert error:", ownerInsertError);
-    return sendTwiml(res, "❌ Task created but owners failed to save.");
+
+    await supabase.from("tasks").delete().eq("id", createdTask.id);
+
+    return sendTwiml(
+      res,
+      "❌ Task could not be completed because owners failed to save. Nothing was created.",
+    );
   }
 
   await insertTaskHistory(
@@ -4379,6 +4844,26 @@ async function handleCreateTask(res, user, taskCommand) {
     );
   }
 
+  const { error: ownerUpsertError } = await supabase
+    .from("task_owners")
+    .upsert([
+      {
+        task_id: createdTask.id,
+        user_id: assignee.id,
+      },
+    ]);
+
+  if (ownerUpsertError) {
+    console.error("Simple task owner upsert error:", ownerUpsertError);
+
+    await supabase.from("tasks").delete().eq("id", createdTask.id);
+
+    return sendTwiml(
+      res,
+      "❌ Task could not be completed because owner save failed. Nothing was created.",
+    );
+  }
+
   await insertTaskHistory(
     createdTask.id,
     user.id,
@@ -4392,13 +4877,6 @@ async function handleCreateTask(res, user, taskCommand) {
       assigned_to_user_id: assignee.id,
     },
   );
-
-  await supabase.from("task_owners").upsert([
-    {
-      task_id: createdTask.id,
-      user_id: assignee.id,
-    },
-  ]);
 
   return sendTwiml(
     res,
@@ -6253,6 +6731,7 @@ th {
               <a href="/dashboard">Dashboard</a>
               <a href="/tasks">Tasks</a>
               <a href="/logs">Logs</a>
+              <a href="/bugs">Bug Board</a>
             </div>
           </div>
 
@@ -7111,6 +7590,7 @@ text-shadow: 0 0 10px color-mix(in srgb, var(--primary) 22%, transparent);
       <a href="/tasks" class="secondary">Tasks</a>
       <a href="/logs">Logs</a>
       <a href="/attendance">Attendance</a>
+      <a href="/bugs">Bug Board</a>
     </div>
   </div>
 
@@ -7227,6 +7707,34 @@ text-shadow: 0 0 10px color-mix(in srgb, var(--primary) 22%, transparent);
   </html>
   `;
 }
+
+app.get("/health/live", (_req, res) => {
+  return res.status(200).json({ ok: true, status: "live" });
+});
+
+app.get("/health/ready", async (_req, res) => {
+  try {
+    const { error } = await supabase.from("users").select("id").limit(1);
+    if (error) {
+      return res
+        .status(500)
+        .json({ ok: false, status: "db_error", error: error.message });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      status: "ready",
+      openai: !!process.env.OPENAI_API_KEY,
+      twilioAuth: !!process.env.TWILIO_AUTH_TOKEN,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      status: "error",
+      error: error?.message || String(error),
+    });
+  }
+});
 
 app.get("/attendance/:userId", requireDashboardAuth, async (req, res) => {
   try {
@@ -7695,6 +8203,98 @@ async function getLogsPageData() {
   }));
 }
 
+async function getStage0BugBoardData() {
+  const { data, error } = await supabase
+    .from("stage0_bug_board")
+    .select(
+      `
+      id,
+      title,
+      description,
+      board_column,
+      severity,
+      status,
+      source_message_sid,
+      source_phone_number,
+      source_message_text,
+      created_by_user_id,
+      assigned_to_user_id,
+      created_at,
+      updated_at,
+      creator:users!stage0_bug_board_created_by_user_id_fkey(name),
+      assignee:users!stage0_bug_board_assigned_to_user_id_fkey(name)
+    `,
+    )
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  const rows = (data || []).map((row) => ({
+    id: row.id,
+    title: row.title || "",
+    description: row.description || "",
+    board_column: row.board_column || "Unknown",
+    severity: row.severity || "P2",
+    status: row.status || "open",
+    source_message_sid: row.source_message_sid || "",
+    source_phone_number: row.source_phone_number || "",
+    source_message_text: row.source_message_text || "",
+    created_by_name: row.creator?.name || "-",
+    assigned_to_name: row.assignee?.name || "-",
+    assigned_to_user_id: row.assigned_to_user_id || null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    created_at_text: row.created_at ? formatDateTime(row.created_at) : "-",
+    updated_at_text: row.updated_at ? formatDateTime(row.updated_at) : "-",
+  }));
+
+  const grouped = {};
+  for (const column of STAGE0_BUG_COLUMNS) grouped[column] = [];
+
+  for (const row of rows) {
+    if (!grouped[row.board_column]) grouped[row.board_column] = [];
+    grouped[row.board_column].push(row);
+  }
+
+  for (const column of Object.keys(grouped)) {
+    grouped[column].sort((a, b) => {
+      const sevDiff =
+        bugSeveritySortWeight(a.severity) - bugSeveritySortWeight(b.severity);
+      if (sevDiff !== 0) return sevDiff;
+      return (
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+    });
+  }
+
+  const { data: usersData, error: usersError } = await supabase
+    .from("users")
+    .select("id, name")
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (usersError) throw usersError;
+
+  return {
+    columns: STAGE0_BUG_COLUMNS.map((name) => ({
+      name,
+      items: grouped[name] || [],
+      count: (grouped[name] || []).length,
+    })),
+    users: usersData || [],
+    summary: {
+      total: rows.length,
+      p0: rows.filter((x) => x.severity === "P0").length,
+      p1: rows.filter((x) => x.severity === "P1").length,
+      p2: rows.filter((x) => x.severity === "P2").length,
+      open: rows.filter((x) => x.status === "open").length,
+      in_progress: rows.filter((x) => x.status === "in_progress").length,
+      blocked: rows.filter((x) => x.status === "blocked").length,
+      done: rows.filter((x) => x.status === "done").length,
+    },
+  };
+}
+
 app.get("/", (_req, res) => {
   res.type("html").send(`
     <html>
@@ -7779,6 +8379,23 @@ app.get("/dashboard", requireDashboardAuth, async (_req, res) => {
             <pre>${escapeHtml(error?.message || String(error))}</pre>
             <p><a href="/dashboard">Try again</a></p>
           </div>
+        </body>
+      </html>
+    `);
+  }
+});
+
+app.get("/bugs", requireDashboardAuth, async (_req, res) => {
+  try {
+    const data = await getStage0BugBoardData();
+    res.status(200).type("html").send(renderStage0BugBoardPage(data));
+  } catch (error) {
+    console.error("Bug board page error:", error);
+    res.status(500).type("html").send(`
+      <html>
+        <head><title>Bug Board Error</title></head>
+        <body>
+          <pre>${escapeHtml(error?.stack || error?.message || String(error))}</pre>
         </body>
       </html>
     `);
@@ -7881,6 +8498,211 @@ app.get("/api/logs", async (_req, res) => {
   } catch (error) {
     console.error("API /api/logs error:", error);
     return sendApiError(res, 500, "Failed to load logs");
+  }
+});
+
+app.get("/api/bugs", async (_req, res) => {
+  try {
+    const data = await getStage0BugBoardData();
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("API /api/bugs error:", error);
+    return sendApiError(res, 500, "Failed to load bug board");
+  }
+});
+
+app.post("/api/bugs", async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      board_column,
+      severity,
+      status,
+      source_message_sid,
+      source_phone_number,
+      source_message_text,
+      assigned_to_user_id,
+    } = req.body || {};
+
+    if (!title || !String(title).trim()) {
+      return sendApiError(res, 400, "Title is required");
+    }
+
+    if (!isValidStage0BugColumn(board_column)) {
+      return sendApiError(res, 400, "Invalid board_column");
+    }
+
+    if (!isValidStage0BugSeverity(severity)) {
+      return sendApiError(res, 400, "Invalid severity");
+    }
+
+    const finalStatus = status || "open";
+    if (!isValidStage0BugStatus(finalStatus)) {
+      return sendApiError(res, 400, "Invalid status");
+    }
+
+    let finalAssignedToUserId = null;
+    if (assigned_to_user_id) {
+      const numericUserId = Number(assigned_to_user_id);
+      if (!numericUserId) {
+        return sendApiError(res, 400, "Invalid assigned_to_user_id");
+      }
+
+      const { data: assigneeUser, error: assigneeError } = await supabase
+        .from("users")
+        .select("id, is_active")
+        .eq("id", numericUserId)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (assigneeError) {
+        console.error("Bug assignee lookup error:", assigneeError);
+        return sendApiError(res, 500, "Failed to validate assignee");
+      }
+
+      if (!assigneeUser) {
+        return sendApiError(res, 400, "Assigned user not found or inactive");
+      }
+
+      finalAssignedToUserId = numericUserId;
+    }
+
+    const insertRow = {
+      title: String(title).trim(),
+      description: description ? String(description).trim() : null,
+      board_column: String(board_column).trim(),
+      severity: String(severity).trim(),
+      status: String(finalStatus).trim(),
+      source_message_sid: source_message_sid
+        ? String(source_message_sid).trim()
+        : null,
+      source_phone_number: source_phone_number
+        ? String(source_phone_number).trim()
+        : null,
+      source_message_text: source_message_text
+        ? String(source_message_text).trim()
+        : null,
+      created_by_user_id: null,
+      assigned_to_user_id: finalAssignedToUserId,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from("stage0_bug_board")
+      .insert([insertRow])
+      .select("*")
+      .single();
+
+    if (error) {
+      console.error("API /api/bugs POST insert error:", error);
+      return sendApiError(res, 500, "Failed to create bug");
+    }
+
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("API /api/bugs POST error:", error);
+    return sendApiError(res, 500, "Failed to create bug");
+  }
+});
+
+app.patch("/api/bugs/:id", async (req, res) => {
+  try {
+    const bugId = Number(req.params.id);
+    if (!bugId) {
+      return sendApiError(res, 400, "Invalid bug id");
+    }
+
+    const {
+      title,
+      description,
+      board_column,
+      severity,
+      status,
+      assigned_to_user_id,
+    } = req.body || {};
+
+    const patch = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (title !== undefined) {
+      if (!String(title).trim()) {
+        return sendApiError(res, 400, "Title cannot be empty");
+      }
+      patch.title = String(title).trim();
+    }
+
+    if (description !== undefined) {
+      patch.description = description ? String(description).trim() : null;
+    }
+
+    if (board_column !== undefined) {
+      if (!isValidStage0BugColumn(board_column)) {
+        return sendApiError(res, 400, "Invalid board_column");
+      }
+      patch.board_column = String(board_column).trim();
+    }
+
+    if (severity !== undefined) {
+      if (!isValidStage0BugSeverity(severity)) {
+        return sendApiError(res, 400, "Invalid severity");
+      }
+      patch.severity = String(severity).trim();
+    }
+
+    if (status !== undefined) {
+      if (!isValidStage0BugStatus(status)) {
+        return sendApiError(res, 400, "Invalid status");
+      }
+      patch.status = String(status).trim();
+    }
+
+    if (assigned_to_user_id !== undefined) {
+      if (!assigned_to_user_id) {
+        patch.assigned_to_user_id = null;
+      } else {
+        const numericUserId = Number(assigned_to_user_id);
+        if (!numericUserId) {
+          return sendApiError(res, 400, "Invalid assigned_to_user_id");
+        }
+
+        const { data: assigneeUser, error: assigneeError } = await supabase
+          .from("users")
+          .select("id, is_active")
+          .eq("id", numericUserId)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (assigneeError) {
+          console.error("Bug assignee lookup error:", assigneeError);
+          return sendApiError(res, 500, "Failed to validate assignee");
+        }
+
+        if (!assigneeUser) {
+          return sendApiError(res, 400, "Assigned user not found or inactive");
+        }
+
+        patch.assigned_to_user_id = numericUserId;
+      }
+    }
+
+    const { data, error } = await supabase
+      .from("stage0_bug_board")
+      .update(patch)
+      .eq("id", bugId)
+      .select("*")
+      .single();
+
+    if (error) {
+      console.error("API /api/bugs/:id PATCH error:", error);
+      return sendApiError(res, 500, "Failed to update bug");
+    }
+
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("API /api/bugs/:id PATCH fatal error:", error);
+    return sendApiError(res, 500, "Failed to update bug");
   }
 });
 
@@ -8115,6 +8937,7 @@ tbody tr:hover {
               <a href="/dashboard">Dashboard</a>
               <a href="/attendance">Attendance</a>
               <a href="/logs">Logs</a>
+              <a href="/bugs">Bug Board</a>
             </div>
           </div>
 
@@ -8590,6 +9413,7 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
               <a href="/dashboard">Dashboard</a>
               <a href="/tasks">Tasks</a>
               <a href="/logs">Logs</a>
+              <a href="/bugs">Bug Board</a>
             </div>
           </div>
 
@@ -8827,6 +9651,7 @@ th {
               <a href="/dashboard">Dashboard</a>
               <a href="/tasks">Tasks</a>
               <a href="/attendance">Attendance</a>
+              <a href="/bugs">Bug Board</a>
             </div>
           </div>
 
@@ -8874,6 +9699,25 @@ th {
 });
 
 app.post("/whatsapp", async (req, res) => {
+  let messageSid = null;
+
+  async function runInboundAction({
+    successType,
+    successRefId = null,
+    failureType = "command_failed",
+    action,
+  }) {
+    try {
+      const result = await action();
+      await completeInboundProcessing(messageSid, successType, successRefId);
+      return result;
+    } catch (error) {
+      console.error(`runInboundAction failed [${failureType}]:`, error);
+      await failInboundProcessing(messageSid, failureType);
+      throw error;
+    }
+  }
+
   try {
     if (!validateTwilioRequest(req)) {
       console.warn("Rejected request due to invalid Twilio signature.");
@@ -8884,9 +9728,50 @@ app.post("/whatsapp", async (req, res) => {
 
     const from = req.body.From || null;
     const body = String(req.body.Body || "").trim();
+    messageSid = req.body.MessageSid || null;
     const normalizedBody = normalizeText(body).replace(/\s+/g, " ");
-    const rateLimitKey = from || req.ip || "unknown";
 
+    async function logParse({
+      intentDetected,
+      parserUsed,
+      parsedJson = null,
+      validationPassed = true,
+      validationError = null,
+      actionTaken = null,
+    }) {
+      await insertMessageParsingLog({
+        messageSid,
+        phoneNumber: from,
+        rawText: body,
+        normalizedText: normalizedBody,
+        intentDetected,
+        parserUsed,
+        parsedJson,
+        validationPassed,
+        validationError,
+        actionTaken,
+      });
+    }
+
+    const processingStart = await beginInboundProcessing(
+      messageSid,
+      from,
+      normalizedBody,
+    );
+
+    if (processingStart.error) {
+      console.error("Inbound processing start error:", processingStart.error);
+      return sendTwiml(res, "❌ System error while processing message");
+    }
+
+    if (processingStart.duplicate) {
+      return sendTwiml(
+        res,
+        "Duplicate message detected. No action was repeated.",
+      );
+    }
+
+    const rateLimitKey = from || req.ip || "unknown";
     const inboundMessageSid =
       req.body.MessageSid || req.body.SmsMessageSid || null;
     const requestTag = `[wa:${inboundMessageSid || "no-sid"}]`;
@@ -8899,6 +9784,7 @@ app.post("/whatsapp", async (req, res) => {
 
     if (!checkRateLimit(rateLimitKey)) {
       console.warn("Rate limit exceeded for:", rateLimitKey);
+      await failInboundProcessing(messageSid, "rate_limited");
       return sendTwiml(
         res,
         "Too many requests. Please wait a minute and try again.",
@@ -8908,6 +9794,7 @@ app.post("/whatsapp", async (req, res) => {
     const { user, error: userError } = await getActiveUserByPhone(from);
 
     if (userError) {
+      await failInboundProcessing(messageSid, "user_lookup_failed");
       return sendTwiml(
         res,
         "❌ Could not verify your account right now\nReason: user lookup failed\nTry: please message again in a minute",
@@ -8915,12 +9802,28 @@ app.post("/whatsapp", async (req, res) => {
     }
 
     const logResult = await logIncomingMessage(user, req.body, body, from);
+
+    if (logResult.error) {
+      console.error("Incoming message log failed:", logResult.error);
+      await failInboundProcessing(messageSid, "message_log_failed");
+      return sendTwiml(
+        res,
+        "❌ Could not process your message right now\nReason: message logging failed\nTry: please send it again in a minute",
+      );
+    }
+
     if (logResult.duplicate) {
       console.log("Duplicate inbound WhatsApp message detected", {
         from,
         messageSid: req.body.MessageSid || req.body.SmsMessageSid || null,
         body,
       });
+
+      await completeInboundProcessing(
+        messageSid,
+        "duplicate_message_log",
+        null,
+      );
 
       return sendTwiml(
         res,
@@ -8930,6 +9833,7 @@ app.post("/whatsapp", async (req, res) => {
 
     if (!user) {
       console.log("Unknown sender:", from);
+      await failInboundProcessing(messageSid, "unknown_user");
       return sendTwiml(
         res,
         "❌ Your number is not registered in this system\nPlease contact admin to get added",
@@ -8942,117 +9846,135 @@ app.post("/whatsapp", async (req, res) => {
     // Basic / utility commands
     // ------------------------------------------------------------------
     if (normalizedBody === "help attendance") {
-      return sendTwiml(
-        res,
-        [
-          "🕒 Attendance Help",
-          "",
-          "Your commands:",
-          "login",
-          "logout",
-          "break",
-          "back",
-          "status",
-          "now",
-          "leave today",
-          "leave tomorrow",
-          "late 11:00 am",
-          "",
-          "Examples:",
-          "login",
-          "break",
-          "back",
-          "logout",
-          "status",
-          "now",
-          "leave today",
-          "late 10:45 am",
-          "",
-          "Notes:",
-          "• Use actual clock time for late",
-          "• Do not use: late 30 min",
-        ].join("\n"),
-      );
+      await logParse({
+        intentDetected: "help_attendance",
+        parserUsed: "normalizedBody === help attendance",
+        parsedJson: { normalizedBody },
+        validationPassed: true,
+        actionTaken: "show_help_attendance",
+      });
+
+      return runInboundAction({
+        successType: "help_shown",
+        failureType: "help_failed",
+        action: () =>
+          sendTwiml(
+            res,
+            [
+              "🕒 Attendance Help",
+              "",
+              "Your commands:",
+              "login",
+              "logout",
+              "break",
+              "back",
+              "status",
+              "now",
+              "leave today",
+              "leave tomorrow",
+              "late 11:00 am",
+              "",
+              "Examples:",
+              "login",
+              "break",
+              "back",
+              "logout",
+              "status",
+              "now",
+              "leave today",
+              "late 10:45 am",
+              "",
+              "Notes:",
+              "• Use actual clock time for late",
+              "• Do not use: late 30 min",
+            ].join("\n"),
+          ),
+      });
     }
 
     if (normalizedBody === "help tasks") {
-      return sendTwiml(
-        res,
-        [
-          "📋 Task Help",
-          "",
-          "Create:",
-          "task Ruhab high present progress on Rasset by today",
-          "",
-          "View:",
-          "my tasks",
-          "tasks Ruhab",
-          "show task 2",
-          "",
-          "Update:",
-          "progress 2 50% 20 mails sent no positive response",
-          "edit task 2 blocker waiting on dependency",
-          "edit task 2 clear blocker",
-          "done 2 tested and verified",
-          "undo last task change",
-          "",
-          "Manager/Admin only:",
-          "cancel task 2",
-          "delete task 2",
-          "",
-          "Notes:",
-          "• Use task ID for updates",
-          "• Priority: low, medium, high",
-        ].join("\n"),
-      );
+      return runInboundAction({
+        successType: "help_shown",
+        failureType: "help_failed",
+        action: () =>
+          sendTwiml(
+            res,
+            [
+              "📋 Task Help",
+              "",
+              "Create:",
+              "task Ruhab high present progress on Rasset by today",
+              "",
+              "View:",
+              "my tasks",
+              "tasks Ruhab",
+              "show task 2",
+              "",
+              "Update:",
+              "progress 2 50% 20 mails sent no positive response",
+              "edit task 2 blocker waiting on dependency",
+              "edit task 2 clear blocker",
+              "done 2 tested and verified",
+              "undo last task change",
+              "",
+              "Manager/Admin only:",
+              "cancel task 2",
+              "delete task 2",
+              "",
+              "Notes:",
+              "• Use task ID for updates",
+              "• Priority: low, medium, high",
+            ].join("\n"),
+          ),
+      });
     }
 
     if (normalizedBody === "help manager") {
       if (!isManagerOrAdmin(user)) {
+        await failInboundProcessing(messageSid, "help_forbidden");
         return sendTwiml(
           res,
           "❌ Only managers/admins can use this help section.",
         );
       }
 
-      return sendTwiml(
-        res,
-        [
-          "🧑‍💼 Manager/Admin Help",
-          "",
-          "Attendance for others:",
-          "login Zoya",
-          "logout Aj 6:30 pm",
-          "break Ruhab",
-          "back Mahesh",
-          "",
-          "People views:",
-          "employee summary Aj",
-          "timeline Mahesh",
-          "tasks Ruhab",
-          "",
-          "Task management:",
-          "task Ruhab high present progress on Rasset by today",
-          "cancel task 2",
-          "delete task 2",
-          "edit task 2 title final parents pitch v2",
-          "edit task 2 deadline tomorrow",
-          "edit task 2 owner zoya, aj",
-          "edit task 2 title final parents pitch v2",
-          "edit task 2 deadline tomorrow",
-          "edit task 2 owner zoya, aj",
-          "edit task 2 status blocked",
-          "edit task 2 title final parents pitch v2",
-          "edit task 2 deadline tomorrow",
-          "edit task 2 owner zoya, aj",
-          "edit task 2 status blocked",
-          "",
-          "Notes:",
-          "• Use clear unique names",
-          "• Past-time marking is allowed where supported",
-        ].join("\n"),
-      );
+      return runInboundAction({
+        successType: "help_shown",
+        failureType: "help_failed",
+        action: () =>
+          sendTwiml(
+            res,
+            [
+              "🧑‍💼 Manager/Admin Help",
+              "",
+              "Attendance for others:",
+              "login Zoya",
+              "logout Aj 6:30 pm",
+              "break Ruhab",
+              "back Mahesh",
+              "",
+              "People views:",
+              "employee summary Aj",
+              "timeline Mahesh",
+              "tasks Ruhab",
+              "",
+              "Task management:",
+              "task Ruhab high present progress on Rasset by today",
+              "cancel task 2",
+              "delete task 2",
+              "edit task 2 title final parents pitch v2",
+              "edit task 2 deadline tomorrow",
+              "edit task 2 owner zoya, aj",
+              "edit task 2 status blocked",
+              "",
+              "Notes:",
+              "• Use clear unique names",
+              "• Past-time marking is allowed where supported",
+            ].join("\n"),
+          ),
+      });
     }
+
     if (normalizedBody === "help" || normalizedBody === "commands") {
       console.log("HELP matched", {
         rawBody: body,
@@ -9060,124 +9982,166 @@ app.post("/whatsapp", async (req, res) => {
         user: user?.name,
         from,
       });
-      return handleHelp(res, user);
+
+      return runInboundAction({
+        successType: "help_shown",
+        failureType: "help_failed",
+        action: () => handleHelp(res, user),
+      });
     }
 
-    if (normalizedBody === "help manager") {
-      if (!isManagerOrAdmin(user)) {
-        return sendTwiml(
-          res,
-          "❌ Only managers/admins can use this help section.",
-        );
-      }
-
-      return sendTwiml(
-        res,
-        [
-          "🧑‍💼 Manager/Admin Help",
-          "",
-          "Attendance for others:",
-          "login Zoya",
-          "logout Aj 6:30 pm",
-          "break Ruhab",
-          "back Mahesh",
-          "",
-          "People views:",
-          "employee summary Aj",
-          "timeline Mahesh",
-          "tasks Ruhab",
-          "",
-          "Task management:",
-          "task Ruhab high present progress on Rasset by today",
-          "cancel task 2",
-          "delete task 2",
-          "",
-          "Notes:",
-          "• Use clear unique names",
-          "• Past-time marking is allowed where supported",
-        ].join("\n"),
-      );
-    }
     if (normalizedBody === "my tasks") {
-      return handleMyTasks(res, user);
+      return runInboundAction({
+        successType: "read_only_query",
+        failureType: "read_only_query_failed",
+        action: () => handleMyTasks(res, user),
+      });
     }
 
     if (normalizedBody === "show overdue") {
-      return handleShowOverdue(res, user);
+      return runInboundAction({
+        successType: "read_only_query",
+        failureType: "read_only_query_failed",
+        action: () => handleShowOverdue(res, user),
+      });
     }
 
     const showTaskId = parseShowTaskCommand(body);
     if (showTaskId) {
-      return handleShowTask(res, user, showTaskId);
+      return runInboundAction({
+        successType: "read_only_query",
+        failureType: "read_only_query_failed",
+        action: () => handleShowTask(res, user, showTaskId),
+      });
     }
 
     const doneCommand = parseDoneCommand(body);
     if (doneCommand) {
-      return handleDoneTask(res, user, doneCommand.taskId, doneCommand.note);
+      return runInboundAction({
+        successType: "task_updated",
+        failureType: "task_update_failed",
+        action: () =>
+          handleDoneTask(res, user, doneCommand.taskId, doneCommand.note),
+      });
     }
 
     const employeeSummaryCommand = parseEmployeeSummaryCommand(body);
     if (employeeSummaryCommand) {
-      return handleEmployeeSummary(res, user, employeeSummaryCommand);
+      return runInboundAction({
+        successType: "attendance_query",
+        failureType: "attendance_query_failed",
+        action: () => handleEmployeeSummary(res, user, employeeSummaryCommand),
+      });
     }
 
     // ------------------------------------------------------------------
     // Admin cleanup / correction commands
-    // Keep these EARLY so they do not get misrouted by task/attendance parsers
     // ------------------------------------------------------------------
     const timelineCommand = parseTimelineCommand(body);
     if (timelineCommand) {
-      return handleTimelineAttendance(res, user, timelineCommand);
+      return runInboundAction({
+        successType: "attendance_query",
+        failureType: "attendance_query_failed",
+        action: () => handleTimelineAttendance(res, user, timelineCommand),
+      });
     }
 
     const auditAttendanceCommand = parseAuditAttendanceCommand(body);
     if (auditAttendanceCommand) {
-      return handleAuditAttendance(res, user, auditAttendanceCommand);
+      return runInboundAction({
+        successType: "attendance_query",
+        failureType: "attendance_query_failed",
+        action: () => handleAuditAttendance(res, user, auditAttendanceCommand),
+      });
     }
 
     const deadlineCommand = parseDeadlineCommand(body);
+    const deadlineCommand = parseDeadlineCommand(body);
     if (deadlineCommand) {
-      return handleDeadlineUpdate(
-        res,
-        user,
-        deadlineCommand.taskId,
-        deadlineCommand.dateText,
-      );
+      await logParse({
+        intentDetected: "deadline_update",
+        parserUsed: "parseDeadlineCommand",
+        parsedJson: deadlineCommand,
+        validationPassed: true,
+        actionTaken: "handleDeadlineUpdate",
+      });
+
+      return runInboundAction({
+        successType: "task_updated",
+        failureType: "task_update_failed",
+        action: () =>
+          handleDeadlineUpdate(
+            res,
+            user,
+            deadlineCommand.taskId,
+            deadlineCommand.dateText,
+          ),
+      });
     }
 
     const undoAttendanceCommand = parseUndoAttendanceCommand(body);
     if (undoAttendanceCommand) {
-      return handleUndoAttendance(res, user, undoAttendanceCommand);
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: () => handleUndoAttendance(res, user, undoAttendanceCommand),
+      });
     }
 
     const resetAttendanceCommand = parseResetAttendanceCommand(body);
     if (resetAttendanceCommand) {
-      return handleResetAttendance(res, user, resetAttendanceCommand);
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: () => handleResetAttendance(res, user, resetAttendanceCommand),
+      });
     }
 
     const forceAttendanceCommand = parseForceAttendanceCommand(body);
     if (forceAttendanceCommand) {
-      return handleForceAttendance(res, user, forceAttendanceCommand);
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: () => handleForceAttendance(res, user, forceAttendanceCommand),
+      });
     }
 
     const fixAttendanceCommand = parseFixAttendanceCommand(body);
     if (fixAttendanceCommand) {
-      return handleFixAttendance(res, user, fixAttendanceCommand);
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: () => handleFixAttendance(res, user, fixAttendanceCommand),
+      });
     }
 
     const removeAttendanceCommand = parseRemoveAttendanceCommand(body);
     if (removeAttendanceCommand) {
-      return handleRemoveAttendance(res, user, removeAttendanceCommand);
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: () =>
+          handleRemoveAttendance(res, user, removeAttendanceCommand),
+      });
     }
 
     const autoFixAttendanceCommand = parseAutoFixAttendanceCommand(body);
     if (autoFixAttendanceCommand) {
-      return handleAutoFixAttendance(res, user, autoFixAttendanceCommand);
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: () =>
+          handleAutoFixAttendance(res, user, autoFixAttendanceCommand),
+      });
     }
 
     const lockAttendanceCommand = parseLockAttendanceCommand(body);
     if (lockAttendanceCommand) {
-      return handleLockAttendanceDay(res, user, lockAttendanceCommand);
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: () => handleLockAttendanceDay(res, user, lockAttendanceCommand),
+      });
     }
 
     // ------------------------------------------------------------------
@@ -9185,37 +10149,56 @@ app.post("/whatsapp", async (req, res) => {
     // ------------------------------------------------------------------
     const progressCommand = parseProgressCommand(body);
     if (progressCommand) {
-      return handleProgressTask(
-        res,
-        user,
-        progressCommand.taskId,
-        progressCommand.progress,
-        progressCommand.note,
-      );
+      return runInboundAction({
+        successType: "task_updated",
+        failureType: "task_update_failed",
+        action: () =>
+          handleProgressTask(
+            res,
+            user,
+            progressCommand.taskId,
+            progressCommand.progress,
+            progressCommand.note,
+          ),
+      });
     }
 
     if (parseWhoAmICommand(body)) {
-      return handleWhoAmI(res, user);
+      return runInboundAction({
+        successType: "read_only_query",
+        failureType: "read_only_query_failed",
+        action: () => handleWhoAmI(res, user),
+      });
     }
 
     if (parseStatusCommand(body)) {
-      return handleStatus(res, user);
+      return runInboundAction({
+        successType: "read_only_query",
+        failureType: "read_only_query_failed",
+        action: () => handleStatus(res, user),
+      });
     }
 
     const lateUnsureCommand = parseLateUnsureCommand(body);
     if (lateUnsureCommand) {
-      return handleLateUnsureCommand(res, user, lateUnsureCommand);
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: () => handleLateUnsureCommand(res, user, lateUnsureCommand),
+      });
     }
 
     const lateForOther = parseLateForOtherCommand(body);
     if (lateForOther) {
       if (!isManagerOrAdmin(user)) {
+        await failInboundProcessing(messageSid, "attendance_update_forbidden");
         return sendTwiml(res, "Only managers can mark late for others.");
       }
 
       const targetUser = await findUniqueUserByName(lateForOther.target_name);
 
       if (!targetUser) {
+        await failInboundProcessing(messageSid, "attendance_target_not_found");
         return sendTwiml(
           res,
           `I could not uniquely find an active user named "${lateForOther.target_name}".`,
@@ -9225,6 +10208,7 @@ app.post("/whatsapp", async (req, res) => {
       const lateIso = parseLocalDateTimeForToday(lateForOther.time_text);
 
       if (!lateIso) {
+        await failInboundProcessing(messageSid, "attendance_bad_time");
         return sendTwiml(
           res,
           `Could not understand the time "${lateForOther.time_text}". Use format like 11:00 AM.`,
@@ -9235,120 +10219,167 @@ app.post("/whatsapp", async (req, res) => {
       const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
 
       if (locked) {
+        await failInboundProcessing(messageSid, "attendance_day_locked");
         return sendTwiml(
           res,
           `❌ Attendance is locked for ${targetUser.name} on ${attendanceDate}`,
         );
       }
 
-      const shiftStartIso = getShiftStartIsoForToday();
-      const approved = isLateApproved(new Date().toISOString(), shiftStartIso);
-      const informedAtIso = new Date().toISOString();
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: async () => {
+          const shiftStartIso = getShiftStartIsoForToday();
+          const approved = isLateApproved(
+            new Date().toISOString(),
+            shiftStartIso,
+          );
+          const informedAtIso = new Date().toISOString();
 
-      const { error } = await supabase.from("late_arrivals").upsert(
-        [
-          {
-            user_id: targetUser.id,
-            late_date: attendanceDate,
-            expected_login_at: lateIso,
-            informed_at: informedAtIso,
-            shift_start_at: shiftStartIso,
-            is_approved: approved,
-            created_by_user_id: user.id,
-            note: lateForOther.note || `Marked by ${user.name}`,
-          },
-        ],
-        { onConflict: "user_id,late_date" },
-      );
+          const { error } = await supabase.from("late_arrivals").upsert(
+            [
+              {
+                user_id: targetUser.id,
+                late_date: attendanceDate,
+                expected_login_at: lateIso,
+                informed_at: informedAtIso,
+                shift_start_at: shiftStartIso,
+                is_approved: approved,
+                created_by_user_id: user.id,
+                note: lateForOther.note || `Marked by ${user.name}`,
+              },
+            ],
+            { onConflict: "user_id,late_date" },
+          );
 
-      if (error) {
-        console.error(error);
-        return sendTwiml(res, "Failed to mark late.");
-      }
+          if (error) {
+            console.error(error);
+            return sendTwiml(res, "Failed to mark late.");
+          }
 
-      return sendTwiml(
-        res,
-        `⏰ Late marked\n${targetUser.name} will join at ${lateForOther.time_text}`,
-      );
+          return sendTwiml(
+            res,
+            `⏰ Late marked\n${targetUser.name} will join at ${lateForOther.time_text}`,
+          );
+        },
+      });
     }
 
     const lateCommand = parseLateCommand(body);
     if (lateCommand) {
-      return handleLateCommand(res, user, lateCommand);
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: () => handleLateCommand(res, user, lateCommand),
+      });
     }
 
     // ------------------------------------------------------------------
     // Task blocking / team visibility
     // ------------------------------------------------------------------
     const cancelCmd = parseCancelTaskCommand(body);
-
     if (cancelCmd) {
       if (!isManagerOrAdmin(user)) {
+        await failInboundProcessing(messageSid, "task_update_forbidden");
         return sendTwiml(res, "❌ Only managers/admins can cancel tasks");
       }
 
-      const { task, error } = await getTaskById(cancelCmd.taskId);
+      return runInboundAction({
+        successType: "task_updated",
+        failureType: "task_update_failed",
+        action: async () => {
+          const { task, error } = await getTaskById(cancelCmd.taskId);
 
-      if (error || !task) {
-        return sendTwiml(res, "❌ Task not found");
-      }
+          if (error || !task) {
+            return sendTwiml(res, "❌ Task not found");
+          }
 
-      if (task.status === "cancelled") {
-        return sendTwiml(res, "⚠️ Task already cancelled");
-      }
+          if (task.status === "cancelled") {
+            return sendTwiml(res, "⚠️ Task already cancelled");
+          }
 
-      const oldStatus = task.status;
+          const oldStatus = task.status;
 
-      const { error: updateError } = await supabase
-        .from("tasks")
-        .update({
-          status: "cancelled",
-          last_updated_by_user_id: user.id,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", task.id);
+          const { error: updateError } = await supabase
+            .from("tasks")
+            .update({
+              status: "cancelled",
+              last_updated_by_user_id: user.id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", task.id);
 
-      if (updateError) {
-        console.error(updateError);
-        return sendTwiml(res, "❌ Failed to cancel task");
-      }
+          if (updateError) {
+            console.error(updateError);
+            return sendTwiml(res, "❌ Failed to cancel task");
+          }
 
-      // History tracking
-      await insertTaskHistory(
-        task.id,
-        user.id,
-        "status_change",
-        "status",
-        oldStatus,
-        "cancelled",
-      );
+          await insertTaskHistory(
+            task.id,
+            user.id,
+            "status_change",
+            "status",
+            oldStatus,
+            "cancelled",
+          );
 
-      return sendTwiml(res, `🗑️ Task ${taskRef(task)} cancelled successfully`);
+          return sendTwiml(
+            res,
+            `🗑️ Task ${taskRef(task)} cancelled successfully`,
+          );
+        },
+      });
     }
 
     const tasksByNameCommand = parseTasksByNameCommand(body);
     if (tasksByNameCommand) {
-      return handleTasksByName(res, user, tasksByNameCommand.assignee_name);
+      return runInboundAction({
+        successType: "read_only_query",
+        failureType: "read_only_query_failed",
+        action: () =>
+          handleTasksByName(res, user, tasksByNameCommand.assignee_name),
+      });
     }
 
     if (parseWhoIsOnBreakCommand(body)) {
-      return handleWhoIsOnBreak(res, user);
+      return runInboundAction({
+        successType: "attendance_query",
+        failureType: "attendance_query_failed",
+        action: () => handleWhoIsOnBreak(res, user),
+      });
     }
 
     if (parseNowCommand(body)) {
-      return handleNowSummary(res, user);
+      return runInboundAction({
+        successType: "attendance_query",
+        failureType: "attendance_query_failed",
+        action: () => handleNowSummary(res, user),
+      });
     }
 
     if (parseSummaryTodayCommand(body)) {
-      return handleSummaryToday(res, user);
+      return runInboundAction({
+        successType: "attendance_query",
+        failureType: "attendance_query_failed",
+        action: () => handleSummaryToday(res, user),
+      });
     }
 
     if (parseUndoLastTaskChangeCommand(body)) {
-      return handleUndoLastTaskChange(res, user);
+      return runInboundAction({
+        successType: "task_updated",
+        failureType: "task_update_failed",
+        action: () => handleUndoLastTaskChange(res, user),
+      });
     }
 
     if (parseWhoIsOffTodayCommand(body)) {
-      return handleWhoIsOffToday(res, user);
+      return runInboundAction({
+        successType: "attendance_query",
+        failureType: "attendance_query_failed",
+        action: () => handleWhoIsOffToday(res, user),
+      });
     }
 
     // ------------------------------------------------------------------
@@ -9359,7 +10390,11 @@ app.post("/whatsapp", async (req, res) => {
       const normalizedRaw = String(body || "").trim();
 
       if (/^(leave|off)\s+on\s+/i.test(normalizedRaw)) {
-        return handleSelfOffDay(res, user, offDayCommand);
+        return runInboundAction({
+          successType: "attendance_updated",
+          failureType: "attendance_update_failed",
+          action: () => handleSelfOffDay(res, user, offDayCommand),
+        });
       }
 
       if (
@@ -9367,17 +10402,29 @@ app.post("/whatsapp", async (req, res) => {
           normalizedRaw,
         )
       ) {
-        return handleSelfOffDay(res, user, offDayCommand);
+        return runInboundAction({
+          successType: "attendance_updated",
+          failureType: "attendance_update_failed",
+          action: () => handleSelfOffDay(res, user, offDayCommand),
+        });
       }
     }
 
     const offDayForOtherCommand = parseOffDayForOtherCommand(body);
     if (offDayForOtherCommand) {
-      return handleOffDayForOther(res, user, offDayForOtherCommand);
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: () => handleOffDayForOther(res, user, offDayForOtherCommand),
+      });
     }
 
     if (offDayCommand) {
-      return handleSelfOffDay(res, user, offDayCommand);
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: () => handleSelfOffDay(res, user, offDayCommand),
+      });
     }
 
     // ------------------------------------------------------------------
@@ -9385,12 +10432,13 @@ app.post("/whatsapp", async (req, res) => {
     // ------------------------------------------------------------------
     const markAttendanceCommand = parseMarkAttendanceCommand(body);
     if (markAttendanceCommand) {
-      return handleMarkedAttendance(res, user, markAttendanceCommand);
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_handler_failed",
+        action: () => handleMarkedAttendance(res, user, markAttendanceCommand),
+      });
     }
 
-    // Manager shorthand should only execute if target user really exists.
-    // Otherwise let self-attendance parsing handle commands like:
-    // "logout family concern" or "break personal issue"
     const directManagerAttendanceCommand =
       parseDirectManagerAttendanceCommand(body);
 
@@ -9400,49 +10448,106 @@ app.post("/whatsapp", async (req, res) => {
       );
 
       if (directTargetUser) {
-        return handleMarkedAttendance(
-          res,
-          user,
-          directManagerAttendanceCommand,
-        );
+        return runInboundAction({
+          successType: "attendance_updated",
+          failureType: "attendance_handler_failed",
+          action: () =>
+            handleMarkedAttendance(res, user, directManagerAttendanceCommand),
+        });
       }
     }
 
     const attendanceCommand = parseAttendanceCommand(body);
     if (attendanceCommand) {
-      return handleSelfAttendance(res, user, attendanceCommand);
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_handler_failed",
+        action: () => handleSelfAttendance(res, user, attendanceCommand),
+      });
     }
 
     // ------------------------------------------------------------------
     // Task edit / creation
     // ------------------------------------------------------------------
-
+    const editTaskCommand = parseEditTaskCommand(body);
     const editTaskCommand = parseEditTaskCommand(body);
     if (editTaskCommand) {
-      return handleEditTask(res, user, editTaskCommand);
+      await logParse({
+        intentDetected: "edit_task",
+        parserUsed: "parseEditTaskCommand",
+        parsedJson: editTaskCommand,
+        validationPassed: true,
+        actionTaken: "handleEditTask",
+      });
+
+      return runInboundAction({
+        successType: "task_updated",
+        failureType: "task_update_failed",
+        action: () => handleEditTask(res, user, editTaskCommand),
+      });
     }
 
     const advancedCreateTaskCommand = parseAdvancedCreateTaskCommand(body);
     if (advancedCreateTaskCommand) {
-      return handleCreateTaskAdvanced(res, user, advancedCreateTaskCommand);
+      await logParse({
+        intentDetected: "create_task_advanced",
+        parserUsed: "parseAdvancedCreateTaskCommand",
+        parsedJson: advancedCreateTaskCommand,
+        validationPassed: !advancedCreateTaskCommand.error,
+        validationError: advancedCreateTaskCommand.error || null,
+        actionTaken: advancedCreateTaskCommand.error
+          ? "advanced_create_validation_failed"
+          : "handleCreateTaskAdvanced",
+      });
+
+      return runInboundAction({
+        successType: "task_created",
+        failureType: "task_create_failed",
+        action: () =>
+          handleCreateTaskAdvanced(res, user, advancedCreateTaskCommand),
+      });
     }
 
     let taskCommand = parseSimpleTaskCommand(body);
     let aiParsingAttempted = false;
 
+    if (taskCommand) {
+      await logParse({
+        intentDetected: "create_task_simple",
+        parserUsed: "parseSimpleTaskCommand",
+        parsedJson: taskCommand,
+        validationPassed: true,
+        actionTaken: "handleCreateTask",
+      });
+    }
+
     if (!taskCommand && looksLikeTask(body)) {
       aiParsingAttempted = true;
       taskCommand = await parseTaskWithAI(body);
+
+      await logParse({
+        intentDetected: "create_task_ai_attempt",
+        parserUsed: "parseTaskWithAI",
+        parsedJson: taskCommand,
+        validationPassed: !!taskCommand,
+        validationError: taskCommand ? null : "ai_task_parse_failed",
+        actionTaken: taskCommand ? "handleCreateTask" : "reply_ai_parse_failed",
+      });
     }
 
     console.log("Body received for task parsing:", body);
     console.log("Final task command:", taskCommand);
 
     if (taskCommand) {
-      return handleCreateTask(res, user, taskCommand);
+      return runInboundAction({
+        successType: "task_created",
+        failureType: "task_create_failed",
+        action: () => handleCreateTask(res, user, taskCommand),
+      });
     }
 
     if (aiParsingAttempted && !taskCommand) {
+      await failInboundProcessing(messageSid, "task_parse_failed");
       return sendTwiml(
         res,
         "I could not parse that task automatically right now. Please use this format: task Ruhab high VPN testing by tomorrow",
@@ -9456,11 +10561,24 @@ app.post("/whatsapp", async (req, res) => {
       from,
     });
 
+    await logParse({
+      intentDetected: "unknown_command",
+      parserUsed: "no_parser_matched",
+      parsedJson: null,
+      validationPassed: false,
+      validationError: "unknown_command",
+      actionTaken: "unknown_command_reply",
+    });
+
+    await failInboundProcessing(messageSid, "unknown_command");
     return sendTwiml(
       res,
       "❌ I did not understand that command\nTry: help\nExamples:\nlogin\nmy tasks\ntask Aj high test dashboard by tomorrow",
     );
   } catch (error) {
+    if (messageSid) {
+      await failInboundProcessing(messageSid, "webhook_exception");
+    }
     console.error("Unhandled /whatsapp error:", error);
     return sendTwiml(res, "Something went wrong.");
   }
