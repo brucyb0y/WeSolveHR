@@ -7545,7 +7545,7 @@ async function getDashboardSummaryData(orgId) {
   };
 }
 
-async function getAttendancePageData() {
+async function getAttendancePageData(orgId) {
   const { startUtc, endUtc } = getCurrentAttendanceDayRange();
   const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
 
@@ -7557,6 +7557,7 @@ async function getAttendancePageData() {
     supabase
       .from("users")
       .select("id, name, role")
+      .eq("org_id", orgId)
       .eq("is_active", true)
       .order("name", { ascending: true }),
 
@@ -7565,11 +7566,12 @@ async function getAttendancePageData() {
       .select(
         "id, user_id, action, duration_min, expected_duration_min, reason, note, created_at",
       )
+      .eq("org_id", orgId)
       .gte("created_at", startUtc)
       .lt("created_at", endUtc)
       .order("created_at", { ascending: false }),
 
-    getPlannedOffRowsForDate(attendanceDate),
+    getPlannedOffRowsForDate(attendanceDate, orgId),
   ]);
 
   if (usersError) throw usersError;
