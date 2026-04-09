@@ -1559,6 +1559,31 @@ function formatTaskLine(task) {
   return `#${task.task_no || task.id}${task.priority ? ` | ${task.priority}` : ""} | ${task.status} | ${task.title} | due ${task.deadline ?? "no deadline"} | ${task.progress}%`;
 }
 
+const MIN_TASK_NOTE_LENGTH = 20;
+
+function validateDetailedTaskNote(note) {
+  const cleanNote = String(note || "").trim();
+
+  if (!cleanNote) {
+    return {
+      ok: false,
+      message: "Please write detailed notes (at least 20 characters).",
+    };
+  }
+
+  if (cleanNote.length < MIN_TASK_NOTE_LENGTH) {
+    return {
+      ok: false,
+      message: "Please write detailed notes (at least 20 characters).",
+    };
+  }
+
+  return {
+    ok: true,
+    cleanNote,
+  };
+}
+
 function validateAttendanceTransition(lastAction, nextAction, subjectName) {
   const isYou = subjectName === "You";
 
@@ -4122,14 +4147,13 @@ async function handleShowTask(res, user, taskId) {
 }
 
 async function handleDoneTask(res, user, taskId, note) {
-  const cleanNote = String(note || "").trim();
+  const noteCheck = validateDetailedTaskNote(note);
 
-  if (!cleanNote) {
-    return sendTwiml(
-      res,
-      "Please add a note.\nExample: done 12 tested and verified",
-    );
+  if (!noteCheck.ok) {
+    return sendTwiml(res, noteCheck.message);
   }
+
+  const cleanNote = noteCheck.cleanNote;
 
   const { task, error } = await getTaskById(taskId, user.org_id);
 
@@ -4181,14 +4205,13 @@ async function handleDoneTask(res, user, taskId, note) {
 }
 
 async function handleProgressTask(res, user, taskId, progressValue, note) {
-  const cleanNote = String(note || "").trim();
+  const noteCheck = validateDetailedTaskNote(note);
 
-  if (!cleanNote) {
-    return sendTwiml(
-      res,
-      "Please add a note.\nExample: progress 12 60 finished API integration",
-    );
+  if (!noteCheck.ok) {
+    return sendTwiml(res, noteCheck.message);
   }
+
+  const cleanNote = noteCheck.cleanNote;
 
   if (progressValue < 0 || progressValue > 100) {
     return sendTwiml(res, "Progress must be between 0 and 100.");
