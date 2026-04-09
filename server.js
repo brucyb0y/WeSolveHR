@@ -7117,7 +7117,7 @@ th {
   `;
 }
 
-async function getDashboardData() {
+async function getDashboardData(orgId) {
   const todayAttendanceDate = getCurrentAttendanceDayRange().attendanceDate;
 
   const [openTasksResult, overdueResult, blockedResult, attendanceRows] =
@@ -7127,6 +7127,7 @@ async function getDashboardData() {
         .select(
           `
           id,
+          org_id,
           task_no,
           title,
           priority,
@@ -7135,6 +7136,7 @@ async function getDashboardData() {
           blocker_note
         `,
         )
+        .eq("org_id", orgId)
         .or("status.is.null,status.not.in.(done,archived,cancelled,deleted)")
         .order("deadline", { ascending: true, nullsFirst: false })
         .limit(100),
@@ -7144,6 +7146,7 @@ async function getDashboardData() {
         .select(
           `
           id,
+          org_id,
           task_no,
           title,
           priority,
@@ -7152,6 +7155,7 @@ async function getDashboardData() {
           blocker_note
         `,
         )
+        .eq("org_id", orgId)
         .lt("deadline", todayAttendanceDate)
         .or("status.is.null,status.not.in.(done,archived,cancelled,deleted)")
         .order("deadline", { ascending: true })
@@ -7162,6 +7166,7 @@ async function getDashboardData() {
         .select(
           `
           id,
+          org_id,
           task_no,
           title,
           priority,
@@ -7170,12 +7175,13 @@ async function getDashboardData() {
           blocker_note
         `,
         )
+        .eq("org_id", orgId)
         .not("blocker_note", "is", null)
         .or("status.is.null,status.not.in.(done,archived,cancelled,deleted)")
         .order("deadline", { ascending: true, nullsFirst: false })
         .limit(100),
 
-      getLatestAttendanceByUser(),
+      getLatestAttendanceByUser(orgId),
     ]);
 
   if (openTasksResult.error) throw openTasksResult.error;
@@ -7202,6 +7208,7 @@ async function getDashboardData() {
         users!task_owners_user_id_fkey(id, name)
       `,
       )
+      .eq("org_id", orgId)
       .in("task_id", uniqueTaskIds);
 
     if (ownerError) {
@@ -7210,68 +7217,30 @@ async function getDashboardData() {
     }
 
     for (const row of ownerRows || []) {
-      if (!ownersByTaskId[row.task_id]) {
-        ownersByTaskId[row.task_id] = [];
-      }
-
-      ownersByTaskId[row.task_id].push({
-        user_id: row.user_id,
-        name: row.users?.name || "",
-      });
+      if (!ownersByTaskId[row.task_id]) ownersByTaskId[row.task_id] = [];
+      ownersByTaskId[row.task_id].push(row.users?.name || "Unknown");
     }
   }
 
   function attachOwners(task) {
-    const owners = ownersByTaskId[task.id] || [];
-    const ownerNames = owners.map((x) => x.name).filter(Boolean);
-
     return {
       ...task,
-      owners,
-      owner_names: ownerNames,
-      assignee_name: ownerNames.length ? ownerNames.join(", ") : "-",
+      owner_names: ownersByTaskId[task.id] || [],
+      assignee_name: (ownersByTaskId[task.id] || []).join(", ") || "Unknown",
     };
   }
 
-  const openTasksWithOwners = openTasks.map(attachOwners);
-  const overdueTasksWithOwners = overdueTasks.map(attachOwners);
-  const blockedTasksWithOwners = blockedTasks.map(attachOwners);
-
-  const normalizedAttendance = attendance.map((row) => ({
-    ...row,
-    worked_today_text:
-      row.worked_today_text || formatDurationMinutes(row.worked_min_today || 0),
-    break_duration_text:
-      row.break_duration_text ||
-      (row.status === "break"
-        ? formatDurationMinutes(row.duration_min || 0)
-        : "-"),
-  }));
-
-  const onBreak = normalizedAttendance.filter((x) => x.status === "break");
-  const loggedIn = normalizedAttendance.filter(
-    (x) => x.status === "login" || x.status === "back",
-  );
-  const plannedOff = normalizedAttendance.filter(
-    (x) => x.status === "planned_off",
-  );
-  const noLogin = normalizedAttendance.filter((x) => x.status === "no_login");
-
   return {
     summary: {
-      openTasks: openTasksWithOwners.length,
-      overdueTasks: overdueTasksWithOwners.length,
-      blockedTasks: blockedTasksWithOwners.length,
-      onBreakCount: onBreak.length,
-      loggedInCount: loggedIn.length,
-      plannedOffCount: plannedOff.length,
-      noLoginCount: noLogin.length,
-      teamCount: normalizedAttendance.length,
+      open_tasks: openTasks.length,
+      overdue_tasks: overdueTasks.length,
+      blocked_tasks: blockedTasks.length,
+      active_today_count: attendance.filter((x) => x.has_login_today).length,
     },
-    openTasks: openTasksWithOwners,
-    overdueTasks: overdueTasksWithOwners,
-    blockedTasks: blockedTasksWithOwners,
-    attendance: normalizedAttendance,
+    open_tasks: openTasks.map(attachOwners),
+    overdue_tasks: overdueTasks.map(attachOwners),
+    blocked_tasks: blockedTasks.map(attachOwners),
+    attendance,
   };
 }
 
@@ -7997,7 +7966,7 @@ app.get("/attendance/:userId", requireDashboardAuth, async (req, res) => {
       return res.status(400).send("Invalid user id");
     }
 
-    const data = await getEmployeeAttendanceOverview(userId);
+    const data = await getEmployeeAttendanceOverview(userId, DASHBOARD_ORG_ID);
     return res.status(200).send(renderEmployeeAttendancePage(data));
   } catch (error) {
     console.error("Employee attendance page error:", error);
@@ -8040,7 +8009,7 @@ app.get("/attendance/:userId", requireDashboardAuth, async (req, res) => {
   }
 });
 
-async function getDashboardSummaryData() {
+async function getDashboardSummaryData(orgId) {
   const { startUtc, endUtc, attendanceDate } = getCurrentAttendanceDayRange();
   const today = attendanceDate;
 
@@ -8055,32 +8024,40 @@ async function getDashboardSummaryData() {
     supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
+      .eq("org_id", orgId)
       .not("status", "in", '("done","archived","cancelled")'),
+
     supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
+      .eq("org_id", orgId)
       .lt("deadline", today)
       .not("status", "in", '("done","archived","cancelled")'),
+
     supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
+      .eq("org_id", orgId)
       .eq("status", "blocked"),
 
     supabase
       .from("attendance_events")
       .select("user_id", { count: "exact" })
+      .eq("org_id", orgId)
       .gte("created_at", startUtc)
       .lt("created_at", endUtc),
 
     supabase
       .from("users")
       .select("id, name, role")
+      .eq("org_id", orgId)
       .eq("is_active", true)
       .order("name", { ascending: true }),
 
     supabase
       .from("attendance_events")
       .select("user_id, action, created_at")
+      .eq("org_id", orgId)
       .order("created_at", { ascending: false })
       .limit(300),
   ]);
@@ -8198,7 +8175,7 @@ async function getAttendancePageData() {
   };
 }
 
-async function getTasksPageData(filters = {}) {
+async function getTasksPageData(filters = {}, orgId) {
   const search = String(filters.search || "").trim();
   const assignee = String(filters.assignee || "").trim();
   const business = String(filters.business || "")
@@ -8217,6 +8194,7 @@ async function getTasksPageData(filters = {}) {
     .select(
       `
       id,
+      org_id,
       task_no,
       title,
       business,
@@ -8226,21 +8204,14 @@ async function getTasksPageData(filters = {}) {
       priority,
       deadline,
       blocker_note
-    `,
+      `,
     )
+    .eq("org_id", orgId)
     .order("deadline", { ascending: true, nullsFirst: false });
 
-  if (priority) {
-    query = query.eq("priority", priority);
-  }
-
-  if (business) {
-    query = query.eq("business", business);
-  }
-
-  if (area) {
-    query = query.eq("area", area);
-  }
+  if (priority) query = query.eq("priority", priority);
+  if (business) query = query.eq("business", business);
+  if (area) query = query.eq("area", area);
 
   if (blocked) {
     query = query.eq("status", "blocked");
@@ -8250,7 +8221,9 @@ async function getTasksPageData(filters = {}) {
 
   if (overdue) {
     const today = new Date().toISOString().slice(0, 10);
-    query = query.lt("deadline", today).neq("status", "done");
+    query = query
+      .lt("deadline", today)
+      .not("status", "in", '("done","archived","cancelled")');
   }
 
   if (search) {
@@ -8270,9 +8243,7 @@ async function getTasksPageData(filters = {}) {
     throw error;
   }
 
-  if (!tasks || !tasks.length) {
-    return [];
-  }
+  if (!tasks || !tasks.length) return [];
 
   const taskIds = tasks.map((t) => t.id);
 
@@ -8280,11 +8251,12 @@ async function getTasksPageData(filters = {}) {
     .from("task_owners")
     .select(
       `
-      task_id,
-      user_id,
-      users!task_owners_user_id_fkey(id, name)
+    task_id,
+    user_id,
+    users!task_owners_user_id_fkey(id, name)
     `,
     )
+    .eq("org_id", orgId)
     .in("task_id", taskIds);
 
   if (ownerError) {
@@ -8294,10 +8266,7 @@ async function getTasksPageData(filters = {}) {
 
   const ownersByTaskId = {};
   for (const row of ownerRows || []) {
-    if (!ownersByTaskId[row.task_id]) {
-      ownersByTaskId[row.task_id] = [];
-    }
-
+    if (!ownersByTaskId[row.task_id]) ownersByTaskId[row.task_id] = [];
     ownersByTaskId[row.task_id].push({
       user_id: row.user_id,
       name: row.users?.name || "",
@@ -8306,7 +8275,6 @@ async function getTasksPageData(filters = {}) {
 
   let rows = tasks.map((task) => {
     const owners = ownersByTaskId[task.id] || [];
-
     return {
       ...task,
       owner_names: owners.map((x) => x.name).filter(Boolean),
@@ -8328,12 +8296,13 @@ async function getTasksPageData(filters = {}) {
   return rows;
 }
 
-async function getTaskDetailData(taskId) {
+async function getTaskDetailData(taskId, orgId) {
   const { data: task, error: taskError } = await supabase
     .from("tasks")
     .select(
       `
       id,
+      org_id,
       task_no,
       title,
       detail,
@@ -8351,6 +8320,7 @@ async function getTaskDetailData(taskId) {
     `,
     )
     .eq("id", taskId)
+    .eq("org_id", orgId)
     .maybeSingle();
 
   if (taskError) throw taskError;
@@ -8365,7 +8335,8 @@ async function getTaskDetailData(taskId) {
       users!task_owners_user_id_fkey(id, name)
     `,
     )
-    .eq("task_id", taskId);
+    .eq("task_id", taskId)
+    .eq("org_id", orgId);
 
   if (ownerError) throw ownerError;
 
@@ -8390,12 +8361,14 @@ async function getTaskDetailData(taskId) {
     `,
     )
     .eq("task_id", taskId)
+    .eq("org_id", orgId)
     .order("created_at", { ascending: false });
 
   if (historyError) throw historyError;
 
   return {
     id: task.id,
+    org_id: task.org_id,
     task_no: task.task_no,
     title: task.title,
     detail: task.detail,
@@ -8426,12 +8399,13 @@ async function getTaskDetailData(taskId) {
   };
 }
 
-async function getLogsPageData() {
+async function getLogsPageData(orgId) {
   const { data, error } = await supabase
     .from("message_logs")
     .select(
       `
       id,
+      org_id,
       user_id,
       phone_number,
       profile_name,
@@ -8441,6 +8415,7 @@ async function getLogsPageData() {
       direction
     `,
     )
+    .eq("org_id", orgId)
     .eq("direction", "inbound")
     .order("created_at", { ascending: false })
     .limit(100);
@@ -8457,12 +8432,13 @@ async function getLogsPageData() {
   }));
 }
 
-async function getStage0BugBoardData() {
+async function getStage0BugBoardData(orgId) {
   const { data, error } = await supabase
     .from("stage0_bug_board")
     .select(
       `
       id,
+      org_id,
       title,
       description,
       board_column,
@@ -8479,6 +8455,7 @@ async function getStage0BugBoardData() {
       assignee:users!stage0_bug_board_assigned_to_user_id_fkey(name)
     `,
     )
+    .eq("org_id", orgId)
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -8510,32 +8487,7 @@ async function getStage0BugBoardData() {
     grouped[row.board_column].push(row);
   }
 
-  for (const column of Object.keys(grouped)) {
-    grouped[column].sort((a, b) => {
-      const sevDiff =
-        bugSeveritySortWeight(a.severity) - bugSeveritySortWeight(b.severity);
-      if (sevDiff !== 0) return sevDiff;
-      return (
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-    });
-  }
-
-  const { data: usersData, error: usersError } = await supabase
-    .from("users")
-    .select("id, name")
-    .eq("is_active", true)
-    .order("name", { ascending: true });
-
-  if (usersError) throw usersError;
-
   return {
-    columns: STAGE0_BUG_COLUMNS.map((name) => ({
-      name,
-      items: grouped[name] || [],
-      count: (grouped[name] || []).length,
-    })),
-    users: usersData || [],
     summary: {
       total: rows.length,
       p0: rows.filter((x) => x.severity === "P0").length,
@@ -8544,8 +8496,23 @@ async function getStage0BugBoardData() {
       open: rows.filter((x) => x.status === "open").length,
       in_progress: rows.filter((x) => x.status === "in_progress").length,
       blocked: rows.filter((x) => x.status === "blocked").length,
-      done: rows.filter((x) => x.status === "done").length,
     },
+    columns: STAGE0_BUG_COLUMNS.map((name) => ({
+      name,
+      count: (grouped[name] || []).length,
+      items: (grouped[name] || []).sort((a, b) => {
+        if (
+          bugSeveritySortWeight(a.severity) !==
+          bugSeveritySortWeight(b.severity)
+        ) {
+          return (
+            bugSeveritySortWeight(a.severity) -
+            bugSeveritySortWeight(b.severity)
+          );
+        }
+        return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+      }),
+    })),
   };
 }
 
@@ -8641,7 +8608,7 @@ app.get("/dashboard", requireDashboardAuth, async (_req, res) => {
 
 app.get("/bugs", requireDashboardAuth, async (_req, res) => {
   try {
-    const data = await getStage0BugBoardData();
+    const data = await getStage0BugBoardData(DASHBOARD_ORG_ID);
     res.status(200).type("html").send(renderStage0BugBoardPage(data));
   } catch (error) {
     console.error("Bug board page error:", error);
@@ -8763,7 +8730,7 @@ app.get("/api/bugs", async (_req, res) => {
 
 app.get("/api/summary", async (_req, res) => {
   try {
-    const data = await getDashboardSummaryData();
+    const data = await getDashboardSummaryData(DASHBOARD_ORG_ID);
     return sendApiSuccess(res, data);
   } catch (error) {
     console.error("API /api/summary error:", error);
@@ -8773,7 +8740,7 @@ app.get("/api/summary", async (_req, res) => {
 
 app.get("/api/tasks", async (req, res) => {
   try {
-    const data = await getTasksPageData(req.query);
+    const data = await getTasksPageData(req.query, DASHBOARD_ORG_ID);
     return sendApiSuccess(res, data);
   } catch (error) {
     console.error("API /api/tasks error:", error);
@@ -8788,14 +8755,9 @@ app.get("/api/tasks/:id", async (req, res) => {
       return sendApiError(res, 400, "Invalid task id");
     }
 
-    const detail = await getTaskDetailData(taskId);
+    const detail = await getTaskDetailData(taskId, DASHBOARD_ORG_ID);
     if (!detail) {
       return sendApiError(res, 404, "Task not found");
-    }
-
-    const demoUser = { role: "admin", id: 0 };
-    if (!(await canReadTask(demoUser, detail))) {
-      return sendApiError(res, 403, "Not allowed to view this task");
     }
 
     return sendApiSuccess(res, detail);
@@ -8807,7 +8769,7 @@ app.get("/api/tasks/:id", async (req, res) => {
 
 app.get("/api/attendance", async (_req, res) => {
   try {
-    const data = await getAttendancePageData();
+    const data = await getAttendancePageData(DASHBOARD_ORG_ID);
     return sendApiSuccess(res, data);
   } catch (error) {
     console.error("API /api/attendance error:", error);
@@ -8822,7 +8784,7 @@ app.get("/api/attendance/:userId", async (req, res) => {
       return sendApiError(res, 400, "Invalid user id");
     }
 
-    const data = await getEmployeeAttendanceOverview(userId);
+    const data = await getEmployeeAttendanceOverview(userId, DASHBOARD_ORG_ID);
     return sendApiSuccess(res, data);
   } catch (error) {
     console.error("API /api/attendance/:userId error:", error);
@@ -8832,7 +8794,7 @@ app.get("/api/attendance/:userId", async (req, res) => {
 
 app.get("/api/logs", async (_req, res) => {
   try {
-    const data = await getLogsPageData();
+    const data = await getLogsPageData(DASHBOARD_ORG_ID);
     return sendApiSuccess(res, data);
   } catch (error) {
     console.error("API /api/logs error:", error);
@@ -8842,7 +8804,7 @@ app.get("/api/logs", async (_req, res) => {
 
 app.get("/api/bugs", async (_req, res) => {
   try {
-    const data = await getStage0BugBoardData();
+    const data = await getStage0BugBoardData(DASHBOARD_ORG_ID);
     return sendApiSuccess(res, data);
   } catch (error) {
     console.error("API /api/bugs error:", error);
