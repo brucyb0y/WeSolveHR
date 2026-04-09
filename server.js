@@ -6745,10 +6745,12 @@ function renderReportsPage(data) {
             : `<li class="muted">No extra work notes</li>`;
 
           return `
-            <div class="report-card">
-              <div class="report-card-head">
+<div class="report-card" data-user-name="${escapeHtml(String(user.userName || "").toLowerCase())}">
+  <div class="report-card-head">
                 <div>
-                  <div class="report-name">${escapeHtml(user.userName)}</div>
+                  <div class="report-name">
+  <a href="/attendance/${escapeHtml(user.userId)}">${escapeHtml(user.userName)}</a>
+</div>
                   <div class="report-date">${escapeHtml(formatDateOnly(reportDate))}</div>
                 </div>
                 <div class="summary-pill">
@@ -6816,6 +6818,17 @@ function renderReportsPage(data) {
             grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
             gap:16px;
           }
+          
+          .report-name a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.report-name a:hover {
+  color: var(--text-strong);
+  text-decoration: underline;
+}
+          
           .report-card { padding:16px; }
           .report-card-head {
             display:flex;
@@ -6885,11 +6898,31 @@ function renderReportsPage(data) {
           <div class="panel" style="padding:14px 16px; margin-bottom:16px;">
             <strong>Date:</strong> ${escapeHtml(formatDateOnly(reportDate))}
           </div>
-
+<div class="panel" style="padding:14px 16px; margin-bottom:16px;">
+  <input
+    id="reportSearch"
+    type="text"
+    placeholder="Search user name"
+    oninput="filterReports()"
+    style="width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);"
+  />
+</div>
           <div class="reports-grid">
             ${cardsHtml}
           </div>
         </div>
+        <script>
+  function filterReports() {
+    const input = document.getElementById("reportSearch");
+    const query = String(input?.value || "").trim().toLowerCase();
+    const cards = document.querySelectorAll(".report-card");
+
+    for (const card of cards) {
+      const userName = String(card.getAttribute("data-user-name") || "");
+      card.style.display = !query || userName.includes(query) ? "" : "none";
+    }
+  }
+</script>
       </body>
     </html>
   `;
