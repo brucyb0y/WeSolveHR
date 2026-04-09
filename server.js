@@ -7332,15 +7332,9 @@ function renderDashboardPage(data) {
               <td><div class="primary-text">${escapeHtml(row.name || "-")}</div></td>
               <td><span class="muted">${escapeHtml(row.role || "-")}</span></td>
               <td><span class="${statusClass}">${escapeHtml(row.status || "unknown")}</span></td>
-              <td>${escapeHtml(
-                row.break_duration_text || row.breakDurationText || "-",
-              )}</td>
-              <td>${escapeHtml(
-                row.worked_today_text || row.workedTodayText || "-",
-              )}</td>
-              <td>${escapeHtml(
-                row.last_action_at ? formatTimeOnly(row.last_action_at) : "-",
-              )}</td>
+              <td>${escapeHtml(row.break_duration_text || row.breakDurationText || "-")}</td>
+              <td>${escapeHtml(row.worked_today_text || row.workedTodayText || "-")}</td>
+              <td>${escapeHtml(row.last_action_at ? formatTimeOnly(row.last_action_at) : "-")}</td>
             </tr>
           `;
         })
@@ -7381,7 +7375,230 @@ function renderDashboardPage(data) {
         .join("")
     : `<tr><td colspan="6" class="empty-cell">No overdue tasks</td></tr>`;
 
-  // keep the rest of your HTML template exactly as it already is
+  return `
+    <html>
+      <head>
+        <title>WeSolveHR Dashboard</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+
+          .page {
+            max-width: 1480px;
+            margin: 0 auto;
+            padding: 24px 18px 36px;
+          }
+
+          .topbar, .panel, .stat-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+
+          .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 18px 20px;
+          }
+
+          .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--primary);
+            font-weight: 700;
+            margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 30px;
+            letter-spacing: -0.04em;
+          }
+
+          .subtitle {
+            color: var(--muted);
+            margin-top: 8px;
+            font-size: 14px;
+          }
+
+          .links {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+          }
+
+          .links a {
+            color: var(--text);
+            text-decoration: none;
+            padding: 10px 14px;
+            border-radius: 12px;
+            border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
+            background: var(--secondary-soft);
+            font-weight: 600;
+          }
+
+          .stats {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+          }
+
+          .stat-card {
+            padding: 14px;
+          }
+
+          .stat-label {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 700;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          .stat-value {
+            margin-top: 10px;
+            font-size: 28px;
+            font-weight: 700;
+          }
+
+          .stat-note {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 13px;
+          }
+
+          .panel {
+            padding: 16px;
+            margin-bottom: 18px;
+          }
+
+          .panel h2 {
+            margin: 0 0 12px 0;
+            font-size: 18px;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+
+          th, td {
+            text-align: left;
+            padding: 12px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            vertical-align: top;
+          }
+
+          th {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+          }
+
+          .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+          }
+
+          .primary-text {
+            font-weight: 600;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="page">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">WeSolveHR // Live Operations</div>
+              <h1>Dashboard</h1>
+              <div class="subtitle">Tasks, attendance, blockers, and operating visibility</div>
+            </div>
+            <div class="links">
+              <a href="/dashboard">Dashboard</a>
+              <a href="/tasks">Tasks</a>
+              <a href="/attendance">Attendance</a>
+              <a href="/logs">Logs</a>
+              <a href="/bugs">Bug Board</a>
+            </div>
+          </div>
+
+          <div class="stats">
+            ${summaryCardsHtml}
+          </div>
+
+          <div class="panel">
+            <h2>Current Attendance</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Break</th>
+                  <th>Worked Today</th>
+                  <th>Last Activity</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${attendanceRows}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="grid-2">
+            <div class="panel">
+              <h2>Blocked Tasks</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Title</th>
+                    <th>Owner</th>
+                    <th>Priority</th>
+                    <th>Deadline</th>
+                    <th>Blocker</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${blockedTaskRows}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="panel">
+              <h2>Overdue Tasks</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Title</th>
+                    <th>Owner</th>
+                    <th>Priority</th>
+                    <th>Deadline</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${overdueTaskRows}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
 }
 
 app.get("/health/live", (_req, res) => {
