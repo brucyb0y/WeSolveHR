@@ -341,6 +341,7 @@ function renderStage0BugBoardPage(data) {
               <a href="/attendance">Attendance</a>
               <a href="/logs">Logs</a>
               <a href="/bugs">Bug Board</a>
+              <a href="/reports">Reports</a>
             </div>
           </div>
 
@@ -899,6 +900,7 @@ function buildUnknownCommandHelp(user, body) {
     "progress 2 50 finished API work",
     "done 2 tested and verified",
     "edit task 2 blocker waiting on aj",
+    "extra work helped aj debug org id issue",
     isManager ? "delete 2" : null,
     "",
     "Need full list?",
@@ -2743,6 +2745,42 @@ async function failInboundProcessing(messageSid, errorMessage, orgId = null) {
   if (error) console.error("failInboundProcessing error:", error);
 }
 
+async function handleExtraWork(res, user, command, messageSid = null) {
+  const note = String(command?.note || "").trim();
+
+  if (!note) {
+    return sendTwiml(
+      res,
+      "Please add a note.\nExample: extra work helped aj debug org id issue",
+    );
+  }
+
+  const reportDate = getReportDateString();
+
+  const { error } = await insertDailyReportNote({
+    orgId: user.org_id,
+    userId: user.id,
+    reportDate,
+    note,
+    createdByUserId: user.id,
+    sourceMessageSid: messageSid,
+  });
+
+  if (error) {
+    if (error.code === "23505") {
+      return sendTwiml(
+        res,
+        `✅ Extra work already saved for today\nNote: ${note}`,
+      );
+    }
+
+    console.error("handleExtraWork error:", error);
+    return sendTwiml(res, "Failed to save extra work.");
+  }
+
+  return sendTwiml(res, `✅ Extra work saved for today\nNote: ${note}`);
+}
+
 async function handleEmployeeSummary(res, actingUser, command) {
   const targetUser = command.target_name
     ? await findUniqueUserByName(command.target_name, actingUser.org_id)
@@ -3882,6 +3920,7 @@ async function handleHelp(res, user, topic = "") {
           "edit task 2 progress 70",
           "edit task 2 blocker waiting on backend fix",
           "edit task 2 clear blocker",
+          "extra work helped aj debug org id issue",
           "",
           "Manager/Admin only:",
           "cancel task 2",
@@ -6304,6 +6343,558 @@ function getUtcRangeForTodayInTimeZone(timeZone = APP_TIMEZONE) {
   return { startUtc, endUtc, todayDb };
 }
 
+function parseExtraWorkCommand(text) {
+  const raw = String(text || "").trim();
+  const match = raw.match(/^extra work\s+(.+)$/i);
+  if (!match) return null;
+
+  const note = String(match[1] || "").trim();
+  if (!note) return null;
+
+  return { note };
+}
+
+function getReportDateString(date = new Date()) {
+  return getTodayDateStringInTimeZone(APP_TIMEZONE);
+}
+
+function getReportDayUtcRange(reportDate) {
+  const nextDate = addDaysToDateString(reportDate, 1);
+
+  return {
+    startUtc: new Date(
+      `${reportDate}T00:00:00${APP_TIMEZONE_OFFSET}`,
+    ).toISOString(),
+    endUtc: new Date(
+      `${nextDate}T00:00:00${APP_TIMEZONE_OFFSET}`,
+    ).toISOString(),
+  };
+}
+
+async function insertDailyReportNote({
+  orgId,
+  userId,
+  reportDate,
+  note,
+  createdByUserId,
+  sourceMessageSid = null,
+}) {
+  const normalizedNote = normalizeText(note).replace(/\s+/g, " ");
+
+  const row = {
+    org_id: orgId,
+    user_id: userId,
+    report_date: reportDate,
+    note,
+    normalized_note: normalizedNote,
+    source_type: "manual",
+    source_message_sid: sourceMessageSid,
+    created_by_user_id: createdByUserId,
+  };
+
+  const { data, error } = await supabase
+    .from("daily_report_notes")
+    .insert([row])
+    .select("id, org_id, user_id, report_date, note, created_at")
+    .maybeSingle();
+
+  return { data, error };
+}
+
+async function getDailyReportNotes({ orgId, reportDate, userId = null }) {
+  let query = supabase
+    .from("daily_report_notes")
+    .select("id, org_id, user_id, report_date, note, created_at")
+    .eq("org_id", orgId)
+    .eq("report_date", reportDate)
+    .order("created_at", { ascending: true });
+
+  if (userId) {
+    query = query.eq("user_id", userId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("getDailyReportNotes error:", error);
+    return [];
+  }
+
+  return data || [];
+}
+
+async function getUserOpenBlockedCounts(orgId, userId) {
+  const { data, error } = await supabase
+    .from("task_owners")
+    .select(
+      `
+      task_id,
+      tasks!inner(id, org_id, status)
+    `,
+    )
+    .eq("org_id", orgId)
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("getUserOpenBlockedCounts error:", error);
+    return { open: 0, blocked: 0 };
+  }
+
+  let open = 0;
+  let blocked = 0;
+
+  for (const row of data || []) {
+    const task = row.tasks;
+    if (!task || task.org_id !== orgId) continue;
+
+    const status = String(task.status || "").toLowerCase();
+
+    if (!["done", "archived", "cancelled"].includes(status)) {
+      open += 1;
+    }
+
+    if (status === "blocked") {
+      blocked += 1;
+    }
+  }
+
+  return { open, blocked };
+}
+
+function buildTaskNarrativeFromHistoryEntries(entries, taskTitle, taskNoOrId) {
+  if (!entries || !entries.length) return null;
+
+  let firstProgress = null;
+  let lastProgress = null;
+  let finalStatus = null;
+  let blockerAdded = null;
+  let blockerCleared = false;
+  const notes = [];
+
+  for (const entry of entries) {
+    const oldValue = entry.old_value || {};
+    const newValue = entry.new_value || {};
+    const changeType = String(entry.change_type || "");
+    const fieldName = String(entry.field_name || "");
+
+    if (oldValue.progress != null && firstProgress == null) {
+      firstProgress = oldValue.progress;
+    }
+
+    if (newValue.progress != null) {
+      lastProgress = newValue.progress;
+    }
+
+    if (newValue.status) {
+      finalStatus = String(newValue.status).toLowerCase();
+    }
+
+    if (
+      (fieldName === "status" || fieldName === "blocker_note") &&
+      newValue.blocker_note
+    ) {
+      blockerAdded = newValue.blocker_note;
+    }
+
+    if (
+      oldValue.blocker_note &&
+      (newValue.blocker_note == null || newValue.blocker_note === "")
+    ) {
+      blockerCleared = true;
+    }
+
+    const possibleNote = newValue.note || oldValue.note || null;
+
+    if (possibleNote && !notes.includes(possibleNote)) {
+      notes.push(possibleNote);
+    }
+
+    if (
+      changeType === "edit" &&
+      fieldName === "blocker_note" &&
+      newValue.blocker_note
+    ) {
+      if (!notes.includes(newValue.blocker_note)) {
+        notes.push(newValue.blocker_note);
+      }
+    }
+  }
+
+  let sentence = `Task #${taskNoOrId} — ${taskTitle}: `;
+
+  if (
+    firstProgress != null &&
+    lastProgress != null &&
+    firstProgress !== lastProgress
+  ) {
+    sentence += `Worked on this from ${firstProgress}% to ${lastProgress}%`;
+  } else if (finalStatus === "done") {
+    sentence += "Completed this task";
+  } else if (blockerAdded) {
+    sentence += "Worked on this and got blocked";
+  } else if (blockerCleared) {
+    sentence += "Cleared blocker and resumed progress";
+  } else {
+    sentence += "Updated this task";
+  }
+
+  if (finalStatus === "done" && notes.length) {
+    sentence += ` by ${notes[0]}`;
+  } else if (blockerAdded) {
+    sentence += ` waiting on ${blockerAdded}`;
+  } else if (notes.length) {
+    sentence += ` and ${notes[0]}`;
+  }
+
+  sentence += ".";
+
+  return sentence;
+}
+
+async function getDailyTaskNarratives({ orgId, reportDate, userId = null }) {
+  const { startUtc, endUtc } = getReportDayUtcRange(reportDate);
+
+  let query = supabase
+    .from("task_history")
+    .select(
+      `
+      id,
+      org_id,
+      task_id,
+      changed_by_user_id,
+      change_type,
+      field_name,
+      old_value,
+      new_value,
+      created_at
+    `,
+    )
+    .eq("org_id", orgId)
+    .gte("created_at", startUtc)
+    .lt("created_at", endUtc)
+    .order("created_at", { ascending: true });
+
+  if (userId) {
+    query = query.eq("changed_by_user_id", userId);
+  }
+
+  const { data: historyRows, error: historyError } = await query;
+
+  if (historyError) {
+    console.error("getDailyTaskNarratives history error:", historyError);
+    return [];
+  }
+
+  const history = (historyRows || []).filter((row) => {
+    const changeType = String(row.change_type || "");
+    return [
+      "task_created",
+      "progress_change",
+      "status_change",
+      "edit",
+      "owner_change",
+    ].includes(changeType);
+  });
+
+  if (!history.length) return [];
+
+  const taskIds = [...new Set(history.map((x) => x.task_id).filter(Boolean))];
+  if (!taskIds.length) return [];
+
+  const { data: taskRows, error: taskError } = await supabase
+    .from("tasks")
+    .select("id, task_no, title")
+    .eq("org_id", orgId)
+    .in("id", taskIds);
+
+  if (taskError) {
+    console.error("getDailyTaskNarratives task fetch error:", taskError);
+    return [];
+  }
+
+  const taskMap = new Map((taskRows || []).map((task) => [task.id, task]));
+  const grouped = new Map();
+
+  for (const row of history) {
+    const task = taskMap.get(row.task_id);
+    if (!task) continue;
+
+    const key = `${row.changed_by_user_id}::${row.task_id}`;
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        userId: row.changed_by_user_id,
+        taskId: row.task_id,
+        taskNo: task.task_no || task.id,
+        title: task.title,
+        entries: [],
+      });
+    }
+
+    grouped.get(key).entries.push(row);
+  }
+
+  const out = [];
+
+  for (const group of grouped.values()) {
+    const sentence = buildTaskNarrativeFromHistoryEntries(
+      group.entries,
+      group.title,
+      group.taskNo,
+    );
+
+    if (!sentence) continue;
+
+    out.push({
+      userId: group.userId,
+      taskId: group.taskId,
+      taskNo: group.taskNo,
+      title: group.title,
+      sentence,
+    });
+  }
+
+  out.sort((a, b) => {
+    if (a.userId !== b.userId) return a.userId - b.userId;
+    return a.taskNo - b.taskNo;
+  });
+
+  return out;
+}
+
+function emptyUserDailyReport(user) {
+  return {
+    userId: user.id,
+    userName: user.name,
+    taskNarratives: [],
+    extraWork: [],
+    summary: {
+      open: 0,
+      blocked: 0,
+    },
+  };
+}
+
+async function getDailyNarrativeReport({ orgId, reportDate, userId = null }) {
+  let usersQuery = supabase
+    .from("users")
+    .select("id, name, role")
+    .eq("org_id", orgId)
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (userId) {
+    usersQuery = usersQuery.eq("id", userId);
+  }
+
+  const { data: users, error: usersError } = await usersQuery;
+  if (usersError) {
+    throw usersError;
+  }
+
+  const [taskNarratives, extraNotes] = await Promise.all([
+    getDailyTaskNarratives({ orgId, reportDate, userId }),
+    getDailyReportNotes({ orgId, reportDate, userId }),
+  ]);
+
+  const narrativesByUser = new Map();
+  for (const item of taskNarratives) {
+    if (!narrativesByUser.has(item.userId))
+      narrativesByUser.set(item.userId, []);
+    narrativesByUser.get(item.userId).push(item);
+  }
+
+  const notesByUser = new Map();
+  for (const note of extraNotes) {
+    if (!notesByUser.has(note.user_id)) notesByUser.set(note.user_id, []);
+    notesByUser.get(note.user_id).push(note.note);
+  }
+
+  const resultUsers = [];
+  for (const user of users || []) {
+    const row = emptyUserDailyReport(user);
+    row.taskNarratives = narrativesByUser.get(user.id) || [];
+    row.extraWork = notesByUser.get(user.id) || [];
+    row.summary = await getUserOpenBlockedCounts(orgId, user.id);
+    resultUsers.push(row);
+  }
+
+  return {
+    reportDate,
+    users: resultUsers,
+  };
+}
+
+function renderReportsPage(data) {
+  const reportDate = data?.reportDate || getReportDateString();
+  const users = data?.users || [];
+
+  const cardsHtml = users.length
+    ? users
+        .map((user) => {
+          const taskHtml = (user.taskNarratives || []).length
+            ? user.taskNarratives
+                .map((item) => `<li>${escapeHtml(item.sentence)}</li>`)
+                .join("")
+            : `<li class="muted">No task updates today</li>`;
+
+          const extraHtml = (user.extraWork || []).length
+            ? user.extraWork
+                .map((note) => `<li>${escapeHtml(note)}</li>`)
+                .join("")
+            : `<li class="muted">No extra work notes</li>`;
+
+          return `
+            <div class="report-card">
+              <div class="report-card-head">
+                <div>
+                  <div class="report-name">${escapeHtml(user.userName)}</div>
+                  <div class="report-date">${escapeHtml(formatDateOnly(reportDate))}</div>
+                </div>
+                <div class="summary-pill">
+                  Open: ${escapeHtml(user.summary?.open ?? 0)} | Blocked: ${escapeHtml(user.summary?.blocked ?? 0)}
+                </div>
+              </div>
+
+              <div class="report-section">
+                <div class="section-title">Task updates</div>
+                <ul class="report-list">${taskHtml}</ul>
+              </div>
+
+              <div class="report-section">
+                <div class="section-title">Extra work</div>
+                <ul class="report-list">${extraHtml}</ul>
+              </div>
+            </div>
+          `;
+        })
+        .join("")
+    : `
+      <div class="panel" style="padding:18px;">
+        <div class="muted">No users found.</div>
+      </div>
+    `;
+
+  return `
+    <html>
+      <head>
+        <title>Reports</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+
+          .wrap { max-width: 1400px; margin: 0 auto; padding: 24px 18px 36px; }
+          .topbar, .panel, .report-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+          .topbar {
+            display:flex; justify-content:space-between; align-items:center;
+            gap:16px; flex-wrap:wrap; margin-bottom:20px; padding:18px 20px;
+          }
+          .eyebrow {
+            font-size:11px; letter-spacing:0.16em; text-transform:uppercase;
+            color:var(--primary); font-weight:700; margin-bottom:8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+          h1 { margin:0; font-size:30px; letter-spacing:-0.04em; }
+          .subtitle { color:var(--muted); margin-top:8px; font-size:14px; }
+          .links { display:flex; gap:10px; flex-wrap:wrap; }
+          .links a {
+            color: var(--text);
+            text-decoration: none;
+            padding: 10px 14px;
+            border-radius: 12px;
+            border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
+            background: var(--secondary-soft);
+            font-weight: 600;
+          }
+          .reports-grid {
+            display:grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap:16px;
+          }
+          .report-card { padding:16px; }
+          .report-card-head {
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-start;
+            gap:12px;
+            margin-bottom:14px;
+          }
+          .report-name { font-size:20px; font-weight:800; }
+          .report-date { color:var(--muted); font-size:13px; margin-top:4px; }
+          .summary-pill {
+            white-space:nowrap;
+            padding:10px 12px;
+            border-radius:12px;
+            background:var(--primary-soft);
+            border:1px solid rgba(255,255,255,0.08);
+            font-weight:700;
+            font-size:13px;
+          }
+          .report-section + .report-section {
+            margin-top:16px;
+            padding-top:16px;
+            border-top:1px solid rgba(255,255,255,0.08);
+          }
+          .section-title {
+            font-size:12px;
+            text-transform:uppercase;
+            letter-spacing:0.1em;
+            color:var(--muted);
+            font-weight:800;
+            margin-bottom:10px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+          .report-list {
+            margin:0;
+            padding-left:18px;
+            line-height:1.6;
+          }
+          .report-list li + li { margin-top:8px; }
+
+          @media (max-width: 700px) {
+            .wrap { padding:16px 12px 28px; }
+            h1 { font-size:24px; }
+            .report-card-head { flex-direction:column; }
+            .summary-pill { white-space:normal; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="wrap">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Daily Reporting</div>
+              <h1>WeSolveHR // Reports</h1>
+              <div class="subtitle">Today only. Task narratives + extra work + open/blocked snapshot.</div>
+            </div>
+            <div class="links">
+              <a href="/dashboard">Dashboard</a>
+              <a href="/tasks">Tasks</a>
+              <a href="/attendance">Attendance</a>
+              <a href="/logs">Logs</a>
+              <a href="/bugs">Bug Board</a>
+              <a href="/reports">Reports</a>
+            </div>
+          </div>
+
+          <div class="panel" style="padding:14px 16px; margin-bottom:16px;">
+            <strong>Date:</strong> ${escapeHtml(formatDateOnly(reportDate))}
+          </div>
+
+          <div class="reports-grid">
+            ${cardsHtml}
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
 function buildDateForCurrentYear(month, day) {
   const year = getCurrentYearInTimeZone(APP_TIMEZONE);
   const d = new Date(Date.UTC(year, month - 1, day));
@@ -7056,6 +7647,7 @@ th {
               <a href="/tasks">Tasks</a>
               <a href="/logs">Logs</a>
               <a href="/bugs">Bug Board</a>
+              <a href="/reports">Reports</a>
             </div>
           </div>
 
@@ -7600,6 +8192,7 @@ function renderDashboardPage(data) {
               <a href="/attendance">Attendance</a>
               <a href="/logs">Logs</a>
               <a href="/bugs">Bug Board</a>
+              <a href="/reports">Reports</a>
             </div>
           </div>
 
@@ -7673,6 +8266,21 @@ function renderDashboardPage(data) {
 
 app.get("/health/live", (_req, res) => {
   return res.status(200).json({ ok: true, status: "live" });
+});
+
+app.get("/reports", requireDashboardAuth, async (_req, res) => {
+  try {
+    const reportDate = getReportDateString();
+    const data = await getDailyNarrativeReport({
+      orgId: DASHBOARD_ORG_ID,
+      reportDate,
+    });
+
+    return res.status(200).send(renderReportsPage(data));
+  } catch (error) {
+    console.error("Reports page error:", error);
+    return res.status(500).send("Failed to load reports page");
+  }
 });
 
 app.get("/health/ready", async (_req, res) => {
@@ -8983,6 +9591,7 @@ tbody tr:hover {
               <a href="/attendance">Attendance</a>
               <a href="/logs">Logs</a>
               <a href="/bugs">Bug Board</a>
+              <a href="/reports">Reports</a>
             </div>
           </div>
 
@@ -9459,6 +10068,7 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
               <a href="/tasks">Tasks</a>
               <a href="/logs">Logs</a>
               <a href="/bugs">Bug Board</a>
+              <a href="/reports">Reports</a>
             </div>
           </div>
 
@@ -9697,6 +10307,7 @@ th {
               <a href="/tasks">Tasks</a>
               <a href="/attendance">Attendance</a>
               <a href="/bugs">Bug Board</a>
+              <a href="/reports">Reports</a>
             </div>
           </div>
 
@@ -10605,6 +11216,23 @@ app.post("/whatsapp", async (req, res) => {
         successType: "task_updated",
         failureType: "task_update_failed",
         action: () => handleEditTask(res, user, editTaskCommand),
+      });
+    }
+
+    const extraWorkCommand = parseExtraWorkCommand(body);
+    if (extraWorkCommand) {
+      await logParse({
+        intentDetected: "extra_work",
+        parserUsed: "parseExtraWorkCommand",
+        parsedJson: extraWorkCommand,
+        validationPassed: true,
+        actionTaken: "handleExtraWork",
+      });
+
+      return runInboundAction({
+        successType: "extra_work_saved",
+        failureType: "extra_work_save_failed",
+        action: () => handleExtraWork(res, user, extraWorkCommand, messageSid),
       });
     }
 
