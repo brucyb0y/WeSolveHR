@@ -10,7 +10,7 @@ console.log("OPENAI KEY LOADED:", !!process.env.OPENAI_API_KEY);
 
 const app = express();
 const port = process.env.PORT || 3000;
-const DASHBOARD_ORG_ID = Number(process.env.DASHBOARD_ORG_ID || 1);
+const DASHBOARD_ORG_ID = 1;
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY =
@@ -1168,32 +1168,32 @@ function parseDirectManagerAttendanceCommand(text) {
   return null;
 }
 
-function parseSimpleTaskCommand(text) {
-  const raw = normalizeText(text);
+// function parseSimpleTaskCommand(text) {
+//   const raw = normalizeText(text);
 
-  let match = raw.match(
-    /^task\s+(.+?)\s+(low|medium|high|urgent)\s+(.+?)\s+by\s+(.+)$/i,
-  );
+//   let match = raw.match(
+//     /^task\s+(.+?)\s+(low|medium|high|urgent)\s+(.+?)\s+by\s+(.+)$/i,
+//   );
 
-  if (match) {
-    return {
-      assignee_name: match[1].trim(),
-      priority: match[2].toLowerCase(),
-      title: match[3].trim(),
-      deadline_text: match[4].trim(),
-    };
-  }
+//   if (match) {
+//     return {
+//       assignee_name: match[1].trim(),
+//       priority: match[2].toLowerCase(),
+//       title: match[3].trim(),
+//       deadline_text: match[4].trim(),
+//     };
+//   }
 
-  match = raw.match(/^task\s+(.+?)\s+(.+?)\s+by\s+(.+)$/i);
-  if (!match) return null;
+//   match = raw.match(/^task\s+(.+?)\s+(.+?)\s+by\s+(.+)$/i);
+//   if (!match) return null;
 
-  return {
-    assignee_name: match[1].trim(),
-    priority: null,
-    title: match[2].trim(),
-    deadline_text: match[3].trim(),
-  };
-}
+//   return {
+//     assignee_name: match[1].trim(),
+//     priority: null,
+//     title: match[2].trim(),
+//     deadline_text: match[3].trim(),
+//   };
+// }
 
 function parseTaskIdCommand(text, commandWord) {
   const msg = normalizeText(text);
@@ -1206,11 +1206,7 @@ function parseTaskIdCommand(text, commandWord) {
 
 function parseWhoIsOffTodayCommand(text) {
   const msg = normalizeText(text);
-  return (
-    msg === "who is off today" ||
-    msg === "who all are on leave today" ||
-    msg === "off today"
-  );
+  return msg === "who is off today" || msg === "who all are on leave today";
 }
 
 function parseShowTaskCommand(text) {
@@ -1354,15 +1350,6 @@ function parseEditTaskCommand(text) {
       taskId: Number(match[1]),
       field: "status",
       value: match[2].toLowerCase(),
-    };
-  }
-
-  match = raw.match(/^edit\s+task\s+(\d+)\s+progress\s+(\d{1,3}%?)$/i);
-  if (match) {
-    return {
-      taskId: Number(match[1]),
-      field: "progress",
-      value: parseProgressPercentToken(match[2]),
     };
   }
 
@@ -3003,28 +2990,10 @@ async function handleEditTask(res, user, editCommand) {
 
     successMessage = `✏️ Task ${taskRef(task)} status updated\nNew status: ${editCommand.value}`;
   } else if (editCommand.field === "progress") {
-    const progressValue = editCommand.value;
-
-    if (progressValue == null || progressValue < 0 || progressValue > 100) {
-      return sendTwiml(res, "Progress must be between 0 and 100.");
-    }
-
-    const newStatus =
-      progressValue === 100
-        ? "done"
-        : task.status === "open" ||
-            task.status === "pending" ||
-            task.status === "done"
-          ? "in_progress"
-          : task.status;
-
-    oldValue = { progress: task.progress, status: task.status };
-    newValue = { progress: progressValue, status: newStatus };
-
-    patch.progress = progressValue;
-    patch.status = newStatus;
-
-    successMessage = `📈 Task ${taskRef(task)} progress updated\nNew progress: ${progressValue}%`;
+    return sendTwiml(
+      res,
+      "❌ Progress can only be updated using the progress command\nUse: progress <task_id> <percent> <detailed note>",
+    );
   } else if (editCommand.field === "blocker_note") {
     if (!editCommand.value) {
       return sendTwiml(res, "Blocker note cannot be empty.");
@@ -3921,7 +3890,7 @@ async function handleHelp(res, user, topic = "") {
           "📋 Task Help",
           "",
           "Create tasks:",
-          "task Ruhab high present progress on Rasset by today",
+          "create task present progress on rasset business rasset area general owner ruhab priority high due today",
           "create task finalize parents pitch business joolian area parents owner zoya, niharika, aj priority high due 4 apr",
           "",
           "View tasks:",
@@ -4031,7 +4000,6 @@ async function handleHelp(res, user, topic = "") {
           "tasks Ruhab",
           "show task 2",
           "Task examples:",
-          "task Ruhab high present progress on Rasset by today",
           "progress 2 50% 20 mails sent no positive response",
           "edit task 2 blocker waiting on dependency",
           "edit task 2 clear blocker",
@@ -4218,7 +4186,20 @@ async function handleProgressTask(res, user, taskId, progressValue, note) {
     return sendTwiml(res, "You are not allowed to modify that task.");
   }
 
-  if (progressValue < 0 || progressValue > 100) {
+  if (
+    progressValue === null ||
+    progressValue === undefined ||
+    Number.isNaN(Number(progressValue))
+  ) {
+    return sendTwiml(
+      res,
+      "Progress must be a number between 0 and 100.\nExample: progress 12 50 finished API testing and verified responses",
+    );
+  }
+
+  const numericProgress = Number(progressValue);
+
+  if (numericProgress < 0 || numericProgress > 100) {
     return sendTwiml(res, "Progress must be between 0 and 100.");
   }
 
@@ -4230,7 +4211,7 @@ async function handleProgressTask(res, user, taskId, progressValue, note) {
   const cleanNote = noteCheck.cleanNote;
 
   const newStatus =
-    progressValue === 100
+    numericProgress === 100
       ? "done"
       : task.status === "open" || task.status === "pending"
         ? "in_progress"
@@ -4239,7 +4220,7 @@ async function handleProgressTask(res, user, taskId, progressValue, note) {
   const { error: updateError } = await supabase
     .from("tasks")
     .update({
-      progress: progressValue,
+      progress: numericProgress,
       status: newStatus,
       last_updated_by_user_id: user.id,
       updated_at: new Date().toISOString(),
@@ -4257,13 +4238,13 @@ async function handleProgressTask(res, user, taskId, progressValue, note) {
     "progress_change",
     "progress",
     { progress: task.progress, status: task.status, note: null },
-    { progress: progressValue, status: newStatus, note: cleanNote },
+    { progress: numericProgress, status: newStatus, note: cleanNote },
     user.org_id,
   );
 
   return sendTwiml(
     res,
-    `📈 Task ${taskRef(task)} progress updated to ${progressValue}%\nTitle: ${task.title}\nNote: ${cleanNote}`,
+    `📈 Task ${taskRef(task)} progress updated to ${numericProgress}%\nTitle: ${task.title}\nNote: ${cleanNote}`,
   );
 }
 
@@ -5064,7 +5045,10 @@ async function handleCreateTaskAdvanced(res, user, taskCommand) {
 
   if (taskError) {
     console.error("Advanced task insert error:", taskError);
-    return sendTwiml(res, "❌ Could not create task.");
+    return sendTwiml(
+      res,
+      `❌ Could not create task\nReason: ${taskError.message || "system could not save it"}`,
+    );
   }
 
   const ownerRows = matchedUsers.map((owner) => ({
@@ -5121,118 +5105,118 @@ async function handleCreateTaskAdvanced(res, user, taskCommand) {
   );
 }
 
-async function handleCreateTask(res, user, taskCommand) {
-  if (!taskCommand.assignee_name) {
-    return sendTwiml(
-      res,
-      "I understood this as a task, but could not identify the assignee.",
-    );
-  }
+// async function handleCreateTask(res, user, taskCommand) {
+//   if (!taskCommand.assignee_name) {
+//     return sendTwiml(
+//       res,
+//       "I understood this as a task, but could not identify the assignee.",
+//     );
+//   }
 
-  if (!taskCommand.title) {
-    return sendTwiml(
-      res,
-      "I understood this as a task, but could not identify the title.",
-    );
-  }
+//   if (!taskCommand.title) {
+//     return sendTwiml(
+//       res,
+//       "I understood this as a task, but could not identify the title.",
+//     );
+//   }
 
-  const assignee = await findUniqueUserByName(
-    taskCommand.assignee_name,
-    user.org_id,
-  );
-  if (!assignee) {
-    return sendTwiml(
-      res,
-      `I could not uniquely find an active user named "${taskCommand.assignee_name}".`,
-    );
-  }
+// const assignee = await findUniqueUserByName(taskCommand.assignee_name, user.org_id);
+//   if (!assignee) {
+//     return sendTwiml(
+//       res,
+//       `I could not uniquely find an active user named "${taskCommand.assignee_name}".`,
+//     );
+//   }
 
-  if (!isManagerOrAdmin(user) && assignee.id !== user.id) {
-    return sendTwiml(
-      res,
-      "You are not allowed to assign tasks to other people.",
-    );
-  }
+//   if (!isManagerOrAdmin(user) && assignee.id !== user.id) {
+//     return sendTwiml(
+//       res,
+//       "You are not allowed to assign tasks to other people.",
+//     );
+//   }
 
-  const deadline = parseDeadline(taskCommand.deadline_text);
+//   const deadline = parseDeadline(taskCommand.deadline_text);
 
-  if (!deadline) {
-    return sendTwiml(
-      res,
-      `I could not understand the deadline "${taskCommand.deadline_text}". Use today, tomorrow, friday, 11 april, or april 11.`,
-    );
-  }
+//   if (!deadline) {
+//     return sendTwiml(
+//       res,
+//       `I could not understand the deadline "${taskCommand.deadline_text}". Use today, tomorrow, friday, 11 april, or april 11.`,
+//     );
+//   }
 
-  const taskRow = {
-    assigned_to_user_id: assignee.id,
-    org_id: user.org_id,
-    created_by_user_id: user.id,
-    last_updated_by_user_id: user.id,
-    title: taskCommand.title,
-    detail: null,
-    priority: taskCommand.priority || "medium",
-    status: "open",
-    progress: 0,
-    deadline,
-    blocker_note: null,
-    updated_at: new Date().toISOString(),
-  };
+//   const taskRow = {
+//     assigned_to_user_id: assignee.id,
+//     org_id: user.org_id,
+//     created_by_user_id: user.id,
+//     last_updated_by_user_id: user.id,
+//     title: taskCommand.title,
+//     detail: null,
+//     priority: taskCommand.priority || "medium",
+//     status: "open",
+//     progress: 0,
+//     deadline,
+//     blocker_note: null,
+//     updated_at: new Date().toISOString(),
+//   };
 
-  const { data: createdTask, error: taskError } = await supabase
-    .from("tasks")
-    .insert([taskRow])
-    .select("id, task_no, title, priority, deadline")
-    .single();
+//   const { data: createdTask, error: taskError } = await supabase
+//     .from("tasks")
+//     .insert([taskRow])
+//     .select("id, task_no, title, priority, deadline")
+//     .single();
 
-  if (taskError) {
-    console.error("Task insert error:", taskError);
-    return sendTwiml(
-      res,
-      "❌ Could not create task\nReason: system could not save it\nTry: please send the task again once",
-    );
-  }
+//   if (taskError) {
+//     console.error("Task insert error:", taskError);
+//     return sendTwiml(
+//       res,
+//       "❌ Could not create task\nReason: system could not save it\nTry: please send the task again once",
+//     );
+//   }
 
-  const { error: ownerUpsertError } = await supabase
-    .from("task_owners")
-    .upsert([
-      {
-        org_id: user.org_id,
-        task_id: createdTask.id,
-        user_id: assignee.id,
-      },
-    ]);
+// const { error: ownerUpsertError } = await supabase
+//   .from("task_owners")
+//   .upsert([
+//     {
+//       org_id: user.org_id,
+//       task_id: createdTask.id,
+//       user_id: assignee.id,
+//     },
+//   ]);
 
-  if (ownerUpsertError) {
-    console.error("Simple task owner upsert error:", ownerUpsertError);
+// if (ownerUpsertError) {
+//   console.error("Simple task owner upsert error:", ownerUpsertError);
 
-    await supabase.from("tasks").delete().eq("id", createdTask.id);
+//   await supabase
+//     .from("tasks")
+//     .delete()
+//     .eq("id", createdTask.id);
 
-    return sendTwiml(
-      res,
-      "❌ Task could not be completed because owner save failed. Nothing was created.",
-    );
-  }
+//   return sendTwiml(
+//     res,
+//     "❌ Task could not be completed because owner save failed. Nothing was created.",
+//   );
+//   }
 
-  await insertTaskHistory(
-    createdTask.id,
-    user.id,
-    "task_created",
-    "task",
-    null,
-    {
-      title: createdTask.title,
-      priority: createdTask.priority,
-      deadline: createdTask.deadline,
-      assigned_to_user_id: assignee.id,
-    },
-    user.org_id,
-  );
+//   await insertTaskHistory(
+//     createdTask.id,
+//     user.id,
+//     "task_created",
+//     "task",
+//     null,
+//     {
+//       title: createdTask.title,
+//       priority: createdTask.priority,
+//       deadline: createdTask.deadline,
+//       assigned_to_user_id: assignee.id,
+//     },
+//     user.org_id
+//   );
 
-  return sendTwiml(
-    res,
-    `✅ Task #${createdTask.task_no || createdTask.id} created\nAssigned to ${assignee.name}\nPriority: ${createdTask.priority}\nTitle: ${createdTask.title}\nDue: ${createdTask.deadline || "no deadline"}`,
-  );
-}
+//   return sendTwiml(
+//     res,
+//     `✅ Task #${createdTask.task_no || createdTask.id} created\nAssigned to ${assignee.name}\nPriority: ${createdTask.priority}\nTitle: ${createdTask.title}\nDue: ${createdTask.deadline || "no deadline"}`,
+//   );
+// }
 
 async function handleBlockTask(res, user, taskId, reason) {
   const cleanNote = String(reason || "").trim();
@@ -6482,6 +6466,138 @@ async function getUserOpenBlockedCounts(orgId, userId) {
   return { open, blocked };
 }
 
+function formatShortDate(dateString) {
+  if (!dateString) return "-";
+
+  const d = new Date(`${dateString}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return String(dateString);
+
+  return d.toLocaleDateString("en-IN", {
+    timeZone: APP_TIMEZONE,
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function escapeHtmlAttr(value) {
+  return escapeHtml(value).replace(/'/g, "&#39;");
+}
+
+function summarizeProgressDelta(taskNarratives) {
+  let totalDelta = 0;
+
+  for (const item of taskNarratives || []) {
+    const from = Number(item.fromProgress);
+    const to = Number(item.toProgress);
+
+    if (!Number.isNaN(from) && !Number.isNaN(to) && to > from) {
+      totalDelta += to - from;
+    }
+  }
+
+  return totalDelta;
+}
+
+function buildCompactUserMeta(userReport) {
+  const touched = (userReport.taskNarratives || []).length;
+  const delta = summarizeProgressDelta(userReport.taskNarratives || []);
+  const blocked = Number(userReport.summary?.blocked || 0);
+  const hasExtra = (userReport.extraWork || []).length > 0;
+
+  const parts = [];
+  parts.push(`${touched} touched`);
+  if (delta > 0) parts.push(`+${delta}%`);
+  if (blocked > 0) parts.push(`${blocked} blocked`);
+  if (hasExtra) parts.push("extra");
+
+  return parts.join(" · ");
+}
+
+function extractCompactChangeChips(entries) {
+  const chipMap = new Map();
+
+  for (const entry of entries || []) {
+    const fieldName = String(entry.field_name || "").toLowerCase();
+    const changeType = String(entry.change_type || "").toLowerCase();
+    const oldValue = entry.old_value || {};
+    const newValue = entry.new_value || {};
+
+    if (fieldName === "deadline" || changeType === "deadline_change") {
+      chipMap.set("deadline", {
+        key: "deadline",
+        label: "deadline",
+        detail: `${formatShortDate(oldValue.deadline)} → ${formatShortDate(newValue.deadline)}`,
+      });
+    }
+
+    if (fieldName === "owner" || changeType === "owner_change") {
+      const oldOwners = Array.isArray(oldValue.owners)
+        ? oldValue.owners.join(", ")
+        : "-";
+      const newOwners = Array.isArray(newValue.owners)
+        ? newValue.owners.join(", ")
+        : "-";
+
+      chipMap.set("owner", {
+        key: "owner",
+        label: "owner",
+        detail: `${oldOwners} → ${newOwners}`,
+      });
+    }
+
+    if (fieldName === "status" || changeType === "status_change") {
+      chipMap.set("status", {
+        key: "status",
+        label: "status",
+        detail: `${oldValue.status || "-"} → ${newValue.status || "-"}`,
+      });
+    }
+
+    if (fieldName === "priority") {
+      chipMap.set("priority", {
+        key: "priority",
+        label: "priority",
+        detail: `${oldValue.priority || "-"} → ${newValue.priority || "-"}`,
+      });
+    }
+  }
+
+  return Array.from(chipMap.values());
+}
+
+function classifyReportUsers(users) {
+  const full = [];
+  const partial = [];
+  const missing = [];
+  const onLeave = [];
+
+  for (const user of users || []) {
+    if (user.isOnLeave) {
+      onLeave.push(user.userName);
+      continue;
+    }
+
+    const touched = (user.taskNarratives || []).length;
+    const extra = (user.extraWork || []).length;
+
+    if (touched > 0 && extra > 0) {
+      full.push(user.userName);
+    } else if (touched > 0 || extra > 0) {
+      partial.push(user.userName);
+    } else {
+      missing.push(user.userName);
+    }
+  }
+
+  return { full, partial, missing, onLeave };
+}
+
+function linkifyTaskSentence(sentence, taskNo, taskId) {
+  const safeSentence = escapeHtml(sentence || "");
+  const clickable = `<button type="button" class="task-inline-link" onclick="openTaskDetail(${Number(taskNo)}, ${Number(taskId)})">#${escapeHtml(taskNo)}</button>`;
+  return safeSentence.replace(/^Task #\d+/, `Task ${clickable}`);
+}
+
 function buildTaskNarrativeFromHistoryEntries(entries, taskTitle, taskNoOrId) {
   if (!entries || !entries.length) return null;
 
@@ -6569,7 +6685,15 @@ function buildTaskNarrativeFromHistoryEntries(entries, taskTitle, taskNoOrId) {
 
   sentence += ".";
 
-  return sentence;
+  return {
+    sentence,
+    fromProgress: firstProgress,
+    toProgress: lastProgress,
+    finalStatus,
+    blockerAdded,
+    blockerCleared,
+    notePreview: notes[0] || null,
+  };
 }
 
 async function getDailyTaskNarratives({ orgId, reportDate, userId = null }) {
@@ -6614,6 +6738,7 @@ async function getDailyTaskNarratives({ orgId, reportDate, userId = null }) {
       "status_change",
       "edit",
       "owner_change",
+      "deadline_change",
     ].includes(changeType);
   });
 
@@ -6658,20 +6783,25 @@ async function getDailyTaskNarratives({ orgId, reportDate, userId = null }) {
   const out = [];
 
   for (const group of grouped.values()) {
-    const sentence = buildTaskNarrativeFromHistoryEntries(
+    const narrative = buildTaskNarrativeFromHistoryEntries(
       group.entries,
       group.title,
       group.taskNo,
     );
 
-    if (!sentence) continue;
+    if (!narrative) continue;
 
     out.push({
       userId: group.userId,
       taskId: group.taskId,
       taskNo: group.taskNo,
       title: group.title,
-      sentence,
+      sentence: narrative.sentence,
+      fromProgress: narrative.fromProgress,
+      toProgress: narrative.toProgress,
+      finalStatus: narrative.finalStatus,
+      notePreview: narrative.notePreview,
+      compactChanges: extractCompactChangeChips(group.entries),
     });
   }
 
@@ -6713,10 +6843,13 @@ async function getDailyNarrativeReport({ orgId, reportDate, userId = null }) {
     throw usersError;
   }
 
-  const [taskNarratives, extraNotes] = await Promise.all([
+  const [taskNarratives, extraNotes, plannedOffRows] = await Promise.all([
     getDailyTaskNarratives({ orgId, reportDate, userId }),
     getDailyReportNotes({ orgId, reportDate, userId }),
+    getPlannedOffRowsForDate(reportDate, orgId),
   ]);
+
+  const leaveSet = new Set((plannedOffRows || []).map((x) => x.user_id));
 
   const narrativesByUser = new Map();
   for (const item of taskNarratives) {
@@ -6737,25 +6870,62 @@ async function getDailyNarrativeReport({ orgId, reportDate, userId = null }) {
     row.taskNarratives = narrativesByUser.get(user.id) || [];
     row.extraWork = notesByUser.get(user.id) || [];
     row.summary = await getUserOpenBlockedCounts(orgId, user.id);
+    row.isOnLeave = leaveSet.has(user.id);
+    row.compactMeta = buildCompactUserMeta(row);
     resultUsers.push(row);
   }
 
   return {
     reportDate,
     users: resultUsers,
+    compliance: classifyReportUsers(resultUsers),
   };
 }
 
 function renderReportsPage(data) {
   const reportDate = data?.reportDate || getReportDateString();
   const users = data?.users || [];
+  const compliance = data?.compliance || {
+    full: [],
+    partial: [],
+    missing: [],
+    onLeave: [],
+  };
 
   const cardsHtml = users.length
     ? users
         .map((user) => {
           const taskHtml = (user.taskNarratives || []).length
             ? user.taskNarratives
-                .map((item) => `<li>${escapeHtml(item.sentence)}</li>`)
+                .map((item) => {
+                  const chipsHtml = (item.compactChanges || []).length
+                    ? `
+                      <div class="change-chips">
+                        ${item.compactChanges
+                          .map(
+                            (chip) => `
+                              <span
+                                class="change-chip"
+                                title="${escapeHtmlAttr(chip.detail || chip.label)}"
+                              >
+                                ${escapeHtml(chip.label)}
+                              </span>
+                            `,
+                          )
+                          .join("")}
+                      </div>
+                    `
+                    : "";
+
+                  return `
+                    <li class="report-task-item">
+                      <div class="task-line">
+                        ${linkifyTaskSentence(item.sentence, item.taskNo, item.taskId)}
+                      </div>
+                      ${chipsHtml}
+                    </li>
+                  `;
+                })
                 .join("")
             : `<li class="muted">No task updates today</li>`;
 
@@ -6766,13 +6936,14 @@ function renderReportsPage(data) {
             : `<li class="muted">No extra work notes</li>`;
 
           return `
-<div class="report-card" data-user-name="${escapeHtml(String(user.userName || "").toLowerCase())}">
-  <div class="report-card-head">
+            <div class="report-card" data-user-name="${escapeHtml(String(user.userName || "").toLowerCase())}">
+              <div class="report-card-head">
                 <div>
                   <div class="report-name">
-  <a href="/attendance/${escapeHtml(user.userId)}">${escapeHtml(user.userName)}</a>
-</div>
+                    <a href="/attendance/${escapeHtml(user.userId)}">${escapeHtml(user.userName)}</a>
+                  </div>
                   <div class="report-date">${escapeHtml(formatDateOnly(reportDate))}</div>
+                  <div class="micro-meta">${escapeHtml(user.compactMeta || "0 touched")}</div>
                 </div>
                 <div class="summary-pill">
                   Open: ${escapeHtml(user.summary?.open ?? 0)} | Blocked: ${escapeHtml(user.summary?.blocked ?? 0)}
@@ -6807,7 +6978,7 @@ function renderReportsPage(data) {
           ${buildBasePageCss()}
 
           .wrap { max-width: 1400px; margin: 0 auto; padding: 24px 18px 36px; }
-          .topbar, .panel, .report-card {
+          .topbar, .panel, .report-card, .status-chip-box, .modal-card {
             background: linear-gradient(180deg, var(--panel), var(--panel-strong));
             border: 1px solid var(--line);
             border-radius: var(--radius-lg);
@@ -6834,22 +7005,23 @@ function renderReportsPage(data) {
             background: var(--secondary-soft);
             font-weight: 600;
           }
+
           .reports-grid {
             display:grid;
             grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
             gap:16px;
           }
-          
-          .report-name a {
-  color: var(--text);
-  text-decoration: none;
-}
 
-.report-name a:hover {
-  color: var(--text-strong);
-  text-decoration: underline;
-}
-          
+          .report-name a {
+            color: var(--text);
+            text-decoration: none;
+          }
+
+          .report-name a:hover {
+            color: var(--text-strong);
+            text-decoration: underline;
+          }
+
           .report-card { padding:16px; }
           .report-card-head {
             display:flex;
@@ -6860,6 +7032,12 @@ function renderReportsPage(data) {
           }
           .report-name { font-size:20px; font-weight:800; }
           .report-date { color:var(--muted); font-size:13px; margin-top:4px; }
+          .micro-meta {
+            margin-top:6px;
+            font-size:12px;
+            color:var(--muted);
+            font-weight:700;
+          }
           .summary-pill {
             white-space:nowrap;
             padding:10px 12px;
@@ -6890,6 +7068,181 @@ function renderReportsPage(data) {
           }
           .report-list li + li { margin-top:8px; }
 
+          .report-task-item {
+            margin-bottom: 10px;
+          }
+
+          .task-line {
+            display:block;
+          }
+
+          .task-inline-link {
+            padding:0;
+            margin:0;
+            border:none;
+            background:none;
+            color:var(--secondary);
+            font-weight:800;
+            cursor:pointer;
+            font-size:inherit;
+          }
+
+          .task-inline-link:hover {
+            text-decoration:underline;
+          }
+
+          .change-chips {
+            display:flex;
+            gap:6px;
+            flex-wrap:wrap;
+            margin-top:6px;
+          }
+
+          .change-chip {
+            display:inline-flex;
+            align-items:center;
+            padding:2px 8px;
+            border-radius:999px;
+            background:rgba(255,255,255,0.06);
+            border:1px solid rgba(255,255,255,0.08);
+            color:var(--muted);
+            font-size:11px;
+            font-weight:700;
+            line-height:1.5;
+          }
+
+          .status-grid {
+            display:grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap:12px;
+            margin-bottom:16px;
+          }
+
+          .status-chip-box {
+            padding:12px 14px;
+          }
+
+          .status-chip-title {
+            font-size:11px;
+            text-transform:uppercase;
+            letter-spacing:0.12em;
+            color:var(--muted);
+            font-weight:800;
+            margin-bottom:8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          .status-chip-count {
+            font-size:22px;
+            font-weight:800;
+            margin-bottom:4px;
+          }
+
+          .status-chip-names {
+            font-size:13px;
+            color:var(--muted);
+            line-height:1.5;
+          }
+
+          .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(4, 8, 20, 0.72);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            z-index: 9999;
+          }
+
+          .modal-backdrop.open {
+            display: flex;
+          }
+
+          .modal-card {
+            width: min(860px, 100%);
+            max-height: 88vh;
+            overflow: auto;
+            padding: 18px;
+          }
+
+          .modal-head {
+            display:flex;
+            justify-content:space-between;
+            gap:12px;
+            align-items:flex-start;
+            margin-bottom:14px;
+          }
+
+          .modal-title {
+            font-size:24px;
+            font-weight:800;
+            margin:0;
+          }
+
+          .modal-close {
+            border:none;
+            background:rgba(255,255,255,0.08);
+            color:var(--text);
+            border-radius:10px;
+            padding:8px 10px;
+            cursor:pointer;
+            font-weight:700;
+          }
+
+          .modal-meta-grid {
+            display:grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap:10px;
+            margin-bottom:14px;
+          }
+
+          .modal-meta-box {
+            border:1px solid rgba(255,255,255,0.08);
+            border-radius:12px;
+            padding:10px 12px;
+            background:rgba(255,255,255,0.04);
+          }
+
+          .modal-meta-label {
+            font-size:11px;
+            text-transform:uppercase;
+            letter-spacing:0.1em;
+            color:var(--muted);
+            font-weight:800;
+            margin-bottom:4px;
+          }
+
+          .history-list {
+            display:flex;
+            flex-direction:column;
+            gap:10px;
+          }
+
+          .history-item {
+            border:1px solid rgba(255,255,255,0.08);
+            border-radius:12px;
+            padding:10px 12px;
+            background:rgba(255,255,255,0.04);
+          }
+
+          .history-top {
+            display:flex;
+            justify-content:space-between;
+            gap:8px;
+            flex-wrap:wrap;
+            margin-bottom:4px;
+            font-size:13px;
+          }
+
+          .history-detail {
+            color:var(--muted);
+            font-size:13px;
+            line-height:1.5;
+            white-space:pre-wrap;
+            word-break:break-word;
+          }
+
           @media (max-width: 700px) {
             .wrap { padding:16px 12px 28px; }
             h1 { font-size:24px; }
@@ -6919,31 +7272,148 @@ function renderReportsPage(data) {
           <div class="panel" style="padding:14px 16px; margin-bottom:16px;">
             <strong>Date:</strong> ${escapeHtml(formatDateOnly(reportDate))}
           </div>
-<div class="panel" style="padding:14px 16px; margin-bottom:16px;">
-  <input
-    id="reportSearch"
-    type="text"
-    placeholder="Search user name"
-    oninput="filterReports()"
-    style="width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);"
-  />
-</div>
+
+          <div class="status-grid">
+            <div class="status-chip-box">
+              <div class="status-chip-title">Fully updated</div>
+              <div class="status-chip-count">${escapeHtml(compliance.full.length)}</div>
+              <div class="status-chip-names">${escapeHtml(compliance.full.join(", ") || "None")}</div>
+            </div>
+            <div class="status-chip-box">
+              <div class="status-chip-title">Partially updated</div>
+              <div class="status-chip-count">${escapeHtml(compliance.partial.length)}</div>
+              <div class="status-chip-names">${escapeHtml(compliance.partial.join(", ") || "None")}</div>
+            </div>
+            <div class="status-chip-box">
+              <div class="status-chip-title">Missing</div>
+              <div class="status-chip-count">${escapeHtml(compliance.missing.length)}</div>
+              <div class="status-chip-names">${escapeHtml(compliance.missing.join(", ") || "None")}</div>
+            </div>
+            <div class="status-chip-box">
+              <div class="status-chip-title">On leave</div>
+              <div class="status-chip-count">${escapeHtml(compliance.onLeave.length)}</div>
+              <div class="status-chip-names">${escapeHtml(compliance.onLeave.join(", ") || "None")}</div>
+            </div>
+          </div>
+
+          <div class="panel" style="padding:14px 16px; margin-bottom:16px;">
+            <input
+              id="reportSearch"
+              type="text"
+              placeholder="Search user name"
+              oninput="filterReports()"
+              style="width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--line); background:rgba(255,255,255,0.04); color:var(--text);"
+            />
+          </div>
+
           <div class="reports-grid">
             ${cardsHtml}
           </div>
         </div>
-        <script>
-  function filterReports() {
-    const input = document.getElementById("reportSearch");
-    const query = String(input?.value || "").trim().toLowerCase();
-    const cards = document.querySelectorAll(".report-card");
 
-    for (const card of cards) {
-      const userName = String(card.getAttribute("data-user-name") || "");
-      card.style.display = !query || userName.includes(query) ? "" : "none";
-    }
-  }
-</script>
+        <div id="taskModal" class="modal-backdrop" onclick="closeTaskModal(event)">
+          <div class="modal-card" onclick="event.stopPropagation()">
+            <div class="modal-head">
+              <div>
+                <div class="eyebrow">Task detail</div>
+                <h2 id="modalTitle" class="modal-title">Loading...</h2>
+              </div>
+              <button class="modal-close" onclick="closeTaskModal()">Close</button>
+            </div>
+
+            <div id="modalBody">
+              <div class="muted">Loading task details...</div>
+            </div>
+          </div>
+        </div>
+
+        <script>
+          function filterReports() {
+            const input = document.getElementById("reportSearch");
+            const query = String(input?.value || "").trim().toLowerCase();
+            const cards = document.querySelectorAll(".report-card");
+
+            for (const card of cards) {
+              const userName = String(card.getAttribute("data-user-name") || "");
+              card.style.display = !query || userName.includes(query) ? "" : "none";
+            }
+          }
+
+          function closeTaskModal(event) {
+            if (event && event.target && event.target.id !== "taskModal") return;
+            document.getElementById("taskModal").classList.remove("open");
+          }
+
+          function renderHistoryDetail(item) {
+            const oldText = JSON.stringify(item.oldValue || {});
+            const newText = JSON.stringify(item.newValue || {});
+            return "Field: " + (item.fieldName || "-") + "\\nOld: " + oldText + "\\nNew: " + newText;
+          }
+
+          async function openTaskDetail(taskNo) {
+            const modal = document.getElementById("taskModal");
+            const title = document.getElementById("modalTitle");
+            const body = document.getElementById("modalBody");
+
+            title.textContent = "Task #" + taskNo;
+            body.innerHTML = '<div class="muted">Loading task details...</div>';
+            modal.classList.add("open");
+
+            try {
+              const res = await fetch("/api/reports/task/" + taskNo);
+              const json = await res.json();
+
+              if (!json.ok) {
+                body.innerHTML = '<div class="muted">' + (json.error || "Failed to load task") + '</div>';
+                return;
+              }
+
+              const task = json.data || {};
+              title.textContent = "#" + (task.taskNo || task.id) + " — " + (task.title || "Untitled");
+
+              const historyHtml = (task.history || []).length
+                ? task.history.map((item) => {
+                    return (
+                      '<div class="history-item">' +
+                        '<div class="history-top">' +
+                          '<strong>' + (item.changeType || "-") + '</strong>' +
+                          '<span>' + (item.at || "-") + ' • ' + (item.by || "-") + '</span>' +
+                        '</div>' +
+                        '<div class="history-detail">' + renderHistoryDetail(item) + '</div>' +
+                      '</div>'
+                    );
+                  }).join("")
+                : '<div class="muted">No recent history</div>';
+
+              body.innerHTML =
+                '<div class="modal-meta-grid">' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Owners</div><div>' + ((task.owners || []).join(", ") || "-") + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Status</div><div>' + (task.status || "-") + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Priority</div><div>' + (task.priority || "-") + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Progress</div><div>' + (task.progress ?? "-") + '%</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Deadline</div><div>' + (task.deadline || "-") + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Business / Area</div><div>' + ((task.business || "-") + ' / ' + (task.area || "-")) + '</div></div>' +
+                '</div>' +
+
+                '<div class="report-section">' +
+                  '<div class="section-title">Detail</div>' +
+                  '<div>' + (task.detail || '<span class="muted">No detail</span>') + '</div>' +
+                '</div>' +
+
+                '<div class="report-section">' +
+                  '<div class="section-title">Blocker</div>' +
+                  '<div>' + (task.blockerNote || '<span class="muted">No blocker</span>') + '</div>' +
+                '</div>' +
+
+                '<div class="report-section">' +
+                  '<div class="section-title">Recent history</div>' +
+                  '<div class="history-list">' + historyHtml + '</div>' +
+                '</div>';
+            } catch (error) {
+              body.innerHTML = '<div class="muted">Failed to load task details</div>';
+            }
+          }
+        </script>
       </body>
     </html>
   `;
@@ -7818,9 +8288,7 @@ th {
         </div>
 
         <script>
-async function refreshTasks() {
-  await loadTasks();
-}
+loadUsers().then(loadTasks);
 
         </script>
       </body>
@@ -8329,6 +8797,100 @@ app.get("/reports", requireDashboardAuth, async (_req, res) => {
   } catch (error) {
     console.error("Reports page error:", error);
     return res.status(500).send("Failed to load reports page");
+  }
+});
+
+app.get("/api/reports/task/:taskNo", requireDashboardAuth, async (req, res) => {
+  try {
+    const taskNo = Number(req.params.taskNo);
+    if (!taskNo) {
+      return sendApiError(res, 400, "Invalid task number");
+    }
+
+    const { task, error } = await getTaskById(taskNo, DASHBOARD_ORG_ID);
+
+    if (error) {
+      console.error("Report task detail fetch error:", error);
+      return sendApiError(res, 500, "Failed to fetch task");
+    }
+
+    if (!task) {
+      return sendApiError(res, 404, "Task not found");
+    }
+
+    const ownerNames = await getTaskOwnerNames(task.id, DASHBOARD_ORG_ID);
+
+    const { data: historyRows, error: historyError } = await supabase
+      .from("task_history")
+      .select(
+        `
+        id,
+        task_id,
+        changed_by_user_id,
+        change_type,
+        field_name,
+        old_value,
+        new_value,
+        created_at
+      `,
+      )
+      .eq("org_id", DASHBOARD_ORG_ID)
+      .eq("task_id", task.id)
+      .order("created_at", { ascending: false })
+      .limit(15);
+
+    if (historyError) {
+      console.error("Report task history fetch error:", historyError);
+      return sendApiError(res, 500, "Failed to fetch task history");
+    }
+
+    const changedByIds = [
+      ...new Set(
+        (historyRows || []).map((x) => x.changed_by_user_id).filter(Boolean),
+      ),
+    ];
+    let userMap = new Map();
+
+    if (changedByIds.length) {
+      const { data: userRows } = await supabase
+        .from("users")
+        .select("id, name")
+        .eq("org_id", DASHBOARD_ORG_ID)
+        .in("id", changedByIds);
+
+      userMap = new Map((userRows || []).map((u) => [u.id, u.name]));
+    }
+
+    const history = (historyRows || []).map((row) => ({
+      id: row.id,
+      at: formatDateTime(row.created_at),
+      by:
+        userMap.get(row.changed_by_user_id) ||
+        `User ${row.changed_by_user_id || "-"}`,
+      changeType: row.change_type,
+      fieldName: row.field_name,
+      oldValue: row.old_value || {},
+      newValue: row.new_value || {},
+    }));
+
+    return sendApiSuccess(res, {
+      id: task.id,
+      taskNo: task.task_no || task.id,
+      title: task.title,
+      detail: task.detail,
+      status: task.status,
+      priority: task.priority,
+      progress: task.progress,
+      deadline: task.deadline,
+      blockerNote: task.blocker_note,
+      business: task.business,
+      area: task.area,
+      owners: ownerNames,
+      history,
+    });
+  } catch (error) {
+    console.error("Report task detail fatal error:", error);
+    return sendApiError(res, 500, "Failed to fetch task detail");
   }
 });
 
@@ -9043,272 +9605,7 @@ app.get("/api/users", async (_req, res) => {
   }
 });
 
-app.get("/api/summary", async (_req, res) => {
-  try {
-    const data = await getDashboardSummaryData(DASHBOARD_ORG_ID);
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("API /api/summary error:", error);
-    return sendApiError(res, 500, "Failed to load summary");
-  }
-});
-
-app.get("/api/tasks", async (req, res) => {
-  try {
-    const data = await getTasksPageData(req.query, DASHBOARD_ORG_ID);
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("API /api/tasks error:", error);
-    return sendApiError(res, 500, "Failed to load tasks");
-  }
-});
-
-app.get("/api/tasks/:id", async (req, res) => {
-  try {
-    const taskId = Number(req.params.id);
-    if (!taskId) {
-      return sendApiError(res, 400, "Invalid task id");
-    }
-
-    const detail = await getTaskDetailData(taskId, DASHBOARD_ORG_ID);
-    if (!detail) {
-      return sendApiError(res, 404, "Task not found");
-    }
-
-    return sendApiSuccess(res, detail);
-  } catch (error) {
-    console.error("API /api/tasks/:id error:", error);
-    return sendApiError(res, 500, "Failed to load task");
-  }
-});
-
-app.get("/api/attendance", async (_req, res) => {
-  try {
-    const data = await getAttendancePageData(DASHBOARD_ORG_ID);
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("API /api/attendance error:", error);
-    return sendApiError(res, 500, "Failed to load attendance");
-  }
-});
-
-app.get("/api/attendance/:userId", async (req, res) => {
-  try {
-    const userId = Number(req.params.userId);
-    if (!userId) {
-      return sendApiError(res, 400, "Invalid user id");
-    }
-
-    const data = await getEmployeeAttendanceOverview(userId, DASHBOARD_ORG_ID);
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("API /api/attendance/:userId error:", error);
-    return sendApiError(res, 500, "Failed to load employee attendance");
-  }
-});
-
-app.get("/api/logs", async (_req, res) => {
-  try {
-    const data = await getLogsPageData(DASHBOARD_ORG_ID);
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("API /api/logs error:", error);
-    return sendApiError(res, 500, "Failed to load logs");
-  }
-});
-
-app.get("/api/bugs", async (_req, res) => {
-  try {
-    const data = await getStage0BugBoardData(DASHBOARD_ORG_ID);
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("API /api/bugs error:", error);
-    return sendApiError(res, 500, "Failed to load bug board");
-  }
-});
-
-app.get("/api/summary", async (_req, res) => {
-  try {
-    const data = await getDashboardSummaryData(DASHBOARD_ORG_ID);
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("API /api/summary error:", error);
-    return sendApiError(res, 500, "Failed to load summary");
-  }
-});
-
-app.get("/api/tasks", async (req, res) => {
-  try {
-    const data = await getTasksPageData(req.query, DASHBOARD_ORG_ID);
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("API /api/tasks error:", error);
-    return sendApiError(res, 500, "Failed to load tasks");
-  }
-});
-
-app.get("/api/tasks/:id", async (req, res) => {
-  try {
-    const taskId = Number(req.params.id);
-    if (!taskId) {
-      return sendApiError(res, 400, "Invalid task id");
-    }
-
-    const detail = await getTaskDetailData(taskId, DASHBOARD_ORG_ID);
-    if (!detail) {
-      return sendApiError(res, 404, "Task not found");
-    }
-
-    return sendApiSuccess(res, detail);
-  } catch (error) {
-    console.error("API /api/tasks/:id error:", error);
-    return sendApiError(res, 500, "Failed to load task");
-  }
-});
-
-app.get("/api/attendance", async (_req, res) => {
-  try {
-    const data = await getAttendancePageData(DASHBOARD_ORG_ID);
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("API /api/attendance error:", error);
-    return sendApiError(res, 500, "Failed to load attendance");
-  }
-});
-
-app.get("/api/attendance/:userId", async (req, res) => {
-  try {
-    const userId = Number(req.params.userId);
-    if (!userId) {
-      return sendApiError(res, 400, "Invalid user id");
-    }
-
-    const data = await getEmployeeAttendanceOverview(userId, DASHBOARD_ORG_ID);
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("API /api/attendance/:userId error:", error);
-    return sendApiError(res, 500, "Failed to load employee attendance");
-  }
-});
-
-app.get("/api/logs", async (_req, res) => {
-  try {
-    const data = await getLogsPageData(DASHBOARD_ORG_ID);
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("API /api/logs error:", error);
-    return sendApiError(res, 500, "Failed to load logs");
-  }
-});
-
-app.get("/api/bugs", async (_req, res) => {
-  try {
-    const data = await getStage0BugBoardData(DASHBOARD_ORG_ID);
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("API /api/bugs error:", error);
-    return sendApiError(res, 500, "Failed to load bug board");
-  }
-});
-
-app.post("/api/bugs", async (req, res) => {
-  try {
-    const {
-      title,
-      description,
-      board_column,
-      severity,
-      status,
-      source_message_sid,
-      source_phone_number,
-      source_message_text,
-      assigned_to_user_id,
-    } = req.body || {};
-
-    if (!title || !String(title).trim()) {
-      return sendApiError(res, 400, "Title is required");
-    }
-
-    if (!isValidStage0BugColumn(board_column)) {
-      return sendApiError(res, 400, "Invalid board_column");
-    }
-
-    if (!isValidStage0BugSeverity(severity)) {
-      return sendApiError(res, 400, "Invalid severity");
-    }
-
-    const finalStatus = status || "open";
-    if (!isValidStage0BugStatus(finalStatus)) {
-      return sendApiError(res, 400, "Invalid status");
-    }
-
-    let finalAssignedToUserId = null;
-    if (assigned_to_user_id) {
-      const numericUserId = Number(assigned_to_user_id);
-      if (!numericUserId) {
-        return sendApiError(res, 400, "Invalid assigned_to_user_id");
-      }
-
-      const { data: assigneeUser, error: assigneeError } = await supabase
-        .from("users")
-        .select("id, org_id, is_active")
-        .eq("id", numericUserId)
-        .eq("org_id", DASHBOARD_ORG_ID)
-        .eq("is_active", true)
-        .maybeSingle();
-
-      if (assigneeError) {
-        console.error("Bug assignee lookup error:", assigneeError);
-        return sendApiError(res, 500, "Failed to validate assignee");
-      }
-
-      if (!assigneeUser) {
-        return sendApiError(res, 400, "Assigned user not found or inactive");
-      }
-
-      finalAssignedToUserId = numericUserId;
-    }
-
-    const insertRow = {
-      org_id: DASHBOARD_ORG_ID,
-      title: String(title).trim(),
-      description: description ? String(description).trim() : null,
-      board_column: String(board_column).trim(),
-      severity: String(severity).trim(),
-      status: String(finalStatus).trim(),
-      source_message_sid: source_message_sid
-        ? String(source_message_sid).trim()
-        : null,
-      source_phone_number: source_phone_number
-        ? String(source_phone_number).trim()
-        : null,
-      source_message_text: source_message_text
-        ? String(source_message_text).trim()
-        : null,
-      created_by_user_id: null,
-      assigned_to_user_id: finalAssignedToUserId,
-      updated_at: new Date().toISOString(),
-    };
-
-    const { data, error } = await supabase
-      .from("stage0_bug_board")
-      .insert([insertRow])
-      .select("*")
-      .single();
-
-    if (error) {
-      console.error("API /api/bugs POST insert error:", error);
-      return sendApiError(res, 500, "Failed to create bug");
-    }
-
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("API /api/bugs POST error:", error);
-    return sendApiError(res, 500, "Failed to create bug");
-  }
-});
-
-app.patch("/api/bugs/:id", async (req, res) => {
+app.patch("/api/bugs/:id", requireDashboardAuth, async (req, res) => {
   try {
     const bugId = Number(req.params.id);
     if (!bugId) {
@@ -9322,21 +9619,42 @@ app.patch("/api/bugs/:id", async (req, res) => {
       severity,
       status,
       assigned_to_user_id,
+      source_message_sid,
+      source_phone_number,
+      source_message_text,
     } = req.body || {};
+
+    const { data: existingBug, error: existingBugError } = await supabase
+      .from("stage0_bug_board")
+      .select("id, org_id")
+      .eq("id", bugId)
+      .eq("org_id", DASHBOARD_ORG_ID)
+      .maybeSingle();
+
+    if (existingBugError) {
+      console.error("Bug lookup before patch error:", existingBugError);
+      return sendApiError(res, 500, "Failed to fetch bug");
+    }
+
+    if (!existingBug) {
+      return sendApiError(res, 404, "Bug not found");
+    }
 
     const patch = {
       updated_at: new Date().toISOString(),
     };
 
     if (title !== undefined) {
-      if (!String(title).trim()) {
+      const cleanTitle = String(title).trim();
+      if (!cleanTitle) {
         return sendApiError(res, 400, "Title cannot be empty");
       }
-      patch.title = String(title).trim();
+      patch.title = cleanTitle;
     }
 
     if (description !== undefined) {
-      patch.description = description ? String(description).trim() : null;
+      patch.description =
+        description == null ? null : String(description).trim();
     }
 
     if (board_column !== undefined) {
@@ -9360,19 +9678,39 @@ app.patch("/api/bugs/:id", async (req, res) => {
       patch.status = String(status).trim();
     }
 
+    if (source_message_sid !== undefined) {
+      patch.source_message_sid = source_message_sid
+        ? String(source_message_sid).trim()
+        : null;
+    }
+
+    if (source_phone_number !== undefined) {
+      patch.source_phone_number = source_phone_number
+        ? String(source_phone_number).trim()
+        : null;
+    }
+
+    if (source_message_text !== undefined) {
+      patch.source_message_text = source_message_text
+        ? String(source_message_text).trim()
+        : null;
+    }
+
     if (assigned_to_user_id !== undefined) {
       if (!assigned_to_user_id) {
         patch.assigned_to_user_id = null;
       } else {
         const numericUserId = Number(assigned_to_user_id);
+
         if (!numericUserId) {
           return sendApiError(res, 400, "Invalid assigned_to_user_id");
         }
 
         const { data: assigneeUser, error: assigneeError } = await supabase
           .from("users")
-          .select("id, is_active")
+          .select("id, org_id, is_active")
           .eq("id", numericUserId)
+          .eq("org_id", DASHBOARD_ORG_ID)
           .eq("is_active", true)
           .maybeSingle();
 
@@ -9382,7 +9720,11 @@ app.patch("/api/bugs/:id", async (req, res) => {
         }
 
         if (!assigneeUser) {
-          return sendApiError(res, 400, "Assigned user not found or inactive");
+          return sendApiError(
+            res,
+            400,
+            "Assigned user not found, inactive, or belongs to another org",
+          );
         }
 
         patch.assigned_to_user_id = numericUserId;
@@ -9393,6 +9735,7 @@ app.patch("/api/bugs/:id", async (req, res) => {
       .from("stage0_bug_board")
       .update(patch)
       .eq("id", bugId)
+      .eq("org_id", DASHBOARD_ORG_ID)
       .select("*")
       .single();
 
@@ -9888,14 +10231,18 @@ if (overdue) params.set('overdue', 'true');
             const res = await fetch('/api/tasks?' + params.toString());
             const json = await res.json();
 
-            if (!json.ok) {
-              document.getElementById('statusText').textContent = 'Could not load tasks';
-              document.getElementById('taskRows').innerHTML = '';
-              return;
-            }
+if (!json.ok) {
+  document.getElementById('statusText').textContent =
+    'Could not load tasks: ' + (json.error || 'unknown error');
+  document.getElementById('taskRows').innerHTML = '';
+  console.error('loadTasks api error:', json);
+  return;
+}
+
 
             const rows = json.data || [];
-            document.getElementById('statusText').textContent = rows.length ? '' : 'No tasks found';
+console.log('tasks rows:', rows);
+document.getElementById('statusText').textContent = rows.length ? '' : 'No tasks found';
 
 document.getElementById('taskRows').innerHTML = rows.map(function(task) {
   const status = String(task.status || '').toLowerCase();
@@ -10153,7 +10500,17 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
 async function loadAttendance() {
   const res = await fetch('/api/attendance');
   const json = await res.json();
-  if (!json.ok) return;
+
+  if (!json.ok) {
+    document.getElementById('loggedIn').textContent = 'ERR';
+    document.getElementById('onBreak').textContent = 'ERR';
+    document.getElementById('activeToday').textContent = 'ERR';
+    document.getElementById('currentStatusRows').innerHTML =
+      '<tr><td colspan="4">Could not load attendance: ' + (json.error || 'unknown error') + '</td></tr>';
+    document.getElementById('recentEventRows').innerHTML = '';
+    console.error('loadAttendance api error:', json);
+    return;
+  }
 
   const data = json.data;
 
