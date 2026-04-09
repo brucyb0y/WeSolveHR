@@ -7819,9 +7819,8 @@ th {
 
         <script>
           loadUsers().then(loadTasks);
-          setInterval(() => {
-  loadTasks();
-}, 60000);
+
+
         </script>
       </body>
     </html>
