@@ -4147,14 +4147,6 @@ async function handleShowTask(res, user, taskId) {
 }
 
 async function handleDoneTask(res, user, taskId, note) {
-  const noteCheck = validateDetailedTaskNote(note);
-
-  if (!noteCheck.ok) {
-    return sendTwiml(res, noteCheck.message);
-  }
-
-  const cleanNote = noteCheck.cleanNote;
-
   const { task, error } = await getTaskById(taskId, user.org_id);
 
   if (error) {
@@ -4168,6 +4160,13 @@ async function handleDoneTask(res, user, taskId, note) {
   if (!(await canModifyTask(user, task))) {
     return sendTwiml(res, "You are not allowed to modify that task.");
   }
+
+  const noteCheck = validateDetailedTaskNote(note);
+  if (!noteCheck.ok) {
+    return sendTwiml(res, noteCheck.message);
+  }
+
+  const cleanNote = noteCheck.cleanNote;
 
   if (task.status === "done") {
     return sendTwiml(res, `Task ${taskRef(task)} is already marked done.`);
@@ -4205,18 +4204,6 @@ async function handleDoneTask(res, user, taskId, note) {
 }
 
 async function handleProgressTask(res, user, taskId, progressValue, note) {
-  const noteCheck = validateDetailedTaskNote(note);
-
-  if (!noteCheck.ok) {
-    return sendTwiml(res, noteCheck.message);
-  }
-
-  const cleanNote = noteCheck.cleanNote;
-
-  if (progressValue < 0 || progressValue > 100) {
-    return sendTwiml(res, "Progress must be between 0 and 100.");
-  }
-
   const { task, error } = await getTaskById(taskId, user.org_id);
 
   if (error) {
@@ -4230,6 +4217,17 @@ async function handleProgressTask(res, user, taskId, progressValue, note) {
   if (!(await canModifyTask(user, task))) {
     return sendTwiml(res, "You are not allowed to modify that task.");
   }
+
+  if (progressValue < 0 || progressValue > 100) {
+    return sendTwiml(res, "Progress must be between 0 and 100.");
+  }
+
+  const noteCheck = validateDetailedTaskNote(note);
+  if (!noteCheck.ok) {
+    return sendTwiml(res, noteCheck.message);
+  }
+
+  const cleanNote = noteCheck.cleanNote;
 
   const newStatus =
     progressValue === 100
