@@ -7818,8 +7818,9 @@ th {
         </div>
 
         <script>
-          loadUsers().then(loadTasks);
-
+async function refreshTasks() {
+  await loadTasks();
+}
 
         </script>
       </body>
