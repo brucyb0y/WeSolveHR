@@ -7797,15 +7797,10 @@ th {
         </div>
 
         <script>
+          loadUsers().then(loadTasks);
           setInterval(() => {
-            window.location.reload();
-          }, 60000);
-
-          document.addEventListener("visibilitychange", () => {
-            if (document.visibilityState === "visible") {
-              location.reload();
-            }
-          });
+  loadTasks();
+}, 60000);
         </script>
       </body>
     </html>
