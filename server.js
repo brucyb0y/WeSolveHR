@@ -7249,55 +7249,63 @@ app.use("/api", requireDashboardAuth);
 function renderDashboardPage(data) {
   const summary = data?.summary || {};
   const attendance = data?.attendance || [];
-  const blockedTasks = data?.blockedTasks || [];
-  const overdueTasks = data?.overdueTasks || [];
+  const openTasks = data?.open_tasks || [];
+  const blockedTasks = data?.blocked_tasks || [];
+  const overdueTasks = data?.overdue_tasks || [];
+
+  const onBreakCount = attendance.filter((x) => x.status === "break").length;
+  const plannedOffCount = attendance.filter(
+    (x) => x.status === "planned_off",
+  ).length;
+  const noLoginCount = attendance.filter((x) => x.status === "no_login").length;
+  const teamCount = attendance.length;
 
   const summaryCards = [
     {
       label: "Open Tasks",
-      value: summary.openTasks ?? 0,
+      value: summary.open_tasks ?? openTasks.length ?? 0,
       note: "Active work requiring ownership",
       cardClass: "info",
     },
     {
       label: "Overdue",
-      value: summary.overdueTasks ?? 0,
+      value: summary.overdue_tasks ?? overdueTasks.length ?? 0,
       note: "Past deadline and needing action",
       cardClass: "danger",
     },
     {
       label: "Blocked",
-      value: summary.blockedTasks ?? 0,
+      value: summary.blocked_tasks ?? blockedTasks.length ?? 0,
       note: "Waiting on help or dependency",
       cardClass: "warn",
     },
     {
-      label: "Logged In",
-      value: summary.loggedInCount ?? 0,
-      note: "Currently working right now",
+      label: "Active Today",
+      value: summary.active_today_count ?? 0,
+      note: "Logged in at least once today",
       cardClass: "success",
     },
     {
       label: "On Break",
-      value: summary.onBreakCount ?? 0,
+      value: onBreakCount,
       note: "Live break status snapshot",
       cardClass: "muted",
     },
     {
       label: "Planned Off",
-      value: summary.plannedOffCount ?? 0,
+      value: plannedOffCount,
       note: "Approved off / leave state",
       cardClass: "cyan",
     },
     {
       label: "No Login",
-      value: summary.noLoginCount ?? 0,
+      value: noLoginCount,
       note: "No attendance marked yet",
       cardClass: "danger",
     },
     {
       label: "Team Size",
-      value: summary.teamCount ?? 0,
+      value: teamCount,
       note: "Active people in dashboard",
       cardClass: "info",
     },
@@ -7330,605 +7338,50 @@ function renderDashboardPage(data) {
               <td>${escapeHtml(
                 row.worked_today_text || row.workedTodayText || "-",
               )}</td>
+              <td>${escapeHtml(
+                row.last_action_at ? formatTimeOnly(row.last_action_at) : "-",
+              )}</td>
             </tr>
           `;
         })
         .join("")
-    : `
-      <tr>
-        <td colspan="5" class="empty-cell">No attendance data found.</td>
-      </tr>
-    `;
+    : `<tr><td colspan="6" class="empty-cell">No attendance data found</td></tr>`;
 
-  const blockedRows = blockedTasks.length
+  const blockedTaskRows = blockedTasks.length
     ? blockedTasks
         .map(
           (task) => `
-          <tr>
-            <td>#${escapeHtml(task.task_no || task.id)}</td>
-            <td><div class="primary-text">${escapeHtml(task.title || "-")}</div></td>
-            <td>${escapeHtml(task.assignee_name || "-")}</td>
-            <td>${escapeHtml(task.blocker_note || "-")}</td>
-          </tr>
-        `,
+            <tr class="task-row-blocked">
+              <td>#${escapeHtml(task.task_no || task.id)}</td>
+              <td>${escapeHtml(task.title || "-")}</td>
+              <td>${escapeHtml(task.assignee_name || "-")}</td>
+              <td>${escapeHtml(task.priority || "-")}</td>
+              <td>${escapeHtml(task.deadline || "-")}</td>
+              <td>${escapeHtml(task.blocker_note || "-")}</td>
+            </tr>
+          `,
         )
         .join("")
-    : `
-      <tr>
-        <td colspan="4" class="empty-cell">No blocked tasks right now.</td>
-      </tr>
-    `;
+    : `<tr><td colspan="6" class="empty-cell">No blocked tasks</td></tr>`;
 
-  const overdueRows = overdueTasks.length
+  const overdueTaskRows = overdueTasks.length
     ? overdueTasks
         .map(
           (task) => `
-          <tr>
-            <td>#${escapeHtml(task.task_no || task.id)}</td>
-            <td><div class="primary-text">${escapeHtml(task.title || "-")}</div></td>
-            <td>${escapeHtml(task.assignee_name || "-")}</td>
-            <td><span class="${badgeClass(task.priority || "")}">${escapeHtml(task.priority || "-")}</span></td>
-            <td>${escapeHtml(task.deadline ? formatDateOnly(task.deadline) : "-")}</td>
-            <td>${escapeHtml(task.overdue_text || task.days_overdue || task.overdue || "-")}</td>
-          </tr>
-        `,
+            <tr class="task-row-overdue">
+              <td>#${escapeHtml(task.task_no || task.id)}</td>
+              <td>${escapeHtml(task.title || "-")}</td>
+              <td>${escapeHtml(task.assignee_name || "-")}</td>
+              <td>${escapeHtml(task.priority || "-")}</td>
+              <td>${escapeHtml(task.deadline || "-")}</td>
+              <td>${escapeHtml(task.status || "-")}</td>
+            </tr>
+          `,
         )
         .join("")
-    : `
-      <tr>
-        <td colspan="6" class="empty-cell">No overdue tasks right now.</td>
-      </tr>
-    `;
+    : `<tr><td colspan="6" class="empty-cell">No overdue tasks</td></tr>`;
 
-  return `
-  <!doctype html>
-  <html lang="en">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>WeSolveHR Dashboard</title>
-      <style>
-  ${buildThemeCss()}   ${buildBasePageCss()}
-  
-
-        body {
-          padding: 26px 18px 42px;
-        }
-
-        .page-shell {
-          max-width: 1450px;
-          margin: 0 auto;
-        }
-
-        .hero {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 18px;
-          margin-bottom: 22px;
-          padding: 26px 28px;
-          border-radius: var(--radius-xl);
-background:
-  linear-gradient(135deg, var(--panel), var(--panel-strong));
-border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
-box-shadow: var(--shadow-soft), 0 0 18px color-mix(in srgb, var(--primary) 18%, transparent);
-          position: relative;
-          overflow: hidden;
-        }
-
-        .hero::after {
-          content: "";
-          position: absolute;
-          inset: auto -10% -45% auto;
-          width: 280px;
-          height: 280px;
-          border-radius: 50%;
-background: radial-gradient(circle, var(--secondary-soft), transparent 68%);          pointer-events: none;
-        }
-
-        .hero-title {
-          margin: 0;
-          font-size: 30px;
-          font-weight: 700;
-          letter-spacing: -0.02em;
-          color: var(--text-strong);
-text-shadow: 0 0 14px color-mix(in srgb, var(--primary) 16%, transparent);
-}
-
-        .hero-subtitle {
-          margin-top: 8px;
-          color: var(--muted);
-          font-size: 14px;
-        }
-
-        .hero-meta {
-          text-align: right;
-          color: var(--muted);
-          font-size: 13px;
-          white-space: nowrap;
-        }
-
-        .hero-meta strong {
-          color: var(--text-strong);
-        }
-
-.top-nav a {
-  display: inline-flex;
-  align-items: center;
-  padding: 8px 12px;
-  border-radius: 999px;
-  text-decoration: none;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-strong);
-  background: var(--primary-soft);
-  border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.03);
-  transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease;
-}
-
-.top-nav a:hover {
-  transform: translateY(-1px);
-  background: color-mix(in srgb, var(--primary) 22%, transparent);
-  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
-}
-
-.top-nav a.secondary {
-  background: var(--secondary-soft);
-  border-color: color-mix(in srgb, var(--secondary) 35%, transparent);
-}
-
-.top-nav a.secondary:hover {
-  background: color-mix(in srgb, var(--secondary) 22%, transparent);
-  border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
-}
-
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-          margin-bottom: 22px;
-        }
-
-.stat-card {
-  position: relative;
-  overflow: hidden;
-  padding: 18px 18px 16px;
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
-  border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
-  box-shadow: var(--shadow-card);
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
-}
-
-.stat-card:hover {
-  transform: translateY(-3px);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--primary) 20%, transparent),
-    0 14px 32px rgba(0,0,0,0.34),
-    0 0 18px color-mix(in srgb, var(--primary) 18%, transparent);
-  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
-}
-
-.stat-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 4px;
-  border-radius: 999px;
-  background: var(--primary);
-  opacity: 0.95;
-}
-
-.stat-card.success::before { background: var(--success); }
-.stat-card.info::before { background: var(--info); }
-.stat-card.warn::before { background: var(--accent); }
-.stat-card.danger::before { background: var(--danger); }
-.stat-card.cyan::before { background: var(--secondary); }
-.stat-card.muted::before { background: var(--neutral); }
-
-        .stat-card::after {
-          content: "";
-          position: absolute;
-          inset: -50% -20% auto auto;
-          width: 140px;
-          height: 140px;
-          background: radial-gradient(circle, var(--primary-soft), transparent 70%);
-          pointer-events: none;
-        }
-
-.stat-card.success {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--success) 10%, var(--panel)), var(--panel-strong));
-}
-
-.stat-card.info {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--info) 10%, var(--panel)), var(--panel-strong));
-}
-
-.stat-card.warn {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--panel)), var(--panel-strong));
-}
-
-.stat-card.danger {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--danger) 10%, var(--panel)), var(--panel-strong));
-}
-
-.stat-card.cyan {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--secondary) 10%, var(--panel)), var(--panel-strong));
-}
-
-.stat-card.muted {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--neutral) 10%, var(--panel)), var(--panel-strong));
-}
-
-        .stat-label {
-          margin: 0 0 8px;
-          font-size: 12px;
-          font-weight: 700;
-          letter-spacing: 0.10em;
-          text-transform: uppercase;
-          color: var(--muted);
-        }
-
-        .stat-value {
-          margin: 0;
-          font-size: 28px;
-          font-weight: 800;
-          letter-spacing: -0.03em;
-          color: var(--text-strong);
-        }
-
-        .stat-note {
-          margin-top: 8px;
-          font-size: 12px;
-          color: var(--muted);
-        }
-
-        .main-grid {
-          display: grid;
-          grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-          gap: 18px;
-          align-items: start;
-        }
-
-        .stack {
-          display: grid;
-          gap: 18px;
-        }
-
-.card {
-  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
-  border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: 20px;
-}
-
-        .section {
-          padding: 20px;
-        }
-
-        .section-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          gap: 12px;
-          margin-bottom: 8px;
-        }
-
-        .section-title {
-          margin: 0;
-          font-size: 17px;
-          font-weight: 800;
-          letter-spacing: -0.01em;
-          color: var(--text-strong);
-        }
-
-        .section-title span {
-color: var(--primary);
-text-shadow: 0 0 10px color-mix(in srgb, var(--primary) 22%, transparent);
-        }
-
-        .section-subtitle {
-          font-size: 13px;
-          color: var(--muted);
-          margin-bottom: 16px;
-        }
-
-        .table-wrap {
-          overflow-x: auto;
-          border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
-          border-radius: 16px;
-          background: rgba(8, 15, 11, 0.84);
-        }
-
-        table {
-          width: 100%;
-          border-collapse: separate;
-          border-spacing: 0;
-          font-size: 14px;
-        }
-
-        thead th {
-          text-align: left;
-          padding: 14px 14px;
-          font-size: 12px;
-          font-weight: 700;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          color: #9fd9b3;
-          background: rgba(12, 23, 17, 0.95);
-          border-bottom: 1px solid rgba(88,255,149,0.16);
-        }
-
-        tbody td {
-          padding: 14px 14px;
-          border-bottom: 1px solid var(--primary-soft);
-          vertical-align: top;
-        }
-
-        tbody tr:last-child td {
-          border-bottom: none;
-        }
-
-        tbody tr {
-          transition: background-color 0.16s ease, box-shadow 0.16s ease;
-        }
-
-        tbody tr:hover {
-          background: rgba(88,255,149,0.05);
-          box-shadow: inset 0 0 0 9999px rgba(88,255,149,0.015);
-        }
-
-        .primary-text {
-          font-weight: 700;
-          color: var(--text-strong);
-        }
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.badge-danger {
-  background: var(--danger-soft);
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 28%, transparent);
-}
-
-.badge-info {
-  background: var(--info-soft);
-  color: var(--info);
-  border-color: color-mix(in srgb, var(--info) 28%, transparent);
-}
-
-.badge-warn {
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
-}
-
-.badge-ok {
-  background: var(--success-soft);
-  color: var(--success);
-  border-color: color-mix(in srgb, var(--success) 28%, transparent);
-}
-
-.badge-muted {
-  background: var(--neutral-soft);
-  color: var(--neutral);
-  border-color: color-mix(in srgb, var(--neutral) 28%, transparent);
-}
-
-        .muted {
-          color: var(--muted);
-        }
-
-        .empty-cell {
-          text-align: center;
-          color: var(--muted);
-          padding: 18px;
-        }
-
-        .spacer {
-          height: 18px;
-        }
-
-.footer-note {
-  margin-top: 24px;
-  padding: 14px 16px;
-  border-radius: var(--radius-md);
-  background: linear-gradient(180deg, var(--panel-soft), var(--panel));
-  border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
-  color: var(--muted);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-}
-
-        @media (max-width: 1180px) {
-          .stats-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-          }
-
-          .main-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        @media (max-width: 780px) {
-          body {
-            padding: 18px 12px 28px;
-          }
-
-          .hero {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-
-          .hero-meta {
-            text-align: left;
-            white-space: normal;
-          }
-
-          .stats-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-
-          .card,
-          .section {
-            padding: 16px;
-          }
-
-          .stat-value {
-            font-size: 24px;
-          }
-
-          .hero-title {
-            font-size: 24px;
-          }
-        }
-      </style>
-    </head>
-   
-    <body>
-      <div class="page-shell">
-<div class="hero">
-  <div>
-    <h1 class="hero-title">WeSolveHR Command Center</h1>
-    <div class="hero-subtitle">
-      Real-time task execution, attendance flow, risks, support load, and live team pulse
-    </div>
-
-    <div class="top-nav">
-      <a href="/dashboard">Dashboard</a>
-      <a href="/tasks" class="secondary">Tasks</a>
-      <a href="/logs">Logs</a>
-      <a href="/attendance">Attendance</a>
-      <a href="/bugs">Bug Board</a>
-    </div>
-  </div>
-
-  <div class="hero-meta">
-    <div><strong>Secure dashboard</strong></div>
-    <div>Live operations overview</div>
-  </div>
-</div>
-
-        <div class="stats-grid">
-          ${summaryCardsHtml}
-        </div>
-
-        <div class="main-grid">
-          <div class="stack">
-            <div class="card section">
-              <div class="section-header">
-                <h2 class="section-title"><span>[LIVE]</span> Attendance Overview</h2>
-              </div>
-              <div class="section-subtitle">
-                Latest attendance state, break duration, and worked time for active staff
-              </div>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Role</th>
-                      <th>Last Action</th>
-                      <th>Break Duration</th>
-                      <th>Worked Today</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${attendanceRows}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div class="stack">
-            <div class="card section">
-              <div class="section-header">
-                <h2 class="section-title"><span>[ALERT]</span> Blocked Tasks</h2>
-              </div>
-              <div class="section-subtitle">
-                Items needing intervention or unblock support
-              </div>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Title</th>
-                      <th>Assignee</th>
-                      <th>Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${blockedRows}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="spacer"></div>
-
-        <div class="card section">
-          <div class="section-header">
-            <h2 class="section-title"><span>[RISK]</span> Overdue Tasks</h2>
-          </div>
-          <div class="section-subtitle">
-            Past-deadline items sorted for visibility and escalation
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Title</th>
-                  <th>Assignee</th>
-                  <th>Priority</th>
-                  <th>Deadline</th>
-                  <th>Overdue</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${overdueRows}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-                <div class="footer-note">
-          SYSTEM NOTE // Permissions, webhook validation, auth controls, and rate limiting active.
-        </div>
-      </div>
-
-      <script>
-        setInterval(() => {
-          window.location.reload();
-        }, 60000);
-
-        document.addEventListener("visibilitychange", () => {
-          if (document.visibilityState === "visible") {
-            location.reload();
-          }
-        });
-      </script>
-    </body>
-  </html>
-  `;
+  // keep the rest of your HTML template exactly as it already is
 }
 
 app.get("/health/live", (_req, res) => {
@@ -8562,7 +8015,7 @@ app.get("/", (_req, res) => {
 
 app.get("/dashboard", requireDashboardAuth, async (_req, res) => {
   try {
-    const data = await getDashboardData();
+    const data = await getDashboardData(DASHBOARD_ORG_ID);
     res.type("html").send(renderDashboardPage(data));
   } catch (error) {
     console.error("Dashboard error:", error);
