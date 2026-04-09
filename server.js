@@ -866,14 +866,76 @@ function parseFlexibleDateText(input) {
   return null;
 }
 
-function parseCancelTaskCommand(text) {
+function parseUnsupportedTimedSelfAttendance(text) {
   const raw = normalizeText(text);
-  const match = raw.match(/^(cancel|delete)\s+task\s+(\d+)$/i);
-
+  const match = raw.match(
+    /^(login|logout|back)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))$/i,
+  );
   if (!match) return null;
 
   return {
-    taskId: Number(match[2]),
+    action: match[1].toLowerCase(),
+    time_text: match[2].trim().replace(/\s+/g, " "),
+  };
+}
+
+function buildUnknownCommandHelp(user, body) {
+  const msg = String(body || "").trim();
+  const isManager = isManagerOrAdmin(user);
+
+  return [
+    `❌ I did not understand: "${msg}"`,
+    "",
+    "Try one of these:",
+    "Attendance:",
+    "login",
+    "logout",
+    "break",
+    "back",
+    "late 11:00 am",
+    "",
+    "Tasks:",
+    "show task 2",
+    "progress 2 50 finished API work",
+    "done 2 tested and verified",
+    "edit task 2 blocker waiting on aj",
+    isManager ? "delete 2" : null,
+    "",
+    "Need full list?",
+    "help attendance",
+    "help tasks",
+    isManager ? "help manager" : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function parseCancelTaskCommand(text) {
+  const raw = normalizeText(text);
+
+  if (!raw.startsWith("delete") && !raw.startsWith("cancel")) {
+    return null;
+  }
+
+  let match = raw.match(/^(cancel|delete)\s+task\s+(\d+)$/i);
+  if (match) {
+    return {
+      action: match[1].toLowerCase(),
+      taskId: Number(match[2]),
+    };
+  }
+
+  match = raw.match(/^(cancel|delete)\s+(\d+)$/i);
+  if (match) {
+    return {
+      action: match[1].toLowerCase(),
+      taskId: Number(match[2]),
+    };
+  }
+
+  return {
+    error:
+      "❌ Could not understand delete/cancel command\nUse:\ndelete 169\ncancel 169\ndelete task 169",
   };
 }
 
@@ -1189,6 +1251,10 @@ function parseProgressCommand(text) {
 function parseAdvancedCreateTaskCommand(text) {
   const raw = normalizeText(text);
 
+  if (!raw.startsWith("create task ")) {
+    return null;
+  }
+
   const match = raw.match(
     /^create task\s+(.+?)\s+business\s+(.+?)\s+area\s+(.+?)\s+owner\s+(.+?)\s+priority\s+(low|medium|high|urgent)\s+due\s+(.+)$/i,
   );
@@ -1196,7 +1262,7 @@ function parseAdvancedCreateTaskCommand(text) {
   if (!match) {
     return {
       error:
-        "Use: create task <title> business <business> area <area> owner <a, b> priority <level> due <date>",
+        "❌ Could not create task\nUse:\ncreate task <title> business <business> area <area> owner <a, b> priority <low|medium|high|urgent> due <date>\nExample:\ncreate task fix landing page business joolian area marketing owner aj priority high due tomorrow",
     };
   }
 
@@ -1207,11 +1273,15 @@ function parseAdvancedCreateTaskCommand(text) {
   const priority = match[5].toLowerCase();
   const deadline = parseDeadline(match[6].trim());
 
-  if (!title) return { error: "Task title is required." };
-  if (!business) return { error: "Business is required." };
-  if (!area) return { error: "Area is required." };
-  if (!owners.length) return { error: "At least one owner is required." };
-  if (!deadline) return { error: "Could not understand due date." };
+  if (!title) return { error: "❌ Task title is missing." };
+  if (!business) return { error: "❌ Business is missing." };
+  if (!area) return { error: "❌ Area is missing." };
+  if (!owners.length) return { error: "❌ At least one owner is required." };
+  if (!deadline) {
+    return {
+      error: `❌ Could not understand due date "${match[6].trim()}"\nTry: today, tomorrow, friday, 11 april, or april 11`,
+    };
+  }
 
   return {
     title,
@@ -9909,7 +9979,11 @@ app.post("/whatsapp", async (req, res) => {
 
     if (normalizedBody === "help manager") {
       if (!isManagerOrAdmin(user)) {
-        await failInboundProcessing(messageSid, "help_forbidden");
+        await failInboundProcessing(
+          messageSid,
+          "help_forbidden",
+          resolvedOrgId,
+        );
         return sendTwiml(
           res,
           "❌ Only managers/admins can use this help section.",
@@ -10168,14 +10242,25 @@ app.post("/whatsapp", async (req, res) => {
     const lateForOther = parseLateForOtherCommand(body);
     if (lateForOther) {
       if (!isManagerOrAdmin(user)) {
-        await failInboundProcessing(messageSid, "attendance_update_forbidden");
+        await failInboundProcessing(
+          messageSid,
+          "attendance_update_forbidden",
+          resolvedOrgId,
+        );
         return sendTwiml(res, "Only managers can mark late for others.");
       }
 
-      const targetUser = await findUniqueUserByName(lateForOther.target_name);
+      const targetUser = await findUniqueUserByName(
+        lateForOther.target_name,
+        user.org_id,
+      );
 
       if (!targetUser) {
-        await failInboundProcessing(messageSid, "attendance_target_not_found");
+        await failInboundProcessing(
+          messageSid,
+          "attendance_target_not_found",
+          resolvedOrgId,
+        );
         return sendTwiml(
           res,
           `I could not uniquely find an active user named "${lateForOther.target_name}".`,
@@ -10185,7 +10270,11 @@ app.post("/whatsapp", async (req, res) => {
       const lateIso = parseLocalDateTimeForToday(lateForOther.time_text);
 
       if (!lateIso) {
-        await failInboundProcessing(messageSid, "attendance_bad_time");
+        await failInboundProcessing(
+          messageSid,
+          "attendance_bad_time",
+          resolvedOrgId,
+        );
         return sendTwiml(
           res,
           `Could not understand the time "${lateForOther.time_text}". Use format like 11:00 AM.`,
@@ -10193,10 +10282,18 @@ app.post("/whatsapp", async (req, res) => {
       }
 
       const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
-      const locked = await isAttendanceDayLocked(targetUser.id, attendanceDate);
+      const locked = await isAttendanceDayLocked(
+        targetUser.id,
+        attendanceDate,
+        user.org_id,
+      );
 
       if (locked) {
-        await failInboundProcessing(messageSid, "attendance_day_locked");
+        await failInboundProcessing(
+          messageSid,
+          "attendance_day_locked",
+          resolvedOrgId,
+        );
         return sendTwiml(
           res,
           `❌ Attendance is locked for ${targetUser.name} on ${attendanceDate}`,
@@ -10217,6 +10314,7 @@ app.post("/whatsapp", async (req, res) => {
           const { error } = await supabase.from("late_arrivals").upsert(
             [
               {
+                org_id: user.org_id,
                 user_id: targetUser.id,
                 late_date: attendanceDate,
                 expected_login_at: lateIso,
@@ -10252,13 +10350,103 @@ app.post("/whatsapp", async (req, res) => {
       });
     }
 
+    const unsupportedTimedSelfAttendance =
+      parseUnsupportedTimedSelfAttendance(body);
+    if (unsupportedTimedSelfAttendance) {
+      await logParse({
+        intentDetected: "attendance_timed_self_not_supported",
+        parserUsed: "parseUnsupportedTimedSelfAttendance",
+        parsedJson: unsupportedTimedSelfAttendance,
+        validationPassed: false,
+        validationError: "timed_self_attendance_not_supported",
+        actionTaken: "reply_timed_self_attendance_not_supported",
+      });
+
+      await failInboundProcessing(
+        messageSid,
+        "timed_self_attendance_not_supported",
+        resolvedOrgId,
+      );
+
+      return sendTwiml(
+        res,
+        `❌ ${unsupportedTimedSelfAttendance.action} with time is not supported for self-update yet\nYou can use:\n${unsupportedTimedSelfAttendance.action}\n\nOr ask admin:\nmark ${user.name} ${unsupportedTimedSelfAttendance.action} ${unsupportedTimedSelfAttendance.time_text}`,
+      );
+    }
+
+    const markAttendanceCommand = parseMarkAttendanceCommand(body);
+    if (markAttendanceCommand) {
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: () => handleMarkedAttendance(res, user, markAttendanceCommand),
+      });
+    }
+
+    const directManagerAttendanceCommand =
+      parseDirectManagerAttendanceCommand(body);
+    if (directManagerAttendanceCommand) {
+      if (!isManagerOrAdmin(user)) {
+        await failInboundProcessing(
+          messageSid,
+          "attendance_update_forbidden",
+          resolvedOrgId,
+        );
+        return sendTwiml(res, "Only managers can mark attendance for others.");
+      }
+
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: () =>
+          handleMarkedAttendance(res, user, {
+            target_name: directManagerAttendanceCommand.target_name,
+            action: directManagerAttendanceCommand.action,
+            duration_min: directManagerAttendanceCommand.duration_min,
+            time_text: directManagerAttendanceCommand.time_text,
+            reason: directManagerAttendanceCommand.reason,
+          }),
+      });
+    }
+
+    const attendanceCommand = parseAttendanceCommand(body);
+    if (attendanceCommand) {
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_handler_failed",
+        action: () => handleSelfAttendance(res, user, attendanceCommand),
+      });
+    }
+
     // ------------------------------------------------------------------
     // Task blocking / team visibility
     // ------------------------------------------------------------------
     const cancelCmd = parseCancelTaskCommand(body);
     if (cancelCmd) {
+      if (cancelCmd.error) {
+        await logParse({
+          intentDetected: "delete_or_cancel_task",
+          parserUsed: "parseCancelTaskCommand",
+          parsedJson: cancelCmd,
+          validationPassed: false,
+          validationError: cancelCmd.error,
+          actionTaken: "delete_or_cancel_validation_failed",
+        });
+
+        await failInboundProcessing(
+          messageSid,
+          "task_delete_bad_format",
+          resolvedOrgId,
+        );
+        return sendTwiml(res, cancelCmd.error);
+      }
+
       if (!isManagerOrAdmin(user)) {
-        await failInboundProcessing(messageSid, "task_update_forbidden");
+        await failInboundProcessing(
+          messageSid,
+          "task_update_forbidden",
+          resolvedOrgId,
+        );
         return sendTwiml(res, "❌ Only managers/admins can cancel tasks");
       }
 
@@ -10379,7 +10567,7 @@ app.post("/whatsapp", async (req, res) => {
       }
 
       if (
-        /^(leave|off)\s+(today|tomorrow|on\s+today|on\s+tomorrow|on\s+[a-z]+\s+\d{1,2}|on\s+\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i.test(
+        /^(leave|off)\s+(today|tomorrow|on\s+today|on\s+tomorrow|on\s+[a-z]+\s+\d{1,2}|on\s+\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+|[a-z]+\s+\d{1,2})$/i.test(
           normalizedRaw,
         )
       ) {
@@ -10400,55 +10588,8 @@ app.post("/whatsapp", async (req, res) => {
       });
     }
 
-    if (offDayCommand) {
-      return runInboundAction({
-        successType: "attendance_updated",
-        failureType: "attendance_update_failed",
-        action: () => handleSelfOffDay(res, user, offDayCommand),
-      });
-    }
-
     // ------------------------------------------------------------------
-    // Attendance commands
-    // ------------------------------------------------------------------
-    const markAttendanceCommand = parseMarkAttendanceCommand(body);
-    if (markAttendanceCommand) {
-      return runInboundAction({
-        successType: "attendance_updated",
-        failureType: "attendance_handler_failed",
-        action: () => handleMarkedAttendance(res, user, markAttendanceCommand),
-      });
-    }
-
-    const directManagerAttendanceCommand =
-      parseDirectManagerAttendanceCommand(body);
-
-    if (directManagerAttendanceCommand && isManagerOrAdmin(user)) {
-      const directTargetUser = await findUniqueUserByName(
-        directManagerAttendanceCommand.target_name,
-      );
-
-      if (directTargetUser) {
-        return runInboundAction({
-          successType: "attendance_updated",
-          failureType: "attendance_handler_failed",
-          action: () =>
-            handleMarkedAttendance(res, user, directManagerAttendanceCommand),
-        });
-      }
-    }
-
-    const attendanceCommand = parseAttendanceCommand(body);
-    if (attendanceCommand) {
-      return runInboundAction({
-        successType: "attendance_updated",
-        failureType: "attendance_handler_failed",
-        action: () => handleSelfAttendance(res, user, attendanceCommand),
-      });
-    }
-
-    // ------------------------------------------------------------------
-    // Task edit / creation
+    // Task creation / parsing
     // ------------------------------------------------------------------
     const editTaskCommand = parseEditTaskCommand(body);
     if (editTaskCommand) {
@@ -10527,7 +10668,11 @@ app.post("/whatsapp", async (req, res) => {
     }
 
     if (aiParsingAttempted && !taskCommand) {
-      await failInboundProcessing(messageSid, "task_parse_failed");
+      await failInboundProcessing(
+        messageSid,
+        "task_parse_failed",
+        resolvedOrgId,
+      );
       return sendTwiml(
         res,
         "I could not parse that task automatically right now. Please use this format: task Ruhab high VPN testing by tomorrow",
@@ -10543,26 +10688,30 @@ app.post("/whatsapp", async (req, res) => {
 
     await logParse({
       intentDetected: "unknown_command",
-      parserUsed: "no_parser_matched",
+      parserUsed: "none",
       parsedJson: null,
       validationPassed: false,
       validationError: "unknown_command",
-      actionTaken: "unknown_command_reply",
+      actionTaken: "reply_unknown_command_help",
     });
 
     await failInboundProcessing(messageSid, "unknown_command", resolvedOrgId);
-    return sendTwiml(
-      res,
-      "❌ I did not understand that command\nTry: help\nExamples:\nlogin\nmy tasks\ntask Aj high test dashboard by tomorrow",
-    );
+    return sendTwiml(res, buildUnknownCommandHelp(user, body));
   } catch (error) {
     if (messageSid) {
+      const resolvedOrgId =
+        typeof req !== "undefined" && req.body && req.body.From
+          ? ((await getActiveUserByPhone(req.body.From))?.user?.org_id ??
+            DASHBOARD_ORG_ID)
+          : DASHBOARD_ORG_ID;
+
       await failInboundProcessing(
         messageSid,
         "webhook_exception",
         resolvedOrgId,
       );
     }
+
     console.error("Unhandled /whatsapp error:", error);
     return sendTwiml(res, "Something went wrong.");
   }
