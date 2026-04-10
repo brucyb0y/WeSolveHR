@@ -8586,6 +8586,29 @@ box-shadow: var(--shadow-soft), 0 0 18px color-mix(in srgb, var(--primary) 18%, 
             margin: 0 0 12px;
             font-size: 19px;
           }
+          
+          .range-tabs {
+  display: inline-flex;
+  gap: 8px;
+  background: #f3f4f6;
+  padding: 4px;
+  border-radius: 10px;
+}
+
+.range-tabs .tab {
+  padding: 6px 12px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 13px;
+  color: #555;
+  font-weight: 500;
+}
+
+.range-tabs .tab.active {
+  background: #ffffff;
+  color: #111;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
 
           .kv {
             display: grid;
@@ -8611,6 +8634,8 @@ th, td {
   text-align: left;
   vertical-align: top;
 }
+
+
 
 th {
   color: var(--muted);
@@ -8643,8 +8668,14 @@ th {
 <div class="subtitle">
   ${escapeHtml(employee.role || "-")} • ${escapeHtml(employee.phone_number || "-")}
 </div>
-              <a href="/reports?userId=${employee.id}" class="btn-secondary">Today</a>
-<a href="/reports?userId=${employee.id}&days=7" class="btn-secondary">Last 7 days</a>
+<div class="range-tabs">
+  <a href="/attendance/11?days=1" class="tab ${days === 1 ? "active" : ""}">
+    Today
+  </a>
+  <a href="/attendance/11?days=7" class="tab ${days === 7 ? "active" : ""}">
+    Last 7 Days
+  </a>
+</div>
             </div>
             <div class="links">
               <a href="/attendance">Attendance</a>
