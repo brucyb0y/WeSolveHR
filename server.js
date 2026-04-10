@@ -6962,11 +6962,16 @@ function renderReportsPage(data) {
             <div class="report-card" data-user-name="${escapeHtml(String(user.userName || "").toLowerCase())}">
               <div class="report-card-head">
                 <div>
-                  <div class="report-name">
-                    <a href="/attendance/${escapeHtml(user.userId)}">${escapeHtml(user.userName)}</a>
-                  </div>
-                  <div class="report-date">${escapeHtml(formatDateOnly(reportDate))}</div>
-                  <div class="micro-meta">${escapeHtml(user.compactMeta || "0 touched")}</div>
+<div class="report-name">
+  <a href="/attendance/${escapeHtml(user.userId)}">${escapeHtml(user.userName)}</a>
+</div>
+<div class="report-date">
+  ${escapeHtml(formatDateOnly(reportDate))}
+  <a href="/reports?userId=${encodeURIComponent(user.userId)}&days=7" class="mini-report-link">
+    Last 7 days
+  </a>
+</div>
+<div class="micro-meta">${escapeHtml(user.compactMeta || "0 touched")}</div>
                 </div>
                 <div class="summary-pill">
                   Open: ${escapeHtml(user.summary?.open ?? 0)} | Blocked: ${escapeHtml(user.summary?.blocked ?? 0)}
