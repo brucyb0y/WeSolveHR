@@ -5998,6 +5998,7 @@ function getPartsInTimeZone(date = new Date(), timeZone = APP_TIMEZONE) {
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
+    hourCycle: "h23",
   });
 
   const parts = formatter.formatToParts(date);
@@ -6013,7 +6014,7 @@ function getPartsInTimeZone(date = new Date(), timeZone = APP_TIMEZONE) {
     year: Number(out.year),
     month: Number(out.month),
     day: Number(out.day),
-    hour: Number(out.hour),
+    hour: Number(out.hour) === 24 ? 0 : Number(out.hour),
     minute: Number(out.minute),
     second: Number(out.second),
   };
