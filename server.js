@@ -7388,11 +7388,80 @@ function renderReportsPage(data) {
             document.getElementById("taskModal").classList.remove("open");
           }
 
-          function renderHistoryDetail(item) {
-            const oldText = JSON.stringify(item.oldValue || {});
-            const newText = JSON.stringify(item.newValue || {});
-            return "Field: " + (item.fieldName || "-") + "\\nOld: " + oldText + "\\nNew: " + newText;
-          }
+function renderHistoryDetail(item) {
+  const oldValue = item.oldValue || {};
+  const newValue = item.newValue || {};
+
+  if (item.changeType === "task_created") {
+    const owners = Array.isArray(newValue.owners) && newValue.owners.length
+      ? newValue.owners.join(", ")
+      : "-";
+
+    return [
+      "Created task",
+      "Title: " + (newValue.title || "-"),
+      "Owners: " + owners,
+      "Priority: " + (newValue.priority || "-"),
+      "Deadline: " + (newValue.deadline || "-"),
+      "Business / Area: " + (newValue.business || "-") + " / " + (newValue.area || "-")
+    ].join("\n");
+  }
+
+  if (item.changeType === "status_change") {
+    return [
+      "Status: " + (oldValue.status || "-") + " → " + (newValue.status || "-"),
+      "Progress: " + (oldValue.progress ?? "-") + "% → " + (newValue.progress ?? "-") + "%",
+      newValue.note ? "Note: " + newValue.note : null
+    ].filter(Boolean).join("\n");
+  }
+
+  if (item.changeType === "progress_change") {
+    return [
+      "Progress: " + (oldValue.progress ?? "-") + "% → " + (newValue.progress ?? "-") + "%",
+      "Status: " + (oldValue.status || "-") + " → " + (newValue.status || "-"),
+      newValue.note ? "Note: " + newValue.note : null
+    ].filter(Boolean).join("\n");
+  }
+
+  if (item.changeType === "owner_change") {
+    const oldOwners = Array.isArray(oldValue.owners) ? oldValue.owners.join(", ") : "-";
+    const newOwners = Array.isArray(newValue.owners) ? newValue.owners.join(", ") : "-";
+    return "Owners: " + oldOwners + " → " + newOwners;
+  }
+
+  if (item.changeType === "deadline_change") {
+    return "Deadline: " + (oldValue.deadline || "-") + " → " + (newValue.deadline || "-");
+  }
+
+  if (item.fieldName === "blocker_note") {
+    return [
+      "Blocker: " + (newValue.blocker_note || "-"),
+      newValue.note ? "Note: " + newValue.note : null
+    ].filter(Boolean).join("\n");
+  }
+
+  if (item.fieldName === "title") {
+    return "Title: " + (oldValue.title || "-") + " → " + (newValue.title || "-");
+  }
+
+  if (item.fieldName === "detail") {
+    return "Detail updated";
+  }
+
+  if (item.fieldName === "priority") {
+    return "Priority: " + (oldValue.priority || "-") + " → " + (newValue.priority || "-");
+  }
+
+  if (item.fieldName === "business") {
+    return "Business: " + (oldValue.business || "-") + " → " + (newValue.business || "-");
+  }
+
+  if (item.fieldName === "area") {
+    return "Area: " + (oldValue.area || "-") + " → " + (newValue.area || "-");
+  }
+
+  return "Updated";
+}
 
           async function openTaskDetail(taskNo) {
             const modal = document.getElementById("taskModal");
