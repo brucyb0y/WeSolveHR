@@ -7826,11 +7826,53 @@ function renderMultiDayUserReportsPage(data) {
             document.getElementById("taskModal").classList.remove("open");
           }
 
-          function renderHistoryDetail(item) {
-            const oldText = JSON.stringify(item.oldValue || {});
-            const newText = JSON.stringify(item.newValue || {});
-            return "Field: " + (item.fieldName || "-") + "\\nOld: " + oldText + "\\nNew: " + newText;
-          }
+function renderHistoryDetail(item) {
+  const oldValue = item.oldValue || {};
+  const newValue = item.newValue || {};
+
+  if (item.changeType === "task_created") {
+    return "Task created";
+  }
+
+  if (item.changeType === "status_change") {
+    const oldStatus = oldValue.status || "-";
+    const newStatus = newValue.status || "-";
+    const oldProgress = oldValue.progress ?? "-";
+    const newProgress = newValue.progress ?? "-";
+    const note = newValue.note ? "\nNote: " + newValue.note : "";
+    return "Status: " + oldStatus + " → " + newStatus +
+           "\nProgress: " + oldProgress + "% → " + newProgress + "%" +
+           note;
+  }
+
+  if (item.changeType === "progress_change") {
+    const oldProgress = oldValue.progress ?? 0;
+    const newProgress = newValue.progress ?? 0;
+    const note = newValue.note ? "\nNote: " + newValue.note : "";
+    return "Progress: " + oldProgress + "% → " + newProgress + "%" + note;
+  }
+
+  if (item.changeType === "owner_change") {
+    const oldOwners = Array.isArray(oldValue.owners) ? oldValue.owners.join(", ") : "-";
+    const newOwners = Array.isArray(newValue.owners) ? newValue.owners.join(", ") : "-";
+    return "Owners: " + oldOwners + " → " + newOwners;
+  }
+
+  if (item.changeType === "deadline_change") {
+    return "Deadline: " + (oldValue.deadline || "-") + " → " + (newValue.deadline || "-");
+  }
+
+  if (item.fieldName === "blocker_note") {
+    return "Blocker: " + (newValue.blocker_note || "-");
+  }
+
+  if (item.fieldName) {
+    return (item.fieldName || "Field") + ": " +
+      JSON.stringify(oldValue) + " → " + JSON.stringify(newValue);
+  }
+
+  return JSON.stringify(newValue || {});
+}
 
           async function openTaskDetail(taskNo) {
             const modal = document.getElementById("taskModal");
