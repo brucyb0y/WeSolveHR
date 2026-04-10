@@ -10059,7 +10059,7 @@ app.get("/bugs", requireDashboardAuth, async (_req, res) => {
   }
 });
 
-app.get("/api/users", async (_req, res) => {
+app.get("/api/users", requireDashboardAuth, async (_req, res) => {
   try {
     const { data, error } = await supabase
       .from("users")
@@ -10077,6 +10077,41 @@ app.get("/api/users", async (_req, res) => {
   } catch (error) {
     console.error("API /api/users fatal error:", error);
     return sendApiError(res, 500, "Failed to load users");
+  }
+});
+
+app.get("/api/attendance", requireDashboardAuth, async (_req, res) => {
+  try {
+    const data = await getAttendancePageData(DASHBOARD_ORG_ID);
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("API /api/attendance error:", error);
+    return sendApiError(
+      res,
+      500,
+      error?.message || "Failed to load attendance",
+    );
+  }
+});
+
+app.get("/api/tasks", requireDashboardAuth, async (req, res) => {
+  try {
+    const filters = {
+      search: req.query.search || "",
+      assignee: req.query.assignee || "",
+      business: req.query.business || "",
+      area: req.query.area || "",
+      status: req.query.status || "",
+      priority: req.query.priority || "",
+      blocked: String(req.query.blocked || "") === "true",
+      overdue: String(req.query.overdue || "") === "true",
+    };
+
+    const data = await getTasksPageData(filters, DASHBOARD_ORG_ID);
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("API /api/tasks error:", error);
+    return sendApiError(res, 500, error?.message || "Failed to load tasks");
   }
 });
 
