@@ -7293,8 +7293,9 @@ function renderReportsPage(data) {
           </div>
 
           <div class="panel" style="padding:14px 16px; margin-bottom:16px;">
-            <strong>Date:</strong> ${escapeHtml(formatDateOnly(reportDate))}
-          </div>
+<strong>Date:</strong> ${escapeHtml(formatDateOnly(reportDate))} 
+<span class="muted">(6:00 AM → next day 6:00 AM IST)</span>
+</div>
 
           <div class="status-grid">
             <div class="status-chip-box">
