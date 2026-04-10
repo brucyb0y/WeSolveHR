@@ -6360,7 +6360,7 @@ function parseExtraWorkCommand(text) {
 }
 
 function getReportDateString(date = new Date()) {
-  return getTodayDateStringInTimeZone(APP_TIMEZONE);
+  return getAttendanceDayDateStringFromDate(date);
 }
 
 function getReportDayUtcRange(reportDate) {
@@ -6879,6 +6879,38 @@ async function getDailyNarrativeReport({ orgId, reportDate, userId = null }) {
     reportDate,
     users: resultUsers,
     compliance: classifyReportUsers(resultUsers),
+  };
+}
+
+async function getMultiDayNarrativeReport({
+  orgId,
+  userId,
+  days = 7,
+  endDate = null,
+}) {
+  const safeDays = Math.max(1, Math.min(31, Number(days || 7)));
+  const finalDate = endDate || getReportDateString();
+
+  const dailyReports = [];
+
+  for (let i = 0; i < safeDays; i += 1) {
+    const reportDate = addDaysToDateString(finalDate, -i);
+
+    const daily = await getDailyNarrativeReport({
+      orgId,
+      reportDate,
+      userId,
+    });
+
+    dailyReports.push(daily);
+  }
+
+  return {
+    mode: "multi_day_user",
+    userId,
+    endDate: finalDate,
+    days: safeDays,
+    dailyReports,
   };
 }
 
@@ -7405,6 +7437,431 @@ function renderReportsPage(data) {
                   '<div>' + (task.blockerNote || '<span class="muted">No blocker</span>') + '</div>' +
                 '</div>' +
 
+                '<div class="report-section">' +
+                  '<div class="section-title">Recent history</div>' +
+                  '<div class="history-list">' + historyHtml + '</div>' +
+                '</div>';
+            } catch (error) {
+              body.innerHTML = '<div class="muted">Failed to load task details</div>';
+            }
+          }
+        </script>
+      </body>
+    </html>
+  `;
+}
+
+function renderMultiDayUserReportsPage(data) {
+  const days = data?.days || 7;
+  const dailyReports = data?.dailyReports || [];
+  const firstUser =
+    dailyReports?.[0]?.users?.[0] ||
+    dailyReports?.find((d) => (d.users || []).length)?.users?.[0] ||
+    null;
+
+  const pageTitle = firstUser
+    ? `${firstUser.userName} — Last ${days} Days`
+    : `Last ${days} Days Report`;
+
+  const dayCardsHtml = dailyReports
+    .map((daily) => {
+      const reportDate = daily.reportDate;
+      const user = (daily.users || [])[0];
+
+      if (!user) {
+        return `
+          <div class="report-card">
+            <div class="report-card-head">
+              <div>
+                <div class="report-name">${escapeHtml(formatDateOnly(reportDate))}</div>
+                <div class="report-date muted">No report data</div>
+              </div>
+            </div>
+            <div class="report-section">
+              <div class="muted">No updates found for this day.</div>
+            </div>
+          </div>
+        `;
+      }
+
+      const taskHtml = (user.taskNarratives || []).length
+        ? user.taskNarratives
+            .map((item) => {
+              const chipsHtml = (item.compactChanges || []).length
+                ? `
+                  <div class="change-chips">
+                    ${item.compactChanges
+                      .map(
+                        (chip) => `
+                          <span
+                            class="change-chip"
+                            title="${escapeHtmlAttr(chip.detail || chip.label)}"
+                          >
+                            ${escapeHtml(chip.label)}
+                          </span>
+                        `,
+                      )
+                      .join("")}
+                  </div>
+                `
+                : "";
+
+              return `
+                <li class="report-task-item">
+                  <div class="task-line">
+                    ${linkifyTaskSentence(item.sentence, item.taskNo, item.taskId)}
+                  </div>
+                  ${chipsHtml}
+                </li>
+              `;
+            })
+            .join("")
+        : `<li class="muted">No task updates</li>`;
+
+      const extraHtml = (user.extraWork || []).length
+        ? user.extraWork.map((note) => `<li>${escapeHtml(note)}</li>`).join("")
+        : `<li class="muted">No extra work notes</li>`;
+
+      return `
+        <div class="report-card">
+          <div class="report-card-head">
+            <div>
+              <div class="report-name">${escapeHtml(formatDateOnly(reportDate))}</div>
+              <div class="report-date">${escapeHtml(user.userName)}</div>
+              <div class="micro-meta">${escapeHtml(user.compactMeta || "0 touched")}</div>
+            </div>
+            <div class="summary-pill">
+              Open: ${escapeHtml(user.summary?.open ?? 0)} | Blocked: ${escapeHtml(user.summary?.blocked ?? 0)}
+            </div>
+          </div>
+
+          <div class="report-section">
+            <div class="section-title">Task updates</div>
+            <ul class="report-list">${taskHtml}</ul>
+          </div>
+
+          <div class="report-section">
+            <div class="section-title">Extra work</div>
+            <ul class="report-list">${extraHtml}</ul>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  return `
+    <html>
+      <head>
+        <title>${escapeHtml(pageTitle)}</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+
+          .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 18px 36px; }
+          .topbar, .panel, .report-card, .modal-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+          .topbar {
+            display:flex; justify-content:space-between; align-items:center;
+            gap:16px; flex-wrap:wrap; margin-bottom:20px; padding:18px 20px;
+          }
+          .eyebrow {
+            font-size:11px; letter-spacing:0.16em; text-transform:uppercase;
+            color:var(--primary); font-weight:700; margin-bottom:8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+          h1 { margin:0; font-size:30px; letter-spacing:-0.04em; }
+          .subtitle { color:var(--muted); margin-top:8px; font-size:14px; }
+          .links { display:flex; gap:10px; flex-wrap:wrap; }
+          .links a {
+            color: var(--text);
+            text-decoration: none;
+            padding: 10px 14px;
+            border-radius: 12px;
+            border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
+            background: var(--secondary-soft);
+            font-weight: 600;
+          }
+
+          .reports-stack {
+            display:flex;
+            flex-direction:column;
+            gap:16px;
+          }
+
+          .report-card { padding:16px; }
+          .report-card-head {
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-start;
+            gap:12px;
+            margin-bottom:14px;
+          }
+          .report-name { font-size:20px; font-weight:800; }
+          .report-date { color:var(--muted); font-size:13px; margin-top:4px; }
+          .micro-meta {
+            margin-top:6px;
+            font-size:12px;
+            color:var(--muted);
+            font-weight:700;
+          }
+          .summary-pill {
+            white-space:nowrap;
+            padding:10px 12px;
+            border-radius:12px;
+            background:var(--primary-soft);
+            border:1px solid rgba(255,255,255,0.08);
+            font-weight:700;
+            font-size:13px;
+          }
+          .report-section + .report-section {
+            margin-top:16px;
+            padding-top:16px;
+            border-top:1px solid rgba(255,255,255,0.08);
+          }
+          .section-title {
+            font-size:12px;
+            text-transform:uppercase;
+            letter-spacing:0.1em;
+            color:var(--muted);
+            font-weight:800;
+            margin-bottom:10px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+          .report-list {
+            margin:0;
+            padding-left:18px;
+            line-height:1.6;
+          }
+          .report-list li + li { margin-top:8px; }
+
+          .report-task-item { margin-bottom: 10px; }
+          .task-line { display:block; }
+
+          .task-inline-link {
+            padding:0;
+            margin:0;
+            border:none;
+            background:none;
+            color:var(--secondary);
+            font-weight:800;
+            cursor:pointer;
+            font-size:inherit;
+          }
+          .task-inline-link:hover { text-decoration:underline; }
+
+          .change-chips {
+            display:flex;
+            gap:6px;
+            flex-wrap:wrap;
+            margin-top:6px;
+          }
+
+          .change-chip {
+            display:inline-flex;
+            align-items:center;
+            padding:2px 8px;
+            border-radius:999px;
+            background:rgba(255,255,255,0.06);
+            border:1px solid rgba(255,255,255,0.08);
+            color:var(--muted);
+            font-size:11px;
+            font-weight:700;
+            line-height:1.5;
+          }
+
+          .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(4, 8, 20, 0.72);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            z-index: 9999;
+          }
+          .modal-backdrop.open { display: flex; }
+          .modal-card {
+            width: min(860px, 100%);
+            max-height: 88vh;
+            overflow: auto;
+            padding: 18px;
+          }
+          .modal-head {
+            display:flex;
+            justify-content:space-between;
+            gap:12px;
+            align-items:flex-start;
+            margin-bottom:14px;
+          }
+          .modal-title {
+            font-size:24px;
+            font-weight:800;
+            margin:0;
+          }
+          .modal-close {
+            border:none;
+            background:rgba(255,255,255,0.08);
+            color:var(--text);
+            border-radius:10px;
+            padding:8px 10px;
+            cursor:pointer;
+            font-weight:700;
+          }
+          .modal-meta-grid {
+            display:grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap:10px;
+            margin-bottom:14px;
+          }
+          .modal-meta-box {
+            border:1px solid rgba(255,255,255,0.08);
+            border-radius:12px;
+            padding:10px 12px;
+            background:rgba(255,255,255,0.04);
+          }
+          .modal-meta-label {
+            font-size:11px;
+            text-transform:uppercase;
+            letter-spacing:0.1em;
+            color:var(--muted);
+            font-weight:800;
+            margin-bottom:4px;
+          }
+          .history-list {
+            display:flex;
+            flex-direction:column;
+            gap:10px;
+          }
+          .history-item {
+            border:1px solid rgba(255,255,255,0.08);
+            border-radius:12px;
+            padding:10px 12px;
+            background:rgba(255,255,255,0.04);
+          }
+          .history-top {
+            display:flex;
+            justify-content:space-between;
+            gap:8px;
+            flex-wrap:wrap;
+            margin-bottom:4px;
+            font-size:13px;
+          }
+          .history-detail {
+            color:var(--muted);
+            font-size:13px;
+            line-height:1.5;
+            white-space:pre-wrap;
+            word-break:break-word;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="wrap">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Multi-Day Reporting</div>
+              <h1>${escapeHtml(pageTitle)}</h1>
+              <div class="subtitle">Last ${escapeHtml(days)} attendance-days, one section per day.</div>
+            </div>
+            <div class="links">
+              <a href="/dashboard">Dashboard</a>
+              <a href="/tasks">Tasks</a>
+              <a href="/attendance">Attendance</a>
+              <a href="/logs">Logs</a>
+              <a href="/bugs">Bug Board</a>
+              <a href="/reports">Reports</a>
+            </div>
+          </div>
+
+          <div class="reports-stack">
+            ${dayCardsHtml}
+          </div>
+        </div>
+
+        <div id="taskModal" class="modal-backdrop" onclick="closeTaskModal(event)">
+          <div class="modal-card" onclick="event.stopPropagation()">
+            <div class="modal-head">
+              <div>
+                <div class="eyebrow">Task detail</div>
+                <h2 id="modalTitle" class="modal-title">Loading...</h2>
+              </div>
+              <button class="modal-close" onclick="closeTaskModal()">Close</button>
+            </div>
+
+            <div id="modalBody">
+              <div class="muted">Loading task details...</div>
+            </div>
+          </div>
+        </div>
+
+        <script>
+          function closeTaskModal(event) {
+            if (event && event.target && event.target.id !== "taskModal") return;
+            document.getElementById("taskModal").classList.remove("open");
+          }
+
+          function renderHistoryDetail(item) {
+            const oldText = JSON.stringify(item.oldValue || {});
+            const newText = JSON.stringify(item.newValue || {});
+            return "Field: " + (item.fieldName || "-") + "\\nOld: " + oldText + "\\nNew: " + newText;
+          }
+
+          async function openTaskDetail(taskNo) {
+            const modal = document.getElementById("taskModal");
+            const title = document.getElementById("modalTitle");
+            const body = document.getElementById("modalBody");
+
+            title.textContent = "Task #" + taskNo;
+            body.innerHTML = '<div class="muted">Loading task details...</div>';
+            modal.classList.add("open");
+
+            try {
+              const res = await fetch("/api/reports/task/" + taskNo);
+              const json = await res.json();
+
+              if (!json.ok) {
+                body.innerHTML = '<div class="muted">' + (json.error || "Failed to load task") + '</div>';
+                return;
+              }
+
+              const task = json.data || {};
+              title.textContent = "#" + (task.taskNo || task.id) + " — " + (task.title || "Untitled");
+
+              const historyHtml = (task.history || []).length
+                ? task.history.map((item) => {
+                    return (
+                      '<div class="history-item">' +
+                        '<div class="history-top">' +
+                          '<strong>' + (item.changeType || "-") + '</strong>' +
+                          '<span>' + (item.at || "-") + ' • ' + (item.by || "-") + '</span>' +
+                        '</div>' +
+                        '<div class="history-detail">' + renderHistoryDetail(item) + '</div>' +
+                      '</div>'
+                    );
+                  }).join("")
+                : '<div class="muted">No recent history</div>';
+
+              body.innerHTML =
+                '<div class="modal-meta-grid">' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Owners</div><div>' + ((task.owners || []).join(", ") || "-") + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Status</div><div>' + (task.status || "-") + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Priority</div><div>' + (task.priority || "-") + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Progress</div><div>' + (task.progress ?? "-") + '%</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Deadline</div><div>' + (task.deadline || "-") + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Business / Area</div><div>' + ((task.business || "-") + ' / ' + (task.area || "-")) + '</div></div>' +
+                '</div>' +
+                '<div class="report-section">' +
+                  '<div class="section-title">Detail</div>' +
+                  '<div>' + (task.detail || '<span class="muted">No detail</span>') + '</div>' +
+                '</div>' +
+                '<div class="report-section">' +
+                  '<div class="section-title">Blocker</div>' +
+                  '<div>' + (task.blockerNote || '<span class="muted">No blocker</span>') + '</div>' +
+                '</div>' +
                 '<div class="report-section">' +
                   '<div class="section-title">Recent history</div>' +
                   '<div class="history-list">' + historyHtml + '</div>' +
@@ -8161,9 +8618,11 @@ th {
             <div>
               <div class="eyebrow">Employee Attendance Detail</div>
               <h1>${escapeHtml(employee.name || "Employee")}</h1>
-              <div class="subtitle">
-                Role: ${escapeHtml(employee.role || "-")} | Phone: ${escapeHtml(employee.phone_number || "-")}
-              </div>
+<div class="subtitle">
+  ${escapeHtml(employee.role || "-")} • ${escapeHtml(employee.phone_number || "-")}
+</div>
+              <a href="/reports?userId=${employee.id}" class="btn-secondary">Today</a>
+<a href="/reports?userId=${employee.id}&days=7" class="btn-secondary">Last 7 days</a>
             </div>
             <div class="links">
               <a href="/attendance">Attendance</a>
@@ -8785,12 +9244,28 @@ app.get("/health/live", (_req, res) => {
   return res.status(200).json({ ok: true, status: "live" });
 });
 
-app.get("/reports", requireDashboardAuth, async (_req, res) => {
+app.get("/reports", requireDashboardAuth, async (req, res) => {
   try {
-    const reportDate = getReportDateString();
+    const userId = req.query.userId ? Number(req.query.userId) : null;
+    const days = req.query.days ? Number(req.query.days) : 1;
+    const reportDate =
+      String(req.query.date || "").trim() || getReportDateString();
+
+    if (userId && days > 1) {
+      const data = await getMultiDayNarrativeReport({
+        orgId: DASHBOARD_ORG_ID,
+        userId,
+        days,
+        endDate: reportDate,
+      });
+
+      return res.status(200).send(renderMultiDayUserReportsPage(data));
+    }
+
     const data = await getDailyNarrativeReport({
       orgId: DASHBOARD_ORG_ID,
       reportDate,
+      userId,
     });
 
     return res.status(200).send(renderReportsPage(data));
