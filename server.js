@@ -7472,8 +7472,12 @@ function renderMultiDayUserReportsPage(data) {
     null;
 
   const pageTitle = firstUser
-    ? `${firstUser.userName} — Last ${days} Days`
-    : `Last ${days} Days Report`;
+    ? days === 1
+      ? `${firstUser.userName} — Today Report`
+      : `${firstUser.userName} — Last ${days} Days`
+    : days === 1
+      ? `Today Report`
+      : `Last ${days} Days Report`;
 
   const dayCardsHtml = dailyReports
     .map((daily) => {
@@ -7777,8 +7781,14 @@ function renderMultiDayUserReportsPage(data) {
             <div>
               <div class="eyebrow">Multi-Day Reporting</div>
               <h1>${escapeHtml(pageTitle)}</h1>
-              <div class="subtitle">Last ${escapeHtml(days)} attendance-days, one section per day.</div>
-            </div>
+<div class="subtitle">
+  ${
+    days === 1
+      ? "Today’s attendance-day report."
+      : `Last ${escapeHtml(days)} attendance-days, one section per day.`
+  }
+</div>
+</div>
             <div class="links">
               <a href="/dashboard">Dashboard</a>
               <a href="/tasks">Tasks</a>
@@ -9263,21 +9273,41 @@ app.get("/reports", requireDashboardAuth, async (req, res) => {
     const reportDate =
       String(req.query.date || "").trim() || getReportDateString();
 
-    if (userId && days > 1) {
-      const data = await getMultiDayNarrativeReport({
+    if (userId) {
+      const safeDays = Math.max(1, Number(days || 1));
+
+      if (safeDays > 1) {
+        const data = await getMultiDayNarrativeReport({
+          orgId: DASHBOARD_ORG_ID,
+          userId,
+          days: safeDays,
+          endDate: reportDate,
+        });
+
+        return res.status(200).send(renderMultiDayUserReportsPage(data));
+      }
+
+      const daily = await getDailyNarrativeReport({
         orgId: DASHBOARD_ORG_ID,
+        reportDate,
         userId,
-        days,
-        endDate: reportDate,
       });
 
-      return res.status(200).send(renderMultiDayUserReportsPage(data));
+      return res.status(200).send(
+        renderMultiDayUserReportsPage({
+          mode: "multi_day_user",
+          userId,
+          endDate: reportDate,
+          days: 1,
+          dailyReports: [daily],
+        }),
+      );
     }
 
     const data = await getDailyNarrativeReport({
       orgId: DASHBOARD_ORG_ID,
       reportDate,
-      userId,
+      userId: null,
     });
 
     return res.status(200).send(renderReportsPage(data));
