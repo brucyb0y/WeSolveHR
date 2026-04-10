@@ -6586,7 +6586,7 @@ function classifyReportUsers(users) {
 
 function linkifyTaskSentence(sentence, taskNo, taskId) {
   const safeSentence = escapeHtml(sentence || "");
-  const clickable = `<button type="button" class="task-inline-link" onclick="openTaskDetail(${Number(taskNo)}, ${Number(taskId)})">#${escapeHtml(taskNo)}</button>`;
+  const clickable = `<button type="button" class="task-inline-link" onclick="openTaskDetail(${Number(taskNo)})">#${escapeHtml(taskNo)}</button>`;
   return safeSentence.replace(/^Task #\d+/, `Task ${clickable}`);
 }
 
@@ -7383,10 +7383,10 @@ function renderReportsPage(data) {
             }
           }
 
-          function closeTaskModal(event) {
-            if (event && event.target && event.target.id !== "taskModal") return;
-            document.getElementById("taskModal").classList.remove("open");
-          }
+function closeTaskModal(event) {
+  if (event && event.target && event.target.id !== "taskModal") return;
+  document.getElementById("taskModal").classList.remove("open");
+}
 
 function renderHistoryDetail(item) {
   const oldValue = item.oldValue || {};
@@ -7404,7 +7404,7 @@ function renderHistoryDetail(item) {
       "Priority: " + (newValue.priority || "-"),
       "Deadline: " + (newValue.deadline || "-"),
       "Business / Area: " + (newValue.business || "-") + " / " + (newValue.area || "-")
-    ].join("\n");
+    ].join("\\n");
   }
 
   if (item.changeType === "status_change") {
@@ -7412,7 +7412,7 @@ function renderHistoryDetail(item) {
       "Status: " + (oldValue.status || "-") + " → " + (newValue.status || "-"),
       "Progress: " + (oldValue.progress ?? "-") + "% → " + (newValue.progress ?? "-") + "%",
       newValue.note ? "Note: " + newValue.note : null
-    ].filter(Boolean).join("\n");
+    ].filter(Boolean).join("\\n");
   }
 
   if (item.changeType === "progress_change") {
@@ -7420,7 +7420,7 @@ function renderHistoryDetail(item) {
       "Progress: " + (oldValue.progress ?? "-") + "% → " + (newValue.progress ?? "-") + "%",
       "Status: " + (oldValue.status || "-") + " → " + (newValue.status || "-"),
       newValue.note ? "Note: " + newValue.note : null
-    ].filter(Boolean).join("\n");
+    ].filter(Boolean).join("\\n");
   }
 
   if (item.changeType === "owner_change") {
@@ -7437,7 +7437,7 @@ function renderHistoryDetail(item) {
     return [
       "Blocker: " + (newValue.blocker_note || "-"),
       newValue.note ? "Note: " + newValue.note : null
-    ].filter(Boolean).join("\n");
+    ].filter(Boolean).join("\\n");
   }
 
   if (item.fieldName === "title") {
@@ -7463,69 +7463,69 @@ function renderHistoryDetail(item) {
   return "Updated";
 }
 
-          async function openTaskDetail(taskNo) {
-            const modal = document.getElementById("taskModal");
-            const title = document.getElementById("modalTitle");
-            const body = document.getElementById("modalBody");
+async function openTaskDetail(taskNo) {
+  const modal = document.getElementById("taskModal");
+  const title = document.getElementById("modalTitle");
+  const body = document.getElementById("modalBody");
 
-            title.textContent = "Task #" + taskNo;
-            body.innerHTML = '<div class="muted">Loading task details...</div>';
-            modal.classList.add("open");
+  title.textContent = "Task #" + taskNo;
+  body.innerHTML = '<div class="muted">Loading task details...</div>';
+  modal.classList.add("open");
 
-            try {
-              const res = await fetch("/api/reports/task/" + taskNo);
-              const json = await res.json();
+  try {
+    const res = await fetch("/api/reports/task/" + taskNo);
+    const json = await res.json();
 
-              if (!json.ok) {
-                body.innerHTML = '<div class="muted">' + (json.error || "Failed to load task") + '</div>';
-                return;
-              }
+    if (!json.ok) {
+      body.innerHTML = '<div class="muted">' + (json.error || "Failed to load task") + '</div>';
+      return;
+    }
 
-              const task = json.data || {};
-              title.textContent = "#" + (task.taskNo || task.id) + " — " + (task.title || "Untitled");
+    const task = json.data || {};
+    title.textContent = "#" + (task.taskNo || task.id) + " — " + (task.title || "Untitled");
 
-              const historyHtml = (task.history || []).length
-                ? task.history.map((item) => {
-                    return (
-                      '<div class="history-item">' +
-                        '<div class="history-top">' +
-                          '<strong>' + (item.changeType || "-") + '</strong>' +
-                          '<span>' + (item.at || "-") + ' • ' + (item.by || "-") + '</span>' +
-                        '</div>' +
-                        '<div class="history-detail">' + renderHistoryDetail(item) + '</div>' +
-                      '</div>'
-                    );
-                  }).join("")
-                : '<div class="muted">No recent history</div>';
+    const historyHtml = (task.history || []).length
+      ? task.history.map(function(item) {
+          return (
+            '<div class="history-item">' +
+              '<div class="history-top">' +
+                '<strong>' + (item.changeType || "-") + '</strong>' +
+                '<span>' + (item.at || "-") + ' • ' + (item.by || "-") + '</span>' +
+              '</div>' +
+              '<div class="history-detail">' + renderHistoryDetail(item) + '</div>' +
+            '</div>'
+          );
+        }).join("")
+      : '<div class="muted">No recent history</div>';
 
-              body.innerHTML =
-                '<div class="modal-meta-grid">' +
-                  '<div class="modal-meta-box"><div class="modal-meta-label">Owners</div><div>' + ((task.owners || []).join(", ") || "-") + '</div></div>' +
-                  '<div class="modal-meta-box"><div class="modal-meta-label">Status</div><div>' + (task.status || "-") + '</div></div>' +
-                  '<div class="modal-meta-box"><div class="modal-meta-label">Priority</div><div>' + (task.priority || "-") + '</div></div>' +
-                  '<div class="modal-meta-box"><div class="modal-meta-label">Progress</div><div>' + (task.progress ?? "-") + '%</div></div>' +
-                  '<div class="modal-meta-box"><div class="modal-meta-label">Deadline</div><div>' + (task.deadline || "-") + '</div></div>' +
-                  '<div class="modal-meta-box"><div class="modal-meta-label">Business / Area</div><div>' + ((task.business || "-") + ' / ' + (task.area || "-")) + '</div></div>' +
-                '</div>' +
+    body.innerHTML =
+      '<div class="modal-meta-grid">' +
+        '<div class="modal-meta-box"><div class="modal-meta-label">Owners</div><div>' + ((task.owners || []).join(", ") || "-") + '</div></div>' +
+        '<div class="modal-meta-box"><div class="modal-meta-label">Status</div><div>' + (task.status || "-") + '</div></div>' +
+        '<div class="modal-meta-box"><div class="modal-meta-label">Priority</div><div>' + (task.priority || "-") + '</div></div>' +
+        '<div class="modal-meta-box"><div class="modal-meta-label">Progress</div><div>' + (task.progress ?? "-") + '%</div></div>' +
+        '<div class="modal-meta-box"><div class="modal-meta-label">Deadline</div><div>' + (task.deadline || "-") + '</div></div>' +
+        '<div class="modal-meta-box"><div class="modal-meta-label">Business / Area</div><div>' + ((task.business || "-") + ' / ' + (task.area || "-")) + '</div></div>' +
+      '</div>' +
 
-                '<div class="report-section">' +
-                  '<div class="section-title">Detail</div>' +
-                  '<div>' + (task.detail || '<span class="muted">No detail</span>') + '</div>' +
-                '</div>' +
+      '<div class="report-section">' +
+        '<div class="section-title">Detail</div>' +
+        '<div>' + (task.detail || '<span class="muted">No detail</span>') + '</div>' +
+      '</div>' +
 
-                '<div class="report-section">' +
-                  '<div class="section-title">Blocker</div>' +
-                  '<div>' + (task.blockerNote || '<span class="muted">No blocker</span>') + '</div>' +
-                '</div>' +
+      '<div class="report-section">' +
+        '<div class="section-title">Blocker</div>' +
+        '<div>' + (task.blockerNote || '<span class="muted">No blocker</span>') + '</div>' +
+      '</div>' +
 
-                '<div class="report-section">' +
-                  '<div class="section-title">Recent history</div>' +
-                  '<div class="history-list">' + historyHtml + '</div>' +
-                '</div>';
-            } catch (error) {
-              body.innerHTML = '<div class="muted">Failed to load task details</div>';
-            }
-          }
+      '<div class="report-section">' +
+        '<div class="section-title">Recent history</div>' +
+        '<div class="history-list">' + historyHtml + '</div>' +
+      '</div>';
+  } catch (error) {
+    body.innerHTML = '<div class="muted">Failed to load task detail</div>';
+  }
+}
         </script>
       </body>
     </html>
