@@ -7012,6 +7012,20 @@ function renderReportsPage(data) {
             border-radius: var(--radius-lg);
             box-shadow: var(--shadow-soft);
           }
+          .mini-report-link {
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #7c8cff; /* soft bluish purple */
+  text-decoration: none;
+  opacity: 0.85;
+}
+
+.mini-report-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+          
           .topbar {
             display:flex; justify-content:space-between; align-items:center;
             gap:16px; flex-wrap:wrap; margin-bottom:20px; padding:18px 20px;
