@@ -6364,16 +6364,7 @@ function getReportDateString(date = new Date()) {
 }
 
 function getReportDayUtcRange(reportDate) {
-  const nextDate = addDaysToDateString(reportDate, 1);
-
-  return {
-    startUtc: new Date(
-      `${reportDate}T00:00:00${APP_TIMEZONE_OFFSET}`,
-    ).toISOString(),
-    endUtc: new Date(
-      `${nextDate}T00:00:00${APP_TIMEZONE_OFFSET}`,
-    ).toISOString(),
-  };
+  return getAttendanceDayUtcRange(reportDate);
 }
 
 async function insertDailyReportNote({
@@ -7289,7 +7280,7 @@ function renderReportsPage(data) {
             <div>
               <div class="eyebrow">Daily Reporting</div>
               <h1>WeSolveHR // Reports</h1>
-              <div class="subtitle">Today only. Task narratives + extra work + open/blocked snapshot.</div>
+              <div class="subtitle">Attendance-day so far. Task narratives + extra work + open/blocked snapshot.</div>
             </div>
             <div class="links">
               <a href="/dashboard">Dashboard</a>
