@@ -8588,27 +8588,18 @@ box-shadow: var(--shadow-soft), 0 0 18px color-mix(in srgb, var(--primary) 18%, 
             font-size: 19px;
           }
           
-          .range-tabs {
-  display: inline-flex;
-  gap: 8px;
-  background: #f3f4f6;
-  padding: 4px;
-  border-radius: 10px;
-}
-
-.range-tabs .tab {
-  padding: 6px 12px;
-  border-radius: 8px;
+          .mini-report-link {
+  margin-right: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #7c8cff;
   text-decoration: none;
-  font-size: 13px;
-  color: #555;
-  font-weight: 500;
+  opacity: 0.85;
 }
 
-.range-tabs .tab.active {
-  background: #ffffff;
-  color: #111;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+.mini-report-link:hover {
+  opacity: 1;
+  text-decoration: underline;
 }
 
           .kv {
@@ -8669,12 +8660,12 @@ th {
 <div class="subtitle">
   ${escapeHtml(employee.role || "-")} • ${escapeHtml(employee.phone_number || "-")}
 </div>
-<div class="range-tabs">
-  <a href="/attendance/${employee.id}?days=1" class="tab ${selectedDays === 1 ? "active" : ""}">
+<div class="report-date" style="margin-top: 8px;">
+  <a href="/reports?userId=${encodeURIComponent(employee.id)}" class="mini-report-link">
     Today
   </a>
-  <a href="/attendance/${employee.id}?days=7" class="tab ${selectedDays === 7 ? "active" : ""}">
-    Last 7 Days
+  <a href="/reports?userId=${encodeURIComponent(employee.id)}&days=7" class="mini-report-link">
+    Last 7 days
   </a>
 </div>
             </div>
