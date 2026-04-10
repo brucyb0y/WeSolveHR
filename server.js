@@ -8402,6 +8402,7 @@ function renderEmployeeAttendancePage(data) {
   const monthly = data?.monthly || {};
   const history = data?.history || [];
   const recentAudit = data?.recent_audit || [];
+  const selectedDays = Number(data?.selectedDays) === 7 ? 7 : 1;
 
   const todayTimelineRows = (today.events || []).length
     ? today.events
@@ -8669,10 +8670,10 @@ th {
   ${escapeHtml(employee.role || "-")} • ${escapeHtml(employee.phone_number || "-")}
 </div>
 <div class="range-tabs">
-  <a href="/attendance/11?days=1" class="tab ${days === 1 ? "active" : ""}">
+  <a href="/attendance/${employee.id}?days=1" class="tab ${selectedDays === 1 ? "active" : ""}">
     Today
   </a>
-  <a href="/attendance/11?days=7" class="tab ${days === 7 ? "active" : ""}">
+  <a href="/attendance/${employee.id}?days=7" class="tab ${selectedDays === 7 ? "active" : ""}">
     Last 7 Days
   </a>
 </div>
@@ -9473,8 +9474,15 @@ app.get("/attendance/:userId", requireDashboardAuth, async (req, res) => {
       return res.status(400).send("Invalid user id");
     }
 
+    const days = Number(req.query.days) === 7 ? 7 : 1;
+
     const data = await getEmployeeAttendanceOverview(userId, DASHBOARD_ORG_ID);
-    return res.status(200).send(renderEmployeeAttendancePage(data));
+    return res.status(200).send(
+      renderEmployeeAttendancePage({
+        ...data,
+        selectedDays: days,
+      }),
+    );
   } catch (error) {
     console.error("Employee attendance page error:", error);
     return res.status(500).send(`
