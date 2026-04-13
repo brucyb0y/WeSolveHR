@@ -1454,6 +1454,36 @@ function parseOffDayForOtherCommand(text) {
   };
 }
 
+function parseWorkDayOverrideCommand(text) {
+  const raw = normalizeText(text);
+
+  let match = raw.match(
+    /^day\s+on\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)\s+(.+)$/i,
+  );
+
+  if (match) {
+    return {
+      date_text: match[1].trim(),
+      target_name: match[2].trim(),
+      mode: "full_day",
+    };
+  }
+
+  match = raw.match(
+    /^day\s+half\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)\s+(.+)$/i,
+  );
+
+  if (match) {
+    return {
+      date_text: match[1].trim(),
+      target_name: match[2].trim(),
+      mode: "half_day",
+    };
+  }
+
+  return null;
+}
+
 function parseAttendanceCommand(text) {
   const raw = normalizeText(text);
 
@@ -2828,6 +2858,7 @@ async function handleEmployeeSummary(res, actingUser, command) {
       `Long break flags: ${monthly.longBreakCount}`,
       `Possible half days: ${monthly.possibleHalfDays}`,
       `Manager corrections: ${monthly.managerCorrectionCount}`,
+      `Total working days this month: ${monthly.totalWorkingDays}`,
     ];
 
     return sendTwiml(res, lines.join("\n"));
@@ -3956,6 +3987,10 @@ async function handleHelp(res, user, topic = "") {
           isManager ? "who is off today" : null,
           isManager ? "summary today" : null,
           isManager ? "now" : null,
+          isManager ? "day on sunday Zoya" : null,
+          isManager ? "day on saturday Aj" : null,
+          isManager ? "day half sunday Ruhab" : null,
+          isManager ? "day on 11 april Mahesh" : null,
         ]
           .filter(Boolean)
           .join("\n"),
@@ -3985,6 +4020,10 @@ async function handleHelp(res, user, topic = "") {
           "who is on break",
           "who is off today",
           "summary today",
+          "day on sunday Zoya",
+          "day on saturday Aj",
+          "day half sunday Ruhab",
+          "day on 11 april Mahesh",
           "now",
           "",
           "Tasks:",
@@ -4756,6 +4795,57 @@ async function handleOffDayForOther(res, actingUser, offCommand) {
   );
 }
 
+async function handleWorkDayOverride(res, actingUser, command) {
+  if (!isManagerOrAdmin(actingUser)) {
+    return sendTwiml(
+      res,
+      "You are not allowed to change work-day expectation.",
+    );
+  }
+
+  const targetUser = await findUniqueUserByName(
+    command.target_name,
+    actingUser.org_id,
+  );
+
+  if (!targetUser) {
+    return sendTwiml(
+      res,
+      `I could not uniquely find an active user named "${command.target_name}".`,
+    );
+  }
+
+  const overrideDate = parseFlexibleDateText(command.date_text);
+  if (!overrideDate) {
+    return sendTwiml(
+      res,
+      `I could not understand the date "${command.date_text}". Use today, tomorrow, 11 april, or april 11.`,
+    );
+  }
+
+  const error = await upsertWorkDayOverride({
+    orgId: actingUser.org_id,
+    userId: targetUser.id,
+    overrideDate,
+    mode: command.mode,
+    createdByUserId: actingUser.id,
+    note: `Marked by ${actingUser.name}`,
+  });
+
+  if (error) {
+    console.error("handleWorkDayOverride error:", error);
+    return sendTwiml(res, "Failed to save work-day override.");
+  }
+
+  return sendTwiml(
+    res,
+    `✅ Work-day override saved
+Name: ${targetUser.name}
+Date: ${overrideDate}
+Mode: ${command.mode}`,
+  );
+}
+
 async function handleSelfAttendance(res, user, attendanceCommand) {
   const lastAction = await getLastAction(user.id, user.org_id);
   const validationError = validateAttendanceTransition(
@@ -4901,6 +4991,33 @@ async function createPlannedOffDay(
     ],
     { onConflict: "user_id,off_date" },
   );
+
+  return error;
+}
+
+async function upsertWorkDayOverride({
+  orgId,
+  userId,
+  overrideDate,
+  mode,
+  createdByUserId,
+  note = null,
+}) {
+  const { error } = await supabase
+    .from("work_day_expectation_overrides")
+    .upsert(
+      [
+        {
+          org_id: orgId,
+          user_id: userId,
+          override_date: overrideDate,
+          mode,
+          note,
+          created_by_user_id: createdByUserId,
+        },
+      ],
+      { onConflict: "org_id,user_id,override_date" },
+    );
 
   return error;
 }
@@ -6318,6 +6435,140 @@ function getCurrentYearInTimeZone(timeZone = APP_TIMEZONE) {
   return getPartsInTimeZone(new Date(), timeZone).year;
 }
 
+function getWeekdayNameFromDateString(dateString) {
+  const d = new Date(`${dateString}T00:00:00${APP_TIMEZONE_OFFSET}`);
+  return d
+    .toLocaleDateString("en-US", {
+      timeZone: APP_TIMEZONE,
+      weekday: "long",
+    })
+    .toLowerCase();
+}
+
+function getDefaultWorkExpectationForDate(reportDate) {
+  const weekday = getWeekdayNameFromDateString(reportDate);
+
+  if (weekday === "sunday") {
+    return {
+      expectedToWork: false,
+      workDayWeight: 0,
+      workMode: "off",
+      source: "default",
+      label: "Sunday off",
+    };
+  }
+
+  if (weekday === "saturday") {
+    return {
+      expectedToWork: true,
+      workDayWeight: 0.5,
+      workMode: "half_day",
+      source: "default",
+      label: "Saturday half day",
+    };
+  }
+
+  return {
+    expectedToWork: true,
+    workDayWeight: 1,
+    workMode: "full_day",
+    source: "default",
+    label: "Working day",
+  };
+}
+
+function resolveWorkExpectation({ reportDate, isOnLeave, overrideMode }) {
+  if (isOnLeave) {
+    return {
+      expectedToWork: false,
+      workDayWeight: 0,
+      workMode: "off",
+      source: "leave",
+      label: "On leave",
+    };
+  }
+
+  if (overrideMode === "half_day") {
+    return {
+      expectedToWork: true,
+      workDayWeight: 0.5,
+      workMode: "half_day",
+      source: "override",
+      label: "Override: half day",
+    };
+  }
+
+  if (overrideMode === "full_day") {
+    return {
+      expectedToWork: true,
+      workDayWeight: 1,
+      workMode: "full_day",
+      source: "override",
+      label: "Override: full day",
+    };
+  }
+
+  return getDefaultWorkExpectationForDate(reportDate);
+}
+
+function getReportCardStatus({
+  isOnLeave,
+  expectedToWork,
+  workMode,
+  hasTaskUpdates,
+  hasExtraWork,
+}) {
+  if (isOnLeave) {
+    return {
+      status: "leave",
+      cardClass: "report-card-leave",
+      reason: "On leave",
+    };
+  }
+
+  if (!expectedToWork) {
+    return {
+      status: "off",
+      cardClass: "report-card-off",
+      reason: "Not expected to work",
+    };
+  }
+
+  if (!hasTaskUpdates && !hasExtraWork) {
+    return {
+      status: "missing",
+      cardClass: "report-card-missing",
+      reason:
+        workMode === "half_day"
+          ? "Expected half day, but no task or extra work update"
+          : "Expected full day, but no task or extra work update",
+    };
+  }
+
+  if (!hasTaskUpdates || !hasExtraWork) {
+    return {
+      status: "partial",
+      cardClass: "report-card-partial",
+      reason:
+        workMode === "half_day"
+          ? "Half-day update is partial"
+          : "Day update is partial",
+    };
+  }
+
+  return {
+    status: "full",
+    cardClass: "report-card-full",
+    reason: "Updated",
+  };
+}
+
+function formatWorkDayWeight(weight) {
+  if (Number(weight) === 1) return "1";
+  if (Number(weight) === 0.5) return "0.5";
+  return "0";
+}
+
 function getUtcRangeForTodayInTimeZone(timeZone = APP_TIMEZONE) {
   const todayDb = getTodayDateStringInTimeZone(timeZone);
   const tomorrowDb = addDaysToDateString(todayDb, 1);
@@ -6397,6 +6648,33 @@ async function getDailyReportNotes({ orgId, reportDate, userId = null }) {
 
   if (error) {
     console.error("getDailyReportNotes error:", error);
+    return [];
+  }
+
+  return data || [];
+}
+
+async function getWorkDayOverrideRowsForDate({
+  orgId,
+  reportDate,
+  userId = null,
+}) {
+  let query = supabase
+    .from("work_day_expectation_overrides")
+    .select(
+      "id, org_id, user_id, override_date, mode, note, created_by_user_id",
+    )
+    .eq("org_id", orgId)
+    .eq("override_date", reportDate);
+
+  if (userId) {
+    query = query.eq("user_id", userId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("getWorkDayOverrideRowsForDate error:", error);
     return [];
   }
 
@@ -6545,26 +6823,33 @@ function classifyReportUsers(users) {
   const partial = [];
   const missing = [];
   const onLeave = [];
+  const off = [];
 
   for (const user of users || []) {
-    if (user.isOnLeave) {
+    if (user.reportStatus === "leave") {
       onLeave.push(user.userName);
       continue;
     }
 
-    const touched = (user.taskNarratives || []).length;
-    const extra = (user.extraWork || []).length;
-
-    if (touched > 0 && extra > 0) {
-      full.push(user.userName);
-    } else if (touched > 0 || extra > 0) {
-      partial.push(user.userName);
-    } else {
-      missing.push(user.userName);
+    if (user.reportStatus === "off") {
+      off.push(user.userName);
+      continue;
     }
+
+    if (user.reportStatus === "full") {
+      full.push(user.userName);
+      continue;
+    }
+
+    if (user.reportStatus === "partial") {
+      partial.push(user.userName);
+      continue;
+    }
+
+    missing.push(user.userName);
   }
 
-  return { full, partial, missing, onLeave };
+  return { full, partial, missing, onLeave, off };
 }
 
 function linkifyTaskSentence(sentence, taskNo, taskId) {
@@ -6798,6 +7083,14 @@ function emptyUserDailyReport(user) {
       open: 0,
       blocked: 0,
     },
+    isOnLeave: false,
+    expectedToWork: false,
+    workDayWeight: 0,
+    workMode: "off",
+    workRuleSource: "default",
+    reportStatus: "off",
+    reportCardClass: "report-card-off",
+    reportReason: "Not expected to work",
   };
 }
 
@@ -6818,11 +7111,13 @@ async function getDailyNarrativeReport({ orgId, reportDate, userId = null }) {
     throw usersError;
   }
 
-  const [taskNarratives, extraNotes, plannedOffRows] = await Promise.all([
-    getDailyTaskNarratives({ orgId, reportDate, userId }),
-    getDailyReportNotes({ orgId, reportDate, userId }),
-    getPlannedOffRowsForDate(reportDate, orgId),
-  ]);
+  const [taskNarratives, extraNotes, plannedOffRows, overrideRows] =
+    await Promise.all([
+      getDailyTaskNarratives({ orgId, reportDate, userId }),
+      getDailyReportNotes({ orgId, reportDate, userId }),
+      getPlannedOffRowsForDate(reportDate, orgId),
+      getWorkDayOverrideRowsForDate({ orgId, reportDate, userId }),
+    ]);
 
   const leaveSet = new Set((plannedOffRows || []).map((x) => x.user_id));
 
@@ -6839,14 +7134,51 @@ async function getDailyNarrativeReport({ orgId, reportDate, userId = null }) {
     notesByUser.get(note.user_id).push(note.note);
   }
 
+  const overridesByUser = new Map();
+  for (const row of overrideRows || []) {
+    overridesByUser.set(row.user_id, row);
+  }
+
   const resultUsers = [];
+
   for (const user of users || []) {
     const row = emptyUserDailyReport(user);
+
     row.taskNarratives = narrativesByUser.get(user.id) || [];
     row.extraWork = notesByUser.get(user.id) || [];
     row.summary = await getUserOpenBlockedCounts(orgId, user.id);
     row.isOnLeave = leaveSet.has(user.id);
-    row.compactMeta = buildCompactUserMeta(row);
+
+    const overrideMode = overridesByUser.get(user.id)?.mode || null;
+
+    const expectation = resolveWorkExpectation({
+      reportDate,
+      isOnLeave: row.isOnLeave,
+      overrideMode,
+    });
+
+    row.expectedToWork = expectation.expectedToWork;
+    row.workDayWeight = expectation.workDayWeight;
+    row.workMode = expectation.workMode;
+    row.workRuleSource = expectation.source;
+
+    const hasTaskUpdates = row.taskNarratives.length > 0;
+    const hasExtraWork = row.extraWork.length > 0;
+
+    const cardStatus = getReportCardStatus({
+      isOnLeave: row.isOnLeave,
+      expectedToWork: row.expectedToWork,
+      workMode: row.workMode,
+      hasTaskUpdates,
+      hasExtraWork,
+    });
+
+    row.reportStatus = cardStatus.status;
+    row.reportCardClass = cardStatus.cardClass;
+    row.reportReason = cardStatus.reason;
+
+    row.compactMeta = `${buildCompactUserMeta(row)} · day ${formatWorkDayWeight(row.workDayWeight)}`;
+
     resultUsers.push(row);
   }
 
@@ -6897,6 +7229,7 @@ function renderReportsPage(data) {
     partial: [],
     missing: [],
     onLeave: [],
+    off: [],
   };
 
   const cardsHtml = users.length
@@ -6943,8 +7276,8 @@ function renderReportsPage(data) {
             : `<li class="muted">No extra work notes</li>`;
 
           return `
-            <div class="report-card" data-user-name="${escapeHtml(String(user.userName || "").toLowerCase())}">
-              <div class="report-card-head">
+<div class="report-card">
+<div class="report-card-head">
                 <div>
 <div class="report-name">
   <a href="/attendance/${escapeHtml(user.userId)}">${escapeHtml(user.userName)}</a>
@@ -6956,7 +7289,8 @@ function renderReportsPage(data) {
   </a>
 </div>
 <div class="micro-meta">${escapeHtml(user.compactMeta || "0 touched")}</div>
-                </div>
+<div class="report-reason">${escapeHtml(user.reportReason || "")}</div>
+</div>
                 <div class="summary-pill">
                   Open: ${escapeHtml(user.summary?.open ?? 0)} | Blocked: ${escapeHtml(user.summary?.blocked ?? 0)}
                 </div>
@@ -7009,6 +7343,8 @@ function renderReportsPage(data) {
   opacity: 1;
   text-decoration: underline;
 }
+
+
           
           .topbar {
             display:flex; justify-content:space-between; align-items:center;
@@ -7097,6 +7433,38 @@ function renderReportsPage(data) {
           .report-task-item {
             margin-bottom: 10px;
           }
+          
+          .report-card-missing {
+  border: 1px solid rgba(239, 107, 115, 0.58);
+  background: linear-gradient(
+    180deg,
+    rgba(101, 33, 43, 0.94),
+    rgba(69, 25, 34, 0.98)
+  );
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.03), 0 10px 30px rgba(0,0,0,0.24);
+}
+
+.report-card-partial {
+  border: 1px solid rgba(243, 181, 98, 0.38);
+  background: linear-gradient(
+    180deg,
+    rgba(84, 64, 34, 0.90),
+    rgba(58, 44, 24, 0.96)
+  );
+}
+
+.report-card-off,
+.report-card-leave {
+  opacity: 0.88;
+}
+
+.report-reason {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #f3f6ff;
+  opacity: 0.86;
+  line-height: 1.45;
+}
 
           .task-line {
             display:block;
@@ -7300,28 +7668,33 @@ function renderReportsPage(data) {
 <span class="muted">(6:00 AM → next day 6:00 AM IST)</span>
 </div>
 
-          <div class="status-grid">
-            <div class="status-chip-box">
-              <div class="status-chip-title">Fully updated</div>
-              <div class="status-chip-count">${escapeHtml(compliance.full.length)}</div>
-              <div class="status-chip-names">${escapeHtml(compliance.full.join(", ") || "None")}</div>
-            </div>
-            <div class="status-chip-box">
-              <div class="status-chip-title">Partially updated</div>
-              <div class="status-chip-count">${escapeHtml(compliance.partial.length)}</div>
-              <div class="status-chip-names">${escapeHtml(compliance.partial.join(", ") || "None")}</div>
-            </div>
-            <div class="status-chip-box">
-              <div class="status-chip-title">Missing</div>
-              <div class="status-chip-count">${escapeHtml(compliance.missing.length)}</div>
-              <div class="status-chip-names">${escapeHtml(compliance.missing.join(", ") || "None")}</div>
-            </div>
-            <div class="status-chip-box">
-              <div class="status-chip-title">On leave</div>
-              <div class="status-chip-count">${escapeHtml(compliance.onLeave.length)}</div>
-              <div class="status-chip-names">${escapeHtml(compliance.onLeave.join(", ") || "None")}</div>
-            </div>
-          </div>
+<div class="status-grid">
+  <div class="status-chip-box">
+    <div class="status-chip-title">Fully updated</div>
+    <div class="status-chip-count">${escapeHtml(compliance.full.length)}</div>
+    <div class="status-chip-names">${escapeHtml(compliance.full.join(", ") || "None")}</div>
+  </div>
+  <div class="status-chip-box">
+    <div class="status-chip-title">Partially updated</div>
+    <div class="status-chip-count">${escapeHtml(compliance.partial.length)}</div>
+    <div class="status-chip-names">${escapeHtml(compliance.partial.join(", ") || "None")}</div>
+  </div>
+  <div class="status-chip-box">
+    <div class="status-chip-title">Missing</div>
+    <div class="status-chip-count">${escapeHtml(compliance.missing.length)}</div>
+    <div class="status-chip-names">${escapeHtml(compliance.missing.join(", ") || "None")}</div>
+  </div>
+  <div class="status-chip-box">
+    <div class="status-chip-title">On leave</div>
+    <div class="status-chip-count">${escapeHtml(compliance.onLeave.length)}</div>
+    <div class="status-chip-names">${escapeHtml(compliance.onLeave.join(", ") || "None")}</div>
+  </div>
+  <div class="status-chip-box">
+    <div class="status-chip-title">Off / not expected</div>
+    <div class="status-chip-count">${escapeHtml(compliance.off.length)}</div>
+    <div class="status-chip-names">${escapeHtml(compliance.off.join(", ") || "None")}</div>
+  </div>
+</div>
 
           <div class="panel" style="padding:14px 16px; margin-bottom:16px;">
             <input
@@ -7515,6 +7888,40 @@ async function openTaskDetail(taskNo) {
   `;
 }
 
+function summarizeUserMultiDayReport(dailyReports) {
+  let totalWorkingDays = 0;
+  let fullDays = 0;
+  let partialDays = 0;
+  let missingDays = 0;
+  let leaveDays = 0;
+  let offDays = 0;
+
+  for (const daily of dailyReports || []) {
+    const user = (daily.users || [])[0];
+    if (!user) continue;
+
+    totalWorkingDays += Number(user.workDayWeight || 0);
+
+    if (user.reportStatus === "full")
+      fullDays += Number(user.workDayWeight || 0);
+    else if (user.reportStatus === "partial")
+      partialDays += Number(user.workDayWeight || 0);
+    else if (user.reportStatus === "missing")
+      missingDays += Number(user.workDayWeight || 0);
+    else if (user.reportStatus === "leave") leaveDays += 1;
+    else if (user.reportStatus === "off") offDays += 1;
+  }
+
+  return {
+    totalWorkingDays,
+    fullDays,
+    partialDays,
+    missingDays,
+    leaveDays,
+    offDays,
+  };
+}
+
 function renderMultiDayUserReportsPage(data) {
   const days = data?.days || 7;
   const dailyReports = data?.dailyReports || [];
@@ -7531,6 +7938,8 @@ function renderMultiDayUserReportsPage(data) {
       ? `Today Report`
       : `Last ${days} Days Report`;
 
+  const weeklySummary = summarizeUserMultiDayReport(dailyReports);
+
   const dayCardsHtml = dailyReports
     .map((daily) => {
       const reportDate = daily.reportDate;
@@ -7538,8 +7947,8 @@ function renderMultiDayUserReportsPage(data) {
 
       if (!user) {
         return `
-          <div class="report-card">
-            <div class="report-card-head">
+<div class="report-card">
+<div class="report-card-head">
               <div>
                 <div class="report-name">${escapeHtml(formatDateOnly(reportDate))}</div>
                 <div class="report-date muted">No report data</div>
@@ -7591,13 +8000,14 @@ function renderMultiDayUserReportsPage(data) {
         : `<li class="muted">No extra work notes</li>`;
 
       return `
-        <div class="report-card">
+          <div class="report-card ${escapeHtml(user.reportCardClass || "")}">
           <div class="report-card-head">
             <div>
               <div class="report-name">${escapeHtml(formatDateOnly(reportDate))}</div>
               <div class="report-date">${escapeHtml(user.userName)}</div>
-              <div class="micro-meta">${escapeHtml(user.compactMeta || "0 touched")}</div>
-            </div>
+<div class="micro-meta">${escapeHtml(user.compactMeta || "0 touched")}</div>
+<div class="report-reason">${escapeHtml(user.reportReason || "")}</div>
+</div>
             <div class="summary-pill">
               Open: ${escapeHtml(user.summary?.open ?? 0)} | Blocked: ${escapeHtml(user.summary?.blocked ?? 0)}
             </div>
@@ -7850,6 +8260,20 @@ function renderMultiDayUserReportsPage(data) {
               <a href="/reports">Reports</a>
             </div>
           </div>
+          
+          <div class="panel" style="padding:14px 16px; margin-bottom:16px;">
+  <strong>Total working days:</strong> ${escapeHtml(String(weeklySummary.totalWorkingDays))}
+  <br />
+  <strong>Fully updated:</strong> ${escapeHtml(String(weeklySummary.fullDays))}
+  <br />
+  <strong>Partially updated:</strong> ${escapeHtml(String(weeklySummary.partialDays))}
+  <br />
+  <strong>Missing:</strong> ${escapeHtml(String(weeklySummary.missingDays))}
+  <br />
+  <strong>Leave days:</strong> ${escapeHtml(String(weeklySummary.leaveDays))}
+  <br />
+  <strong>Off days:</strong> ${escapeHtml(String(weeklySummary.offDays))}
+</div>
 
           <div class="reports-stack">
             ${dayCardsHtml}
@@ -8068,29 +8492,26 @@ async function getEmployeeMonthlyAttendanceSummary(userId, orgId) {
     new Date(),
     APP_TIMEZONE,
   );
-  const LATE_GRACE_MIN = 10;
 
-  const todayAttendanceDate = getAttendanceDayDateStringFromDate(new Date());
-
-  const startUtc = new Date(
+  const attendanceStartUtc = new Date(
     `${startDate}T${String(ATTENDANCE_DAY_START_HOUR).padStart(2, "0")}:00:00${APP_TIMEZONE_OFFSET}`,
   ).toISOString();
 
-  const endUtc = new Date(
+  const attendanceEndUtc = new Date(
     `${endDateExclusive}T${String(ATTENDANCE_DAY_START_HOUR).padStart(2, "0")}:00:00${APP_TIMEZONE_OFFSET}`,
   ).toISOString();
 
-  const [eventsResult, leaveResult, lateResult, auditResult] =
+  const [eventsResult, leaveResult, lateResult, auditResult, overrideResult] =
     await Promise.all([
       supabase
         .from("attendance_events")
         .select(
-          "id, user_id, action, created_at, expected_duration_min, reason, note",
+          "id, org_id, user_id, action, created_at, duration_min, expected_duration_min, reason, note",
         )
-        .eq("org_id", orgId)
         .eq("user_id", userId)
-        .gte("created_at", startUtc)
-        .lt("created_at", endUtc)
+        .eq("org_id", orgId)
+        .gte("created_at", attendanceStartUtc)
+        .lt("created_at", attendanceEndUtc)
         .order("created_at", { ascending: true }),
 
       supabase
@@ -8104,126 +8525,203 @@ async function getEmployeeMonthlyAttendanceSummary(userId, orgId) {
 
       supabase
         .from("late_arrivals")
-        .select("id, late_date, is_approved")
+        .select(
+          "id, late_date, expected_login_at, informed_at, shift_start_at, is_approved, note",
+        )
         .eq("user_id", userId)
         .eq("org_id", orgId)
         .gte("late_date", startDate)
-        .lte("late_date", todayAttendanceDate),
+        .lt("late_date", endDateExclusive)
+        .order("late_date", { ascending: true }),
 
       supabase
         .from("attendance_audit")
         .select("id, action_type, created_at")
-        .eq("org_id", orgId)
         .eq("target_user_id", userId)
-        .gte("created_at", startUtc)
-        .lt("created_at", endUtc),
+        .eq("org_id", orgId)
+        .gte("created_at", attendanceStartUtc)
+        .lt("created_at", attendanceEndUtc)
+        .order("created_at", { ascending: true }),
+
+      supabase
+        .from("work_day_expectation_overrides")
+        .select("id, override_date, mode")
+        .eq("user_id", userId)
+        .eq("org_id", orgId)
+        .gte("override_date", startDate)
+        .lt("override_date", endDateExclusive)
+        .order("override_date", { ascending: true }),
     ]);
 
   if (eventsResult.error) throw eventsResult.error;
   if (leaveResult.error) throw leaveResult.error;
   if (lateResult.error) throw lateResult.error;
   if (auditResult.error) throw auditResult.error;
+  if (overrideResult.error) throw overrideResult.error;
 
   const events = eventsResult.data || [];
   const leaveRows = leaveResult.data || [];
   const lateRows = lateResult.data || [];
   const auditRows = auditResult.data || [];
+  const overrideRows = overrideResult.data || [];
 
-  const eventsByAttendanceDay = new Map();
+  const leaveDateSet = new Set((leaveRows || []).map((x) => x.off_date));
+  const overrideByDate = new Map(
+    (overrideRows || []).map((x) => [x.override_date, x.mode]),
+  );
 
+  const eventsByAttendanceDate = new Map();
   for (const ev of events) {
-    const attendanceDate = parseIsoToAttendanceDateString(ev.created_at);
-    if (!attendanceDate) continue;
-
-    if (attendanceDate > todayAttendanceDate) continue;
-
-    if (!eventsByAttendanceDay.has(attendanceDate)) {
-      eventsByAttendanceDay.set(attendanceDate, []);
+    const attendanceDate = getAttendanceDayDateStringFromDate(
+      new Date(ev.created_at),
+    );
+    if (!eventsByAttendanceDate.has(attendanceDate)) {
+      eventsByAttendanceDate.set(attendanceDate, []);
     }
-    eventsByAttendanceDay.get(attendanceDate).push(ev);
+    eventsByAttendanceDate.get(attendanceDate).push(ev);
+  }
+
+  const lateByDate = new Map();
+  for (const row of lateRows) {
+    lateByDate.set(row.late_date, row);
   }
 
   let presentDays = 0;
+  let leaveDays = leaveRows.length;
   let lateJoins = 0;
   let approvedLate = 0;
   let unapprovedLate = 0;
   let uninformedLate = 0;
-  let totalLoginMinuteOfDay = 0;
+  let totalLoginMinutes = 0;
   let loginDaysCount = 0;
-  let totalBreakMinutes = 0;
-  let breakDaysCount = 0;
+  let totalBreakMin = 0;
   let longShiftCount = 0;
   let longBreakCount = 0;
   let possibleHalfDays = 0;
+  let totalWorkingDays = 0;
 
-  for (const [attendanceDate, dayEvents] of eventsByAttendanceDay.entries()) {
+  let cursorDate = startDate;
+
+  while (cursorDate < endDateExclusive) {
+    const dayEvents = eventsByAttendanceDate.get(cursorDate) || [];
+    const leaveRowExists = leaveDateSet.has(cursorDate);
+    const overrideMode = overrideByDate.get(cursorDate) || null;
+
+    const expectation = resolveWorkExpectation({
+      reportDate: cursorDate,
+      isOnLeave: leaveRowExists,
+      overrideMode,
+    });
+
+    totalWorkingDays += Number(expectation.workDayWeight || 0);
+
+    if (dayEvents.length > 0) {
+      presentDays += 1;
+    }
+
     const summary = getAttendanceSummaryFromEvents(dayEvents);
-    const lateInfo =
-      lateRows.find((x) => x.late_date === attendanceDate) || null;
 
     if (summary.firstLogin) {
-      presentDays += 1;
-
-      const firstLoginParts = getPartsInTimeZone(
-        new Date(summary.firstLogin.created_at),
-        APP_TIMEZONE,
+      const firstLoginDate = new Date(summary.firstLogin.created_at);
+      const shiftStartIso = parseLocalDateTimeForToday(
+        DEFAULT_SHIFT_START_TEXT,
       );
-      totalLoginMinuteOfDay +=
-        firstLoginParts.hour * 60 + firstLoginParts.minute;
+
+      if (shiftStartIso) {
+        const shiftStartParts = getPartsInTimeZone(
+          new Date(summary.firstLogin.created_at),
+          APP_TIMEZONE,
+        );
+
+        const dayShiftStartIso = new Date(
+          `${cursorDate}T10:30:00${APP_TIMEZONE_OFFSET}`,
+        ).toISOString();
+
+        const lateMinutes = Math.max(
+          0,
+          Math.round(
+            (firstLoginDate.getTime() - new Date(dayShiftStartIso).getTime()) /
+              60000,
+          ),
+        );
+
+        if (lateMinutes > 10) {
+          lateJoins += 1;
+
+          const lateRow = lateByDate.get(cursorDate);
+          if (lateRow) {
+            if (lateRow.is_approved) approvedLate += 1;
+            else unapprovedLate += 1;
+          } else {
+            uninformedLate += 1;
+          }
+        }
+      }
+
+      const parts = getPartsInTimeZone(firstLoginDate, APP_TIMEZONE);
+      totalLoginMinutes += parts.hour * 60 + parts.minute;
       loginDaysCount += 1;
     }
 
-    totalBreakMinutes += summary.breakMinutes;
-    if (summary.firstLogin) {
-      breakDaysCount += 1;
+    totalBreakMin += Number(summary.breakMinutes || 0);
+
+    if (summary.longShiftFlag) {
+      longShiftCount += 1;
     }
 
-    if (summary.lateMinutes > LATE_GRACE_MIN) {
-      lateJoins += 1;
-
-      if (lateInfo && lateInfo.is_approved) {
-        approvedLate += 1;
-      } else if (lateInfo && !lateInfo.is_approved) {
-        unapprovedLate += 1;
-      } else {
-        uninformedLate += 1;
-      }
+    if (summary.longBreakFlag) {
+      longBreakCount += 1;
     }
 
-    if (summary.longShiftFlag) longShiftCount += 1;
-    if (summary.longBreakFlag) longBreakCount += 1;
-    if (summary.possibleHalfDay) possibleHalfDays += 1;
+    if (summary.possibleHalfDay) {
+      possibleHalfDays += 1;
+    }
+
+    cursorDate = addDaysToDateString(cursorDate, 1);
   }
 
-  const avgLoginMin = loginDaysCount
-    ? Math.round(totalLoginMinuteOfDay / loginDaysCount)
+  const avgLoginMinutes = loginDaysCount
+    ? Math.round(totalLoginMinutes / loginDaysCount)
     : null;
 
-  const avgBreakMin = breakDaysCount
-    ? Math.round(totalBreakMinutes / breakDaysCount)
-    : 0;
-
   const avgLoginTimeText =
-    avgLoginMin == null
+    avgLoginMinutes == null
       ? "-"
-      : `${String(((Math.floor(avgLoginMin / 60) + 11) % 12) + 1)}:${String(
-          avgLoginMin % 60,
-        ).padStart(
-          2,
-          "0",
-        )} ${Math.floor(avgLoginMin / 60) >= 12 ? "PM" : "AM"} IST`;
+      : (() => {
+          const hours24 = Math.floor(avgLoginMinutes / 60);
+          const mins = avgLoginMinutes % 60;
+          const suffix = hours24 >= 12 ? "PM" : "AM";
+          const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+          return `${hours12}:${String(mins).padStart(2, "0")} ${suffix}`;
+        })();
+
+  const avgBreakMin = presentDays ? Math.round(totalBreakMin / presentDays) : 0;
+
+  const nowDate = getTodayDateStringInTimeZone(APP_TIMEZONE);
 
   const pastLeaveDates = leaveRows
-    .filter((x) => x.off_date <= todayAttendanceDate)
-    .map((x) => x.off_date);
+    .map((x) => x.off_date)
+    .filter((d) => d < nowDate);
 
   const upcomingLeaveDates = leaveRows
-    .filter((x) => x.off_date > todayAttendanceDate)
-    .map((x) => x.off_date);
+    .map((x) => x.off_date)
+    .filter((d) => d >= nowDate);
+
+  const managerCorrectionCount = (auditRows || []).filter(
+    (row) =>
+      String(row.action_type || "").startsWith("mark_") ||
+      String(row.action_type || "").startsWith("fix_") ||
+      String(row.action_type || "").startsWith("force_") ||
+      String(row.action_type || "").startsWith("remove_") ||
+      String(row.action_type || "").startsWith("undo_") ||
+      String(row.action_type || "").startsWith("reset_") ||
+      String(row.action_type || "").startsWith("lock_") ||
+      String(row.action_type || "").startsWith("unlock_"),
+  ).length;
 
   return {
     presentDays,
-    leaveDays: leaveRows.length,
+    leaveDays,
     pastLeaveDates,
     upcomingLeaveDates,
     lateJoins,
@@ -8235,7 +8733,8 @@ async function getEmployeeMonthlyAttendanceSummary(userId, orgId) {
     longShiftCount,
     longBreakCount,
     possibleHalfDays,
-    managerCorrectionCount: auditRows.length,
+    managerCorrectionCount,
+    totalWorkingDays,
   };
 }
 
@@ -11797,6 +12296,15 @@ app.post("/whatsapp", async (req, res) => {
         successType: "attendance_query",
         failureType: "attendance_query_failed",
         action: () => handleAuditAttendance(res, user, auditAttendanceCommand),
+      });
+    }
+
+    const workDayOverrideCommand = parseWorkDayOverrideCommand(body);
+    if (workDayOverrideCommand) {
+      return runInboundAction({
+        successType: "attendance_update",
+        failureType: "attendance_update_failed",
+        action: () => handleWorkDayOverride(res, user, workDayOverrideCommand),
       });
     }
 
