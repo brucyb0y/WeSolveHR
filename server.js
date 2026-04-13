@@ -8956,6 +8956,7 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
     leaveResult,
     lateResult,
     auditResult,
+    overrideResult,
     monthlySummary,
   ] = await Promise.all([
     supabase
@@ -9038,6 +9039,16 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
         ).toISOString(),
       )
       .order("created_at", { ascending: false }),
+
+    supabase
+      .from("work_day_expectation_overrides")
+      .select("id, override_date, mode")
+      .eq("user_id", userId)
+      .eq("org_id", orgId)
+      .gte("override_date", startDate)
+      .lt("override_date", endDateExclusive)
+      .order("override_date", { ascending: true }),
+
     getEmployeeMonthlyAttendanceSummary(userId, orgId),
   ]);
 
@@ -9047,6 +9058,7 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
   if (leaveResult.error) throw leaveResult.error;
   if (lateResult.error) throw lateResult.error;
   if (auditResult.error) throw auditResult.error;
+  if (overrideResult.error) throw overrideResult.error;
 
   const user = userResult.data;
   if (!user) {
@@ -9058,12 +9070,33 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
   const leaveRows = leaveResult.data || [];
   const lateRows = lateResult.data || [];
   const auditRows = auditResult.data || [];
+  const overrideRows = overrideResult.data || [];
+
+  const overrideByDate = new Map(
+    (overrideRows || []).map((x) => [x.override_date, x.mode]),
+  );
 
   const todaySummary = getAttendanceSummaryFromEvents(todayEvents);
   const leaveToday =
     leaveRows.find((x) => x.off_date === todayAttendanceDate) || null;
   const lateToday =
     lateRows.find((x) => x.late_date === todayAttendanceDate) || null;
+
+  const todayOverrideMode = overrideByDate.get(todayAttendanceDate) || null;
+
+  const todayExpectation = resolveWorkExpectation({
+    reportDate: todayAttendanceDate,
+    isOnLeave: !!leaveToday,
+    overrideMode: todayOverrideMode,
+  });
+
+  const effectiveTodayStatus = !todayExpectation.expectedToWork
+    ? leaveToday
+      ? "leave"
+      : "off"
+    : todaySummary.currentStatus;
+
+  const effectiveLeaveToday = !todayExpectation.expectedToWork && !!leaveToday;
 
   const eventsByAttendanceDay = new Map();
 
@@ -9082,6 +9115,7 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
   const allAttendanceDates = new Set([
     ...Array.from(eventsByAttendanceDay.keys()),
     ...leaveRows.map((x) => x.off_date),
+    ...overrideRows.map((x) => x.override_date),
   ]);
 
   const sortedAttendanceDates = Array.from(allAttendanceDates).sort((a, b) =>
@@ -9095,6 +9129,24 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
       lateRows.find((x) => x.late_date === attendanceDate) || null;
     const dayLeave =
       leaveRows.find((x) => x.off_date === attendanceDate) || null;
+
+    const overrideMode = overrideByDate.get(attendanceDate) || null;
+
+    const expectation = resolveWorkExpectation({
+      reportDate: attendanceDate,
+      isOnLeave: !!dayLeave,
+      overrideMode,
+    });
+
+    const effectiveStatus = !expectation.expectedToWork
+      ? dayLeave
+        ? "leave"
+        : "off"
+      : daySummary.currentStatus;
+
+    const effectiveLeaveText =
+      !expectation.expectedToWork && dayLeave ? "Yes" : "No";
+
     const dayAuditCount = auditRows.filter((x) => {
       const auditDate = parseIsoToAttendanceDateString(x.created_at);
       return auditDate === attendanceDate;
@@ -9102,7 +9154,7 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
 
     history.push({
       attendance_date: attendanceDate,
-      status: dayLeave ? "leave" : daySummary.currentStatus,
+      status: effectiveStatus,
       first_login_text: daySummary.firstLogin
         ? formatTimeOnly(daySummary.firstLogin.created_at)
         : "-",
@@ -9121,7 +9173,7 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
               : "not approved"
             : "no prior info"
           : "-",
-      leave_text: dayLeave ? "Yes" : "No",
+      leave_text: effectiveLeaveText,
       flags:
         [
           daySummary.longShiftFlag ? "Long shift" : null,
@@ -9142,11 +9194,12 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
       })),
     });
   }
+
   return {
     employee: user,
     today: {
       attendance_date: todayAttendanceDate,
-      current_status: leaveToday ? "leave" : todaySummary.currentStatus,
+      current_status: effectiveTodayStatus,
       first_login_text: todaySummary.firstLogin
         ? formatTimeOnly(todaySummary.firstLogin.created_at)
         : "-",
@@ -9168,7 +9221,7 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
               : "not approved"
             : "no prior info"
           : "-",
-      leave_today: !!leaveToday,
+      leave_today: effectiveLeaveToday,
       long_shift_flag: todaySummary.longShiftFlag,
       long_break_flag: todaySummary.longBreakFlag,
       possible_half_day: todaySummary.possibleHalfDay,
