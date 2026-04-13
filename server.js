@@ -6647,6 +6647,36 @@ function getDefaultWorkExpectationForDate(reportDate) {
   };
 }
 
+async function getMissingReportDatesForUserInRange({
+  orgId,
+  userId,
+  startDate,
+  endDateExclusive,
+}) {
+  const missingDates = [];
+  const todayAttendanceDate = getAttendanceDayDateStringFromDate(new Date());
+
+  let currentDate = startDate;
+
+  while (currentDate < endDateExclusive && currentDate <= todayAttendanceDate) {
+    const daily = await getDailyNarrativeReport({
+      orgId,
+      reportDate: currentDate,
+      userId,
+    });
+
+    const row = (daily.users || [])[0] || null;
+
+    if (row && row.reportStatus === "missing") {
+      missingDates.push(currentDate);
+    }
+
+    currentDate = addDaysToDateString(currentDate, 1);
+  }
+
+  return missingDates;
+}
+
 function resolveWorkExpectation({ reportDate, isOnLeave, overrideMode }) {
   if (overrideMode === "half_day") {
     return {
@@ -8881,7 +8911,18 @@ async function getEmployeeMonthlyAttendanceSummary(userId, orgId) {
       String(row.action_type || "").startsWith("unlock_"),
   ).length;
 
+  const redReportDates = await getMissingReportDatesForUserInRange({
+    orgId,
+    userId,
+    startDate,
+    endDateExclusive,
+  });
+
+  const redReportDays = redReportDates.length;
+
   return {
+    redReportDays,
+    redReportDates,
     presentDays,
     leaveDays,
     pastLeaveDates,
@@ -9483,6 +9524,22 @@ th {
                 <div class="k">Long break flags</div><div>${escapeHtml(String(monthly.longBreakCount || 0))}</div>
                 <div class="k">Possible half days</div><div>${escapeHtml(String(monthly.possibleHalfDays || 0))}</div>
                 <div class="k">Manager corrections</div><div>${escapeHtml(String(monthly.managerCorrectionCount || 0))}</div>
+                <div class="k">Red report days</div>
+<div>${escapeHtml(String(monthly.redReportDays || 0))}</div>
+
+<div class="k">Red report dates</div>
+<div>
+  ${
+    (monthly.redReportDates || []).length
+      ? `
+      <details>
+        <summary>${escapeHtml(String(monthly.redReportDays || 0))} date(s)</summary>
+        <div style="margin-top:8px;">${escapeHtml(formatDateListForHumans(monthly.redReportDates || []))}</div>
+      </details>
+    `
+      : "None"
+  }
+</div>
               </div>
             </div>
           </div>
