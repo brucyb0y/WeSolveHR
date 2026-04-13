@@ -7276,7 +7276,7 @@ function renderReportsPage(data) {
             : `<li class="muted">No extra work notes</li>`;
 
           return `
-<div class="report-card">
+<div class="report-card ${escapeHtml(user.reportCardClass || "")}" data-user-name="${escapeHtml(String(user.userName || "").toLowerCase())}">
 <div class="report-card-head">
                 <div>
 <div class="report-name">
