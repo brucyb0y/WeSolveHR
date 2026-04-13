@@ -6478,16 +6478,6 @@ function getDefaultWorkExpectationForDate(reportDate) {
 }
 
 function resolveWorkExpectation({ reportDate, isOnLeave, overrideMode }) {
-  if (isOnLeave) {
-    return {
-      expectedToWork: false,
-      workDayWeight: 0,
-      workMode: "off",
-      source: "leave",
-      label: "On leave",
-    };
-  }
-
   if (overrideMode === "half_day") {
     return {
       expectedToWork: true,
@@ -6508,6 +6498,16 @@ function resolveWorkExpectation({ reportDate, isOnLeave, overrideMode }) {
     };
   }
 
+  if (isOnLeave) {
+    return {
+      expectedToWork: false,
+      workDayWeight: 0,
+      workMode: "off",
+      source: "leave",
+      label: "On leave",
+    };
+  }
+
   return getDefaultWorkExpectationForDate(reportDate);
 }
 
@@ -6518,19 +6518,11 @@ function getReportCardStatus({
   hasTaskUpdates,
   hasExtraWork,
 }) {
-  if (isOnLeave) {
-    return {
-      status: "leave",
-      cardClass: "report-card-leave",
-      reason: "On leave",
-    };
-  }
-
   if (!expectedToWork) {
     return {
-      status: "off",
-      cardClass: "report-card-off",
-      reason: "Not expected to work",
+      status: isOnLeave ? "leave" : "off",
+      cardClass: isOnLeave ? "report-card-leave" : "report-card-off",
+      reason: isOnLeave ? "On leave" : "Not expected to work",
     };
   }
 
