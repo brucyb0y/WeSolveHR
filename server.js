@@ -1484,6 +1484,20 @@ function parseWorkDayOverrideCommand(text) {
   return null;
 }
 
+function parseCompanyOffCommand(text) {
+  const raw = normalizeText(text);
+
+  const match = raw.match(
+    /^company\s+off\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
+  );
+
+  if (!match) return null;
+
+  return {
+    off_date_text: match[1].trim(),
+  };
+}
+
 function parseAttendanceCommand(text) {
   const raw = normalizeText(text);
 
@@ -2005,6 +2019,22 @@ async function findUniqueUserByName(name, orgId) {
   const users = await findUsersByName(name, orgId);
   if (users.length !== 1) return null;
   return users[0];
+}
+
+async function getAllActiveUsersInOrg(orgId) {
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, name, phone_number, role, is_active")
+    .eq("org_id", orgId)
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error("getAllActiveUsersInOrg error:", error);
+    return { users: [], error };
+  }
+
+  return { users: data || [], error: null };
 }
 
 async function findUsersByNames(names, orgId) {
@@ -3988,6 +4018,9 @@ async function handleHelp(res, user, topic = "") {
           isManager ? "summary today" : null,
           isManager ? "now" : null,
           isManager ? "day on sunday Zoya" : null,
+          isManager ? "company off today" : null,
+          isManager ? "company off tomorrow" : null,
+          isManager ? "company off 15 april" : null,
           isManager ? "day on saturday Aj" : null,
           isManager ? "day half sunday Ruhab" : null,
           isManager ? "day on 11 april Mahesh" : null,
@@ -4021,6 +4054,9 @@ async function handleHelp(res, user, topic = "") {
           "who is off today",
           "summary today",
           "day on sunday Zoya",
+          "company off today",
+          "company off tomorrow",
+          "company off 15 april",
           "day on saturday Aj",
           "day half sunday Ruhab",
           "day on 11 april Mahesh",
@@ -4795,6 +4831,101 @@ async function handleOffDayForOther(res, actingUser, offCommand) {
   );
 }
 
+async function handleCompanyOffDay(res, actingUser, command) {
+  if (!isManagerOrAdmin(actingUser)) {
+    return sendTwiml(res, "You are not allowed to mark company-wide leave.");
+  }
+
+  const offDate = parseFlexibleDateText(command.off_date_text);
+
+  if (!offDate) {
+    return sendTwiml(
+      res,
+      `I could not understand the off date "${command.off_date_text}". Use today, tomorrow, 11 april, or april 11.`,
+    );
+  }
+
+  const { users, error: usersError } = await getAllActiveUsersInOrg(
+    actingUser.org_id,
+  );
+
+  if (usersError) {
+    console.error("handleCompanyOffDay get users error:", usersError);
+    return sendTwiml(res, "Failed to fetch team users.");
+  }
+
+  if (!users.length) {
+    return sendTwiml(res, "No active users found in the company.");
+  }
+
+  const lockedUsers = [];
+  const unlockedUsers = [];
+
+  for (const user of users) {
+    const locked = await isAttendanceDayLocked(
+      user.id,
+      offDate,
+      actingUser.org_id,
+    );
+
+    if (locked) {
+      lockedUsers.push(user);
+    } else {
+      unlockedUsers.push(user);
+    }
+  }
+
+  if (!unlockedUsers.length) {
+    return sendTwiml(
+      res,
+      `❌ Company-wide leave could not be applied because all users are locked for ${offDate}.`,
+    );
+  }
+
+  const rows = unlockedUsers.map((user) => ({
+    org_id: actingUser.org_id,
+    user_id: user.id,
+    off_date: offDate,
+    note: `Company-wide leave marked by ${actingUser.name}`,
+    created_by_user_id: actingUser.id,
+  }));
+
+  const { error } = await supabase
+    .from("planned_time_off")
+    .upsert(rows, { onConflict: "user_id,off_date" });
+
+  if (error) {
+    console.error("handleCompanyOffDay upsert error:", error);
+    return sendTwiml(res, "Failed to save company-wide leave.");
+  }
+
+  for (const user of unlockedUsers) {
+    await insertAttendanceAudit(
+      user.id,
+      actingUser.id,
+      "mark_company_leave",
+      null,
+      { off_date: offDate },
+      `Company-wide leave marked by ${actingUser.name}`,
+      actingUser.org_id,
+    );
+  }
+
+  const lines = [
+    `🌴 Company-wide leave saved`,
+    `Date: ${offDate}`,
+    `Applied to: ${unlockedUsers.length} user(s)`,
+  ];
+
+  if (lockedUsers.length) {
+    lines.push(
+      `Skipped locked users: ${lockedUsers.map((x) => x.name).join(", ")}`,
+    );
+  }
+
+  return sendTwiml(res, lines.join("\n"));
+}
+
 async function handleWorkDayOverride(res, actingUser, command) {
   if (!isManagerOrAdmin(actingUser)) {
     return sendTwiml(
@@ -4993,6 +5124,45 @@ async function createPlannedOffDay(
   );
 
   return error;
+}
+
+async function createCompanyWidePlannedOffDay(
+  orgId,
+  offDate,
+  createdByUserId,
+  note = null,
+) {
+  const { users, error: usersError } = await getAllActiveUsersInOrg(orgId);
+
+  if (usersError) {
+    return { error: usersError, count: 0, users: [] };
+  }
+
+  if (!users.length) {
+    return { error: null, count: 0, users: [] };
+  }
+
+  const rows = users.map((user) => ({
+    org_id: orgId,
+    user_id: user.id,
+    off_date: offDate,
+    note,
+    created_by_user_id: createdByUserId,
+  }));
+
+  const { error } = await supabase
+    .from("planned_time_off")
+    .upsert(rows, { onConflict: "user_id,off_date" });
+
+  if (error) {
+    return { error, count: 0, users: [] };
+  }
+
+  return {
+    error: null,
+    count: users.length,
+    users,
+  };
 }
 
 async function upsertWorkDayOverride({
@@ -12267,6 +12437,15 @@ app.post("/whatsapp", async (req, res) => {
         successType: "attendance_query",
         failureType: "attendance_query_failed",
         action: () => handleEmployeeSummary(res, user, employeeSummaryCommand),
+      });
+    }
+
+    const companyOffCommand = parseCompanyOffCommand(body);
+    if (companyOffCommand) {
+      return runInboundAction({
+        successType: "attendance_updated",
+        failureType: "attendance_update_failed",
+        action: () => handleCompanyOffDay(res, user, companyOffCommand),
       });
     }
 
