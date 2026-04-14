@@ -10561,6 +10561,11 @@ async function getTasksPageData(filters = {}, orgId) {
   const priority = String(filters.priority || "").trim();
   const blocked = String(filters.blocked || "") === "true";
   const overdue = String(filters.overdue || "") === "true";
+  const progressBuckets = Array.isArray(filters.progressBucket)
+    ? filters.progressBucket
+    : filters.progressBucket
+      ? [filters.progressBucket]
+      : ["not_begun", "zero_to_fifty", "fifty_to_hundred"];
 
   let query = supabase
     .from("tasks")
@@ -10664,6 +10669,21 @@ async function getTasksPageData(filters = {}, orgId) {
         (owner) => String(owner.user_id) === assignee,
       ),
     );
+  }
+
+  if (progressBuckets.length) {
+    rows = rows.filter((task) => {
+      const progress = Number(task.progress ?? 0);
+
+      return progressBuckets.some((bucket) => {
+        if (bucket === "not_begun") return progress === 0;
+        if (bucket === "zero_to_fifty") return progress > 0 && progress < 50;
+        if (bucket === "fifty_to_hundred")
+          return progress >= 50 && progress < 100;
+        if (bucket === "complete") return progress === 100;
+        return false;
+      });
+    });
   }
 
   return rows;
@@ -11042,6 +11062,11 @@ app.get("/api/tasks", requireDashboardAuth, async (req, res) => {
       priority: req.query.priority || "",
       blocked: String(req.query.blocked || "") === "true",
       overdue: String(req.query.overdue || "") === "true",
+      progressBucket: Array.isArray(req.query.progressBucket)
+        ? req.query.progressBucket
+        : req.query.progressBucket
+          ? [req.query.progressBucket]
+          : ["not_begun", "zero_to_fifty", "fifty_to_hundred"],
     };
 
     const data = await getTasksPageData(filters, DASHBOARD_ORG_ID);
@@ -11473,17 +11498,24 @@ tbody tr:hover {
     <option value="blocked">Blocked</option>
   </select>
 
-  <select id="priority">
-    <option value="">All priority</option>
-    <option value="low">Low</option>
-    <option value="medium">Medium</option>
-    <option value="high">High</option>
-    <option value="urgent">Urgent</option>
-  </select>
+<select id="priority">
+  <option value="">All priority</option>
+  <option value="low">Low</option>
+  <option value="medium">Medium</option>
+  <option value="high">High</option>
+  <option value="urgent">Urgent</option>
+</select>
 
-  <label><input type="checkbox" id="blocked" /> Blocked only</label>
-  <label><input type="checkbox" id="overdue" /> Overdue only</label>
-  <button onclick="loadTasks()">Apply</button>
+<select id="progressBucket" multiple size="4" style="min-height: 132px;">
+  <option value="not_begun" selected>Not begun</option>
+  <option value="zero_to_fifty" selected>0–50% complete</option>
+  <option value="fifty_to_hundred" selected>50–100% complete</option>
+  <option value="complete">100% complete</option>
+</select>
+
+<label><input type="checkbox" id="blocked" /> Blocked only</label>
+<label><input type="checkbox" id="overdue" /> Overdue only</label>
+<button onclick="loadTasks()">Apply</button>
 </div>
 </div>
 
@@ -11659,10 +11691,13 @@ const assignee = document.getElementById('assignee').value;
 const business = document.getElementById('business').value;
 const area = document.getElementById('area').value;
 const status = document.getElementById('status').value;
+
 const priority = document.getElementById('priority').value;
 const blocked = document.getElementById('blocked').checked;
 const overdue = document.getElementById('overdue').checked;
-
+const progressBucket = Array.from(
+  document.getElementById('progressBucket').selectedOptions
+).map(opt => opt.value);
 
 if (search) params.set('search', search);
 if (assignee) params.set('assignee', assignee);
@@ -11672,6 +11707,10 @@ if (status) params.set('status', status);
 if (priority) params.set('priority', priority);
 if (blocked) params.set('blocked', 'true');
 if (overdue) params.set('overdue', 'true');
+
+for (const bucket of progressBucket) {
+  params.append('progressBucket', bucket);
+}
 
             document.getElementById('statusText').textContent = 'Loading tasks...';
 
@@ -11729,15 +11768,15 @@ document.getElementById('taskRows').innerHTML = rows.map(function(task) {
           }
 
           loadUsers().then(loadTasks);
-            setInterval(() => {
-    window.location.reload();
-  }, 60000);
+setInterval(() => {
+  loadTasks();
+}, 60000);
 
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-      location.reload();
-    }
-  });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    loadTasks();
+  }
+});
         </script>
       </body>
     </html>
