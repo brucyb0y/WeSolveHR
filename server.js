@@ -11531,8 +11531,6 @@ tbody tr:hover {
   <option value="medium">Medium</option>
   <option value="high">High</option>
   <option value="urgent">Urgent</option>
-  <option value="hide_cancelled">Hide Cancelled</option>
-<option value="only_cancelled">Cancelled only</option>
 </select>
 
 <select id="progressBucket" multiple size="1">
@@ -11540,6 +11538,8 @@ tbody tr:hover {
   <option value="zero_to_fifty" selected>0–50% complete</option>
   <option value="fifty_to_hundred" selected>50–100% complete</option>
   <option value="complete">100% complete</option>
+    <option value="hide_cancelled">Hide Cancelled</option>
+<option value="only_cancelled">Cancelled only</option>
 </select>
 
 <label><input type="checkbox" id="blocked" /> Blocked only</label>
