@@ -11531,6 +11531,8 @@ tbody tr:hover {
   <option value="medium">Medium</option>
   <option value="high">High</option>
   <option value="urgent">Urgent</option>
+  <option value="hide_cancelled">Hide Cancelled</option>
+<option value="only_cancelled">Cancelled only</option>
 </select>
 
 <select id="progressBucket" multiple size="1">
