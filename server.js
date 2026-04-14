@@ -10672,15 +10672,30 @@ async function getTasksPageData(filters = {}, orgId) {
   }
 
   if (progressBuckets.length) {
+    const hideCancelled = progressBuckets.includes("hide_cancelled");
+    const onlyCancelled = progressBuckets.includes("only_cancelled");
+
     rows = rows.filter((task) => {
       const progress = Number(task.progress ?? 0);
+      const status = String(task.status || "").toLowerCase();
+
+      if (onlyCancelled) {
+        return status === "cancelled";
+      }
+
+      if (hideCancelled && status === "cancelled") {
+        return false;
+      }
 
       return progressBuckets.some((bucket) => {
-        if (bucket === "not_begun") return progress === 0;
-        if (bucket === "zero_to_fifty") return progress > 0 && progress < 50;
+        if (bucket === "not_begun")
+          return progress === 0 && status !== "cancelled";
+        if (bucket === "zero_to_fifty")
+          return progress > 0 && progress < 50 && status !== "cancelled";
         if (bucket === "fifty_to_hundred")
-          return progress >= 50 && progress < 100;
-        if (bucket === "complete") return progress === 100;
+          return progress >= 50 && progress < 100 && status !== "cancelled";
+        if (bucket === "complete")
+          return progress === 100 && status !== "cancelled";
         return false;
       });
     });
@@ -11538,7 +11553,7 @@ tbody tr:hover {
   <option value="zero_to_fifty" selected>0–50% complete</option>
   <option value="fifty_to_hundred" selected>50–100% complete</option>
   <option value="complete">100% complete</option>
-    <option value="hide_cancelled">Hide Cancelled</option>
+    <option value="hide_cancelled" selected>Hide Cancelled</option>
 <option value="only_cancelled">Cancelled only</option>
 </select>
 
