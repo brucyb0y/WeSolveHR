@@ -11376,6 +11376,22 @@ button {
             font-size: 14px;
             white-space: nowrap;
           }
+          
+.controls select[multiple] {
+  min-height: 132px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font: inherit;
+}
+
+.controls select[multiple] option {
+  padding: 8px 10px;
+  color: var(--text);
+  background: #1f2740;
+}
 
           #statusText {
             color: var(--muted);
@@ -11506,8 +11522,8 @@ tbody tr:hover {
   <option value="urgent">Urgent</option>
 </select>
 
-<select id="progressBucket" multiple size="4" style="min-height: 132px;">
-  <option value="not_begun" selected>Not begun</option>
+<select id="progressBucket" multiple size="4">
+<option value="not_begun" selected>Not begun</option>
   <option value="zero_to_fifty" selected>0–50% complete</option>
   <option value="fifty_to_hundred" selected>50–100% complete</option>
   <option value="complete">100% complete</option>
