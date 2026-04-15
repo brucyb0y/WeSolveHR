@@ -11939,6 +11939,8 @@ document.addEventListener("keydown", function(event) {
           async function loadUsers() {
             const res = await fetch('/api/users');
             const json = await res.json();
+            console.log('loadTasks params:', params.toString());
+console.log('loadTasks response:', json);
             const select = document.getElementById('assignee');
             if (!json.ok) return;
             for (const user of json.data) {
