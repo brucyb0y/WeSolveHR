@@ -8508,24 +8508,24 @@ function renderHistoryDetail(item) {
     return "Task created";
   }
 
-if (item.changeType === "status_change") {
-  const oldStatus = oldValue.status || "-";
-  const newStatus = newValue.status || "-";
-  const oldProgress = oldValue.progress ?? "-";
-  const newProgress = newValue.progress ?? "-";
-  const note = newValue.note ? "\nNote: " + newValue.note : "";
+  if (item.changeType === "status_change") {
+    const oldStatus = oldValue.status || "-";
+    const newStatus = newValue.status || "-";
+    const oldProgress = oldValue.progress ?? "-";
+    const newProgress = newValue.progress ?? "-";
+    const note = newValue.note ? "\\nNote: " + newValue.note : "";
 
-  return (
-    "Status: " + oldStatus + " → " + newStatus +
-    "\nProgress: " + oldProgress + "% → " + newProgress + "%" +
-    note
-  );
-}
+    return (
+      "Status: " + oldStatus + " → " + newStatus +
+      "\\nProgress: " + oldProgress + "% → " + newProgress + "%" +
+      note
+    );
+  }
 
   if (item.changeType === "progress_change") {
     const oldProgress = oldValue.progress ?? 0;
     const newProgress = newValue.progress ?? 0;
-    const note = newValue.note ? "\nNote: " + newValue.note : "";
+    const note = newValue.note ? "\\nNote: " + newValue.note : "";
     return "Progress: " + oldProgress + "% → " + newProgress + "%" + note;
   }
 
@@ -8539,12 +8539,12 @@ if (item.changeType === "status_change") {
     return "Deadline: " + (oldValue.deadline || "-") + " → " + (newValue.deadline || "-");
   }
 
-if (item.fieldName === "blocker_note") {
-  return [
-    "Blocker: " + (newValue.blocker_note || "-"),
-    newValue.note ? "Note: " + newValue.note : null
-  ].filter(Boolean).join("\n");
-}
+  if (item.fieldName === "blocker_note") {
+    return [
+      "Blocker: " + (newValue.blocker_note || "-"),
+      newValue.note ? "Note: " + newValue.note : null
+    ].filter(Boolean).join("\\n");
+  }
 
   if (item.fieldName) {
     return (item.fieldName || "Field") + ": " +
@@ -8553,6 +8553,7 @@ if (item.fieldName === "blocker_note") {
 
   return JSON.stringify(newValue || {});
 }
+
 
           async function openTaskDetail(taskNo) {
             const modal = document.getElementById("taskModal");
