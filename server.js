@@ -11611,6 +11611,18 @@ th, td {
   vertical-align: top;
 }
 
+.task-link {
+  color: #60a5fa;
+  cursor: pointer;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.task-link:hover {
+  text-decoration: underline;
+  color: #93c5fd;
+}
+
 th:nth-child(1), td:nth-child(1) { min-width: 80px; }   /* ID */
 th:nth-child(2), td:nth-child(2) { min-width: 300px; }  /* Title */
 th:nth-child(3), td:nth-child(3) { min-width: 120px; }  /* Business */
@@ -12052,7 +12064,11 @@ document.getElementById('taskRows').innerHTML = rows.map(function(task) {
 
   return (
     '<tr class="' + rowClasses + '" onclick="openTaskDetail(' + (task.task_no || task.id) + ')">' +
-      '<td>#' + (task.task_no || task.id) + '</td>' +
+      '<td>' +
+  '<span class="task-link" onclick="event.stopPropagation(); openTaskDetail(' + (task.task_no || task.id) + ')">' +
+    '#' + (task.task_no || task.id) +
+  '</span>' +
+'</td>' +
       '<td>' + escapeHtml(task.title || '') + '</td>' +
       '<td>' + escapeHtml(task.business || '-') + '</td>' +
       '<td>' + escapeHtml(task.area || '-') + '</td>' +
