@@ -12260,6 +12260,49 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
           tbody tr:hover {
             background: rgba(97,255,161,0.045);
           }
+          
+          .loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(21, 26, 46, 0.78);
+  backdrop-filter: blur(4px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.loading-overlay.show {
+  display: flex;
+}
+
+#currentStatusRows tr:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.loading-card {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: 18px 22px;
+  min-width: 260px;
+  text-align: center;
+}
+
+.loading-spinner {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.16);
+  border-top-color: var(--primary);
+  margin: 0 auto 12px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
           @media (max-width: 900px) {
             .cards { grid-template-columns: 1fr; }
@@ -12374,15 +12417,24 @@ async function loadAttendance() {
 }
 
           loadAttendance();
-          document.getElementById("currentStatusRows").addEventListener("click", function (e) {
+document.getElementById("currentStatusRows").addEventListener("click", function (e) {
   const tr = e.target.closest("tr[data-id]");
   if (!tr) return;
 
-  const id = tr.getAttribute("data-id");
-  if (!id) return;
+  const userId = tr.getAttribute("data-id");
+  if (!userId) return;
 
-  window.location.href = "/attendance/" + id;
+  const overlay = document.getElementById("pageLoadingOverlay");
+  if (overlay) overlay.classList.add("show");
+
+  tr.style.opacity = "0.65";
+  tr.style.pointerEvents = "none";
+
+  setTimeout(() => {
+  window.location.href = "/attendance/" + userId;
+}, 80);
 });
+
             setInterval(() => {
     window.location.reload();
   }, 60000);
@@ -12393,6 +12445,14 @@ async function loadAttendance() {
     }
   });
         </script>
+        
+        <div id="pageLoadingOverlay" class="loading-overlay">
+  <div class="loading-card">
+    <div class="loading-spinner"></div>
+    <div style="font-weight:700;">Opening attendance details...</div>
+    <div class="muted" style="margin-top:6px;">Please wait</div>
+  </div>
+</div>
       </body>
     </html>
   `);
