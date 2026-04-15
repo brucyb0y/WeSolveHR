@@ -11811,17 +11811,17 @@ function renderHistoryDetail(item) {
     const newStatus = newValue.status || "-";
     const oldProgress = oldValue.progress ?? "-";
     const newProgress = newValue.progress ?? "-";
-    const note = newValue.note ? "\nNote: " + newValue.note : "";
+    const note = newValue.note ? "\\nNote: " + newValue.note : "";
 
     return "Status: " + oldStatus + " → " + newStatus +
-      "\nProgress: " + oldProgress + "% → " + newProgress + "%" +
+      "\\nProgress: " + oldProgress + "% → " + newProgress + "%" +
       note;
   }
 
   if (item.changeType === "progress_change") {
     const oldProgress = oldValue.progress ?? 0;
     const newProgress = newValue.progress ?? 0;
-    const note = newValue.note ? "\nNote: " + newValue.note : "";
+    const note = newValue.note ? "\\nNote: " + newValue.note : "";
 
     return "Progress: " + oldProgress + "% → " + newProgress + "%" + note;
   }
@@ -11829,7 +11829,6 @@ function renderHistoryDetail(item) {
   if (item.changeType === "owner_change") {
     const oldOwners = Array.isArray(oldValue.owners) ? oldValue.owners.join(", ") : "-";
     const newOwners = Array.isArray(newValue.owners) ? newValue.owners.join(", ") : "-";
-
     return "Owners: " + oldOwners + " → " + newOwners;
   }
 
@@ -11841,7 +11840,7 @@ function renderHistoryDetail(item) {
     return [
       "Blocker: " + (newValue.blocker_note || "-"),
       newValue.note ? "Note: " + newValue.note : null
-    ].filter(Boolean).join("\n");
+    ].filter(Boolean).join("\\n");
   }
 
   if (item.fieldName === "title") {
