@@ -11948,24 +11948,44 @@ document.addEventListener("keydown", function(event) {
   }
 });
 
-      
 async function loadUsers() {
-  const res = await fetch('/api/users');
-  const json = await res.json();
+  try {
+    console.log('loadUsers start');
 
-  const select = document.getElementById('assignee');
-  if (!json.ok) {
-    console.error('loadUsers api error:', json);
-    return;
-  }
+    const select = document.getElementById('assignee');
+    if (!select) {
+      console.error('loadUsers: assignee select not found');
+      return;
+    }
 
-  select.innerHTML = '<option value="">All assignee</option>';
+    const res = await fetch('/api/users');
+    console.log('loadUsers fetch status:', res.status, res.statusText);
 
-  for (const user of json.data) {
-    const opt = document.createElement('option');
-    opt.value = user.id;
-    opt.textContent = user.name;
-    select.appendChild(opt);
+    const json = await res.json();
+    console.log('loadUsers response:', json);
+
+    if (!json.ok) {
+      console.error('loadUsers api error:', json);
+      select.innerHTML = '<option value="">All assignee</option>';
+      return;
+    }
+
+    select.innerHTML = '<option value="">All assignee</option>';
+
+    for (const user of (json.data || [])) {
+      const opt = document.createElement('option');
+      opt.value = String(user.id);
+      opt.textContent = user.name;
+      select.appendChild(opt);
+    }
+
+    console.log('loadUsers done. option count:', select.options.length);
+  } catch (error) {
+    console.error('loadUsers fatal error:', error);
+    const select = document.getElementById('assignee');
+    if (select) {
+      select.innerHTML = '<option value="">All assignee</option>';
+    }
   }
 }
 
