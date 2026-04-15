@@ -7955,13 +7955,19 @@ function renderHistoryDetail(item) {
     ].join("\\n");
   }
 
-  if (item.changeType === "status_change") {
-    return [
-      "Status: " + (oldValue.status || "-") + " → " + (newValue.status || "-"),
-      "Progress: " + (oldValue.progress ?? "-") + "% → " + (newValue.progress ?? "-") + "%",
-      newValue.note ? "Note: " + newValue.note : null
-    ].filter(Boolean).join("\\n");
-  }
+if (item.changeType === "status_change") {
+  const oldStatus = oldValue.status || "-";
+  const newStatus = newValue.status || "-";
+  const oldProgress = oldValue.progress ?? "-";
+  const newProgress = newValue.progress ?? "-";
+  const note = newValue.note ? "\nNote: " + newValue.note : "";
+
+  return (
+    "Status: " + oldStatus + " → " + newStatus +
+    "\nProgress: " + oldProgress + "% → " + newProgress + "%" +
+    note
+  );
+}
 
   if (item.changeType === "progress_change") {
     return [
