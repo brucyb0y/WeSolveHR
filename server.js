@@ -12072,14 +12072,27 @@ document.getElementById('taskRows').innerHTML = rows.map(function(task) {
 }).join('');
           }
 
-          loadUsers().then(loadTasks);
+loadUsers()
+  .then(() => loadTasks())
+  .catch((error) => {
+    console.error('Tasks page init failed:', error);
+    const status = document.getElementById('statusText');
+    if (status) {
+      status.textContent = 'Failed to initialize tasks page';
+    }
+  });
+
 setInterval(() => {
-  loadTasks();
+  loadTasks().catch((error) => {
+    console.error('Periodic loadTasks failed:', error);
+  });
 }, 60000);
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
-    loadTasks();
+    loadTasks().catch((error) => {
+      console.error('Visibility loadTasks failed:', error);
+    });
   }
 });
         </script>
