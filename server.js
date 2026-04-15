@@ -11328,6 +11328,149 @@ tbody tr.task-row-blocked.task-row-overdue:hover {
   background: color-mix(in srgb, var(--danger) 24%, var(--primary) 6%);
 }
 
+tbody tr {
+  cursor: pointer;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  z-index: 9999;
+}
+
+.modal.open {
+  display: block;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 8, 20, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.modal-card {
+  position: relative;
+  width: min(920px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  margin: 20px auto;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  box-shadow: var(--shadow-soft);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  z-index: 2;
+}
+
+.modal-title {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.modal-close {
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.modal-body {
+  padding: 18px 20px 22px;
+}
+
+.modal-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.modal-meta-box {
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.03);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.modal-meta-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.modal-section {
+  margin-top: 18px;
+}
+
+.modal-section h3 {
+  margin: 0 0 10px 0;
+  font-size: 15px;
+}
+
+.history-list {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.history-item {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  white-space: pre-wrap;
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.history-top strong {
+  color: var(--text);
+}
+
+.history-top span {
+  color: var(--muted);
+}
+
+.history-detail {
+  color: var(--text);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 760px) {
+  .modal-meta-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .actions a {
   color: var(--text);
   text-decoration: none;
@@ -11586,12 +11729,17 @@ tbody tr:hover {
   </div>
 </div>
 
-<div class="panel">
-  <h2>Task Detail</h2>
-  <div id="taskDetailEmpty" style="color:#8db6a0;">
-    Click any task row to view full history.
+<div id="taskModal" class="modal">
+  <div class="modal-backdrop" onclick="closeTaskModal()"></div>
+  <div class="modal-card">
+    <div class="modal-header">
+      <div id="modalTitle" class="modal-title">Task Detail</div>
+      <button class="modal-close" onclick="closeTaskModal()">✕</button>
+    </div>
+    <div id="modalBody" class="modal-body">
+      <div class="muted">Loading task details...</div>
+    </div>
   </div>
-  <div id="taskDetail" style="display:none;"></div>
 </div>
 <script>
         
@@ -11622,97 +11770,170 @@ function formatTime(ts) {
 function formatJsonValue(value) {
   if (value == null) return '-';
   if (typeof value === 'object') {
-    return escapeHtml(JSON.stringify(value));
+    try {
+      return escapeHtml(JSON.stringify(value));
+    } catch {
+      return '-';
+    }
   }
   return escapeHtml(String(value));
 }
 
-async function openTaskDetail(taskId) {
+function closeTaskModal() {
+  const modal = document.getElementById("taskModal");
+  if (modal) {
+    modal.classList.remove("open");
+  }
+}
+
+function renderHistoryDetail(item) {
+  const oldValue = item.oldValue || {};
+  const newValue = item.newValue || {};
+
+  if (item.changeType === "task_created") {
+    return "Task created";
+  }
+
+  if (item.changeType === "status_change") {
+    const oldStatus = oldValue.status || "-";
+    const newStatus = newValue.status || "-";
+    const oldProgress = oldValue.progress ?? "-";
+    const newProgress = newValue.progress ?? "-";
+    const note = newValue.note ? "\nNote: " + newValue.note : "";
+    return (
+      "Status: " + oldStatus + " → " + newStatus +
+      "\nProgress: " + oldProgress + "% → " + newProgress + "%" +
+      note
+    );
+  }
+
+  if (item.changeType === "progress_change") {
+    const oldProgress = oldValue.progress ?? 0;
+    const newProgress = newValue.progress ?? 0;
+    const note = newValue.note ? "\nNote: " + newValue.note : "";
+    return "Progress: " + oldProgress + "% → " + newProgress + "%" + note;
+  }
+
+  if (item.changeType === "owner_change") {
+    const oldOwners = Array.isArray(oldValue.owners) ? oldValue.owners.join(", ") : "-";
+    const newOwners = Array.isArray(newValue.owners) ? newValue.owners.join(", ") : "-";
+    return "Owners: " + oldOwners + " → " + newOwners;
+  }
+
+  if (item.changeType === "deadline_change") {
+    return "Deadline: " + (oldValue.deadline || "-") + " → " + (newValue.deadline || "-");
+  }
+
+  if (item.fieldName === "blocker_note") {
+    return [
+      "Blocker: " + (newValue.blocker_note || "-"),
+      newValue.note ? "Note: " + newValue.note : null
+    ].filter(Boolean).join("\n");
+  }
+
+  if (item.fieldName === "title") {
+    return "Title: " + (oldValue.title || "-") + " → " + (newValue.title || "-");
+  }
+
+  if (item.fieldName === "detail") {
+    return "Detail updated";
+  }
+
+  if (item.fieldName === "priority") {
+    return "Priority: " + (oldValue.priority || "-") + " → " + (newValue.priority || "-");
+  }
+
+  if (item.fieldName === "business") {
+    return "Business: " + (oldValue.business || "-") + " → " + (newValue.business || "-");
+  }
+
+  if (item.fieldName === "area") {
+    return "Area: " + (oldValue.area || "-") + " → " + (newValue.area || "-");
+  }
+
+  if (item.fieldName) {
+    return (item.fieldName || "Field") + ": " +
+      JSON.stringify(oldValue) + " → " + JSON.stringify(newValue);
+  }
+
+  return JSON.stringify(newValue || {});
+}
+
+async function openTaskDetail(taskNo) {
+  const modal = document.getElementById("taskModal");
+  const title = document.getElementById("modalTitle");
+  const body = document.getElementById("modalBody");
+
+  title.textContent = "Task #" + taskNo;
+  body.innerHTML = '<div class="muted">Loading task details...</div>';
+  modal.classList.add("open");
+
   try {
-    const res = await fetch('/api/tasks/' + taskId);
+    const res = await fetch("/api/reports/task/" + taskNo);
     const json = await res.json();
 
     if (!json.ok) {
-      document.getElementById('taskDetailEmpty').style.display = 'block';
-      document.getElementById('taskDetailEmpty').textContent = 'Could not load task detail';
-      document.getElementById('taskDetail').style.display = 'none';
-      document.getElementById('taskDetail').innerHTML = '';
+      body.innerHTML =
+        '<div class="muted">' + escapeHtml(json.error || "Failed to load task") + '</div>';
       return;
     }
 
-    const task = json.data;
+    const task = json.data || {};
+    title.textContent = "#" + (task.taskNo || task.id) + " — " + escapeHtml(task.title || "Untitled");
 
-    const ownerText =
-      task.owner_names && Array.isArray(task.owner_names) && task.owner_names.length
-        ? task.owner_names.join(', ')
-        : (task.assignee_name || '-');
+    const historyHtml = (task.history || []).length
+      ? task.history.map(function(item) {
+          return (
+            '<div class="history-item">' +
+              '<div class="history-top">' +
+                '<strong>' + escapeHtml(item.changeType || "-") + '</strong>' +
+                '<span>' + escapeHtml(item.at || "-") + ' • ' + escapeHtml(item.by || "-") + '</span>' +
+              '</div>' +
+              '<div class="history-detail">' + escapeHtml(renderHistoryDetail(item)) + '</div>' +
+            '</div>'
+          );
+        }).join("")
+      : '<div class="muted">No recent history</div>';
 
-    const historyRows = (task.task_history || []).map(function(item) {
-      const time = formatTime(item.created_at);
-      const by = item.changed_by_name || 'Unknown';
-      const note = item.note
-        ? '<div style="margin-top:4px;color:#9fe3c1;">' + escapeHtml(item.note) + '</div>'
-        : '';
-
-      let mainText = '';
-
-      if (item.change_type === 'progress_change') {
-        const oldP = item.old_value?.progress ?? 0;
-        const newP = item.new_value?.progress ?? 0;
-        mainText = '📈 Progress: ' + oldP + '% → ' + newP + '%';
-      } else if (item.change_type === 'status_change') {
-        const oldS = item.old_value?.status ?? '-';
-        const newS = item.new_value?.status ?? '-';
-        mainText = '🔄 Status: ' + oldS + ' → ' + newS;
-      } else if (item.change_type === 'task_created') {
-        mainText = '🆕 Task created';
-      } else if (item.change_type === 'undo') {
-        mainText = '↩️ Undo action';
-      } else {
-        mainText = escapeHtml(item.change_type || 'Unknown change');
-      }
-
-      return (
-        '<div style="padding:10px;border-bottom:1px solid #1e2a24;">' +
-          '<div style="font-size:13px;color:#8db6a0;">' + escapeHtml(time) + ' — ' + escapeHtml(by) + '</div>' +
-          '<div style="font-size:15px;margin-top:4px;">' + mainText + '</div>' +
-          note +
-        '</div>'
-      );
-    }).join('');
-
-    document.getElementById('taskDetailEmpty').style.display = 'none';
-    document.getElementById('taskDetail').style.display = 'block';
-    document.getElementById('taskDetail').innerHTML =
-      '<div style="margin-bottom:16px;">' +
-        '<div style="font-size:22px; font-weight:800;">Task #' + (task.task_no || task.id) + ' — ' + escapeHtml(task.title || '') + '</div>' +
-        '<div style="margin-top:8px; color:#8db6a0; line-height:1.7;">' +
-          '<div><strong>Owners:</strong> ' + escapeHtml(ownerText) + '</div>' +
-          '<div><strong>Business:</strong> ' + escapeHtml(task.business || '-') + '</div>' +
-          '<div><strong>Area:</strong> ' + escapeHtml(task.area || '-') + '</div>' +
-          '<div><strong>Status:</strong> ' + escapeHtml(task.status || '-') + '</div>' +
-          '<div><strong>Progress:</strong> ' + (task.progress ?? 0) + '%</div>' +
-          '<div><strong>Priority:</strong> ' + escapeHtml(task.priority || '-') + '</div>' +
-          '<div><strong>Deadline:</strong> ' + escapeHtml(task.deadline || '-') + '</div>' +
-        '</div>' +
-        (task.detail
-          ? '<div style="margin-top:10px;"><strong>Detail:</strong> ' + escapeHtml(task.detail) + '</div>'
-          : '') +
-        (task.blocker_note
-          ? '<div style="margin-top:10px;"><strong>Current blocker:</strong> ' + escapeHtml(task.blocker_note) + '</div>'
-          : '') +
+    body.innerHTML =
+      '<div class="modal-meta-grid">' +
+        '<div class="modal-meta-box"><div class="modal-meta-label">Owners</div><div>' + escapeHtml(((task.owners || []).join(", ") || "-")) + '</div></div>' +
+        '<div class="modal-meta-box"><div class="modal-meta-label">Status</div><div>' + escapeHtml(task.status || "-") + '</div></div>' +
+        '<div class="modal-meta-box"><div class="modal-meta-label">Priority</div><div>' + escapeHtml(task.priority || "-") + '</div></div>' +
+        '<div class="modal-meta-box"><div class="modal-meta-label">Progress</div><div>' + escapeHtml(String(task.progress ?? 0)) + '%</div></div>' +
+        '<div class="modal-meta-box"><div class="modal-meta-label">Deadline</div><div>' + escapeHtml(task.deadline || "-") + '</div></div>' +
+        '<div class="modal-meta-box"><div class="modal-meta-label">Business / Area</div><div>' + escapeHtml((task.business || "-") + " / " + (task.area || "-")) + '</div></div>' +
       '</div>' +
-      '<div style="margin-top:16px;border:1px solid #1e2a24;border-radius:8px;">' +
-        (historyRows || '<div style="padding:12px;">No history yet</div>') +
+
+      ((task.detail || task.blockerNote) ? (
+        '<div class="modal-section">' +
+          '<h3>Details</h3>' +
+          (task.detail
+            ? '<div class="modal-meta-box" style="margin-bottom:10px;"><div class="modal-meta-label">Detail</div><div>' + escapeHtml(task.detail) + '</div></div>'
+            : ''
+          ) +
+          (task.blockerNote
+            ? '<div class="modal-meta-box"><div class="modal-meta-label">Blocker</div><div>' + escapeHtml(task.blockerNote) + '</div></div>'
+            : ''
+          ) +
+        '</div>'
+      ) : '') +
+
+      '<div class="modal-section">' +
+        '<h3>History</h3>' +
+        '<div class="history-list">' + historyHtml + '</div>' +
       '</div>';
   } catch (error) {
-    console.error('openTaskDetail error:', error);
-    document.getElementById('taskDetailEmpty').style.display = 'block';
-    document.getElementById('taskDetailEmpty').textContent = 'Could not load task detail';
-    document.getElementById('taskDetail').style.display = 'none';
-    document.getElementById('taskDetail').innerHTML = '';
+    console.error("openTaskDetail error:", error);
+    body.innerHTML = '<div class="muted">Could not load task detail</div>';
   }
 }
+
+document.addEventListener("keydown", function(event) {
+  if (event.key === "Escape") {
+    closeTaskModal();
+  }
+});
 
       
           async function loadUsers() {
@@ -11791,7 +12012,7 @@ document.getElementById('taskRows').innerHTML = rows.map(function(task) {
   ].filter(Boolean).join(' ');
 
   return (
-    '<tr class="' + rowClasses + '" onclick="openTaskDetail(' + task.id + ')">' +
+    '<tr class="' + rowClasses + '" onclick="openTaskDetail(' + (task.task_no || task.id) + ')">' +
       '<td>#' + (task.task_no || task.id) + '</td>' +
       '<td>' + escapeHtml(task.title || '') + '</td>' +
       '<td>' + escapeHtml(task.business || '-') + '</td>' +
