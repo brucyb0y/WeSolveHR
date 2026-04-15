@@ -901,6 +901,8 @@ function buildUnknownCommandHelp(user, body) {
     "done 2 tested and verified",
     "edit task 2 blocker waiting on aj",
     "extra work helped aj debug org id issue",
+    "wait 23 on aj for API response",
+    "clear wait 23 aj responded",
     isManager ? "delete 2" : null,
     "",
     "Need full list?",
@@ -1375,6 +1377,61 @@ function parseEditTaskCommand(text) {
       taskId: Number(match[1]),
       field: `clear_${match[2].toLowerCase()}`,
       value: null,
+    };
+  }
+
+  return null;
+}
+
+function parseWaitTaskCommand(text) {
+  const raw = normalizeText(text);
+
+  let match = raw.match(/^wait\s+(\d+)\s+on\s+(.+?)\s+for\s+(.+)$/i);
+  if (match) {
+    return {
+      taskId: Number(match[1]),
+      waiting_on_name: match[2].trim(),
+      reason: match[3].trim(),
+    };
+  }
+
+  match = raw.match(/^waiting\s+(\d+)\s+on\s+(.+?)\s+for\s+(.+)$/i);
+  if (match) {
+    return {
+      taskId: Number(match[1]),
+      waiting_on_name: match[2].trim(),
+      reason: match[3].trim(),
+    };
+  }
+
+  match = raw.match(/^blocked\s+(\d+)\s+on\s+(.+?)\s+for\s+(.+)$/i);
+  if (match) {
+    return {
+      taskId: Number(match[1]),
+      waiting_on_name: match[2].trim(),
+      reason: match[3].trim(),
+    };
+  }
+
+  return null;
+}
+
+function parseClearWaitTaskCommand(text) {
+  const raw = normalizeText(text);
+
+  let match = raw.match(/^clear\s+wait\s+(\d+)(?:\s+(.+))?$/i);
+  if (match) {
+    return {
+      taskId: Number(match[1]),
+      note: match[2]?.trim() || "Cleared wait",
+    };
+  }
+
+  match = raw.match(/^unwait\s+(\d+)(?:\s+(.+))?$/i);
+  if (match) {
+    return {
+      taskId: Number(match[1]),
+      note: match[2]?.trim() || "Cleared wait",
     };
   }
 
@@ -2127,9 +2184,12 @@ async function getTaskById(taskId, orgId) {
       progress,
       deadline,
       blocker_note,
+      blocked_reason,
       business,
       area,
       assigned_to_user_id,
+      waiting_on_user_id,
+      waiting_since,
       created_by_user_id,
       last_updated_by_user_id
     `,
@@ -2155,10 +2215,28 @@ async function getTaskById(taskId, orgId) {
 
   const ownerNames = await getTaskOwnerNames(data.id, orgId);
 
+  let waitingOnName = "";
+
+  if (data.waiting_on_user_id) {
+    const { data: waitingUser, error: waitingUserError } = await supabase
+      .from("users")
+      .select("id, name")
+      .eq("org_id", orgId)
+      .eq("id", data.waiting_on_user_id)
+      .maybeSingle();
+
+    if (waitingUserError) {
+      console.error("getTaskById waiting user error:", waitingUserError);
+    } else {
+      waitingOnName = waitingUser?.name || "";
+    }
+  }
+
   return {
     task: {
       ...data,
       owner_names: ownerNames,
+      waiting_on_name: waitingOnName,
     },
     error: null,
   };
@@ -3060,10 +3138,26 @@ async function handleEditTask(res, user, editCommand) {
       return sendTwiml(res, "Blocker note cannot be empty.");
     }
 
-    oldValue = { blocker_note: task.blocker_note, status: task.status };
-    newValue = { blocker_note: editCommand.value, status: "blocked" };
+    oldValue = {
+      blocker_note: task.blocker_note,
+      blocked_reason: task.blocked_reason || null,
+      waiting_on_user_id: task.waiting_on_user_id || null,
+      waiting_since: task.waiting_since || null,
+      status: task.status,
+    };
+
+    newValue = {
+      blocker_note: editCommand.value,
+      blocked_reason: editCommand.value,
+      waiting_on_user_id: null,
+      waiting_since: new Date().toISOString(),
+      status: "blocked",
+    };
 
     patch.blocker_note = editCommand.value;
+    patch.blocked_reason = editCommand.value;
+    patch.waiting_on_user_id = null;
+    patch.waiting_since = new Date().toISOString();
     patch.status = "blocked";
 
     successMessage = `⛔ Task ${taskRef(task)} blocker updated\nBlocker: ${editCommand.value}`;
@@ -3073,13 +3167,26 @@ async function handleEditTask(res, user, editCommand) {
     patch.detail = null;
     successMessage = `✏️ Task ${taskRef(task)} detail cleared`;
   } else if (editCommand.field === "clear_blocker") {
-    oldValue = { blocker_note: task.blocker_note, status: task.status };
+    oldValue = {
+      blocker_note: task.blocker_note,
+      blocked_reason: task.blocked_reason || null,
+      waiting_on_user_id: task.waiting_on_user_id || null,
+      waiting_since: task.waiting_since || null,
+      status: task.status,
+    };
+
     newValue = {
       blocker_note: null,
+      blocked_reason: null,
+      waiting_on_user_id: null,
+      waiting_since: null,
       status: task.progress > 0 ? "in_progress" : "open",
     };
 
     patch.blocker_note = null;
+    patch.blocked_reason = null;
+    patch.waiting_on_user_id = null;
+    patch.waiting_since = null;
     patch.status = task.progress > 0 ? "in_progress" : "open";
 
     successMessage = `✏️ Task ${taskRef(task)} blocker cleared`;
@@ -3961,16 +4068,12 @@ async function handleHelp(res, user, topic = "") {
           "Update:",
           "progress 2 50% 20 mails sent no positive response",
           "done 2 tested and verified properly",
+          "wait 23 on aj for API response",
+          "waiting 23 on niharika for design confirmation",
+          "clear wait 23 aj responded",
           "edit task 2 blocker waiting on backend fix",
           "edit task 2 clear blocker",
           "edit task 2 title final parents pitch v2",
-          "edit task 2 detail call parents and collect objections",
-          "edit task 2 priority urgent",
-          "edit task 2 business joolian",
-          "edit task 2 area parents",
-          "edit task 2 deadline tomorrow",
-          "extra work helped aj debug org id issue",
-          "undo last task change",
           "",
           isManager ? "Manager only:" : null,
           isManager ? "cancel task 2" : null,
@@ -4164,11 +4267,24 @@ async function handleShowTask(res, user, taskId) {
     ? task.owner_names.join(", ")
     : "Unknown";
   const detail = task.detail ? `\nDetail: ${task.detail}` : "";
-  const blocker = task.blocker_note ? `\nBlocker: ${task.blocker_note}` : "";
+  const waitingOn =
+    task.status === "blocked" && task.waiting_on_name
+      ? `\nWaiting on: ${task.waiting_on_name}`
+      : "";
+  const blockerReason =
+    task.blocked_reason || task.blocker_note
+      ? `\nReason: ${task.blocked_reason || task.blocker_note}`
+      : "";
 
   return sendTwiml(
     res,
-    `Task #${task.task_no || task.id}\nOwners: ${assignedTo}\nPriority: ${task.priority}\nStatus: ${task.status}\nProgress: ${task.progress}%\nTitle: ${task.title}\nDeadline: ${task.deadline ?? "no deadline"}${detail}${blocker}`,
+    `Task #${task.task_no || task.id}
+Owners: ${assignedTo}
+Priority: ${task.priority}
+Status: ${task.status}
+Progress: ${task.progress}%
+Title: ${task.title}
+Deadline: ${task.deadline ?? "no deadline"}${detail}${waitingOn}${blockerReason}`,
   );
 }
 
@@ -5562,6 +5678,99 @@ Reason: ${cleanNote}`,
   );
 }
 
+async function handleWaitTask(res, user, waitCommand) {
+  const cleanReason = String(waitCommand?.reason || "").trim();
+
+  if (!cleanReason) {
+    return sendTwiml(
+      res,
+      "Please add a reason.\nExample: wait 23 on Aj for API response",
+    );
+  }
+
+  const { task, error } = await getTaskById(waitCommand.taskId, user.org_id);
+
+  if (error) {
+    return sendTwiml(res, "Failed to fetch that task.");
+  }
+
+  if (!task) {
+    return sendTwiml(res, `Task #${waitCommand.taskId} not found.`);
+  }
+
+  if (!(await canModifyTask(user, task))) {
+    return sendTwiml(res, "You are not allowed to modify that task.");
+  }
+
+  const waitingUser = await findUniqueUserByName(
+    waitCommand.waiting_on_name,
+    user.org_id,
+  );
+
+  if (!waitingUser) {
+    return sendTwiml(
+      res,
+      `I could not uniquely find an active user named "${waitCommand.waiting_on_name}".`,
+    );
+  }
+
+  const oldValue = {
+    status: task.status,
+    blocker_note: task.blocker_note,
+    waiting_on_user_id: task.waiting_on_user_id || null,
+    blocked_reason: task.blocked_reason || null,
+    waiting_since: task.waiting_since || null,
+  };
+
+  const nowIso = new Date().toISOString();
+
+  const patch = {
+    status: "blocked",
+    blocker_note: `Waiting on ${waitingUser.name} for ${cleanReason}`,
+    waiting_on_user_id: waitingUser.id,
+    blocked_reason: cleanReason,
+    waiting_since: nowIso,
+    last_updated_by_user_id: user.id,
+    updated_at: nowIso,
+  };
+
+  const { error: updateError } = await supabase
+    .from("tasks")
+    .update(patch)
+    .eq("id", task.id);
+
+  if (updateError) {
+    console.error("Wait task update error:", updateError);
+    return sendTwiml(res, "Failed to mark task as waiting.");
+  }
+
+  await insertTaskHistory(
+    task.id,
+    user.id,
+    "status_change",
+    "waiting_on",
+    oldValue,
+    {
+      status: "blocked",
+      blocker_note: patch.blocker_note,
+      waiting_on_user_id: waitingUser.id,
+      waiting_on_name: waitingUser.name,
+      blocked_reason: cleanReason,
+      waiting_since: nowIso,
+      note: cleanReason,
+    },
+    user.org_id,
+  );
+
+  return sendTwiml(
+    res,
+    `⏸ Task ${taskRef(task)} is now waiting
+Title: ${task.title}
+Waiting on: ${waitingUser.name}
+Reason: ${cleanReason}`,
+  );
+}
+
 async function handleUnblockTask(res, user, taskId, note) {
   const cleanNote = String(note || "").trim();
 
@@ -5592,14 +5801,27 @@ async function handleUnblockTask(res, user, taskId, note) {
 
   const nextStatus = task.progress > 0 ? "in_progress" : "open";
 
+  const oldValue = {
+    status: task.status,
+    blocker_note: task.blocker_note,
+    waiting_on_user_id: task.waiting_on_user_id || null,
+    blocked_reason: task.blocked_reason || null,
+    waiting_since: task.waiting_since || null,
+  };
+
+  const patch = {
+    status: nextStatus,
+    blocker_note: null,
+    waiting_on_user_id: null,
+    blocked_reason: null,
+    waiting_since: null,
+    last_updated_by_user_id: user.id,
+    updated_at: new Date().toISOString(),
+  };
+
   const { error: updateError } = await supabase
     .from("tasks")
-    .update({
-      status: nextStatus,
-      blocker_note: null,
-      last_updated_by_user_id: user.id,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq("id", task.id);
 
   if (updateError) {
@@ -5612,8 +5834,15 @@ async function handleUnblockTask(res, user, taskId, note) {
     user.id,
     "status_change",
     "status",
-    { status: task.status, blocker_note: task.blocker_note, note: null },
-    { status: nextStatus, blocker_note: null, note: cleanNote },
+    oldValue,
+    {
+      status: nextStatus,
+      blocker_note: null,
+      waiting_on_user_id: null,
+      blocked_reason: null,
+      waiting_since: null,
+      note: cleanNote,
+    },
     user.org_id,
   );
 
@@ -6216,7 +6445,10 @@ async function handleUndoLastTaskChange(res, user) {
   const hasUndoableField =
     oldValue.status !== undefined ||
     oldValue.progress !== undefined ||
-    oldValue.blocker_note !== undefined;
+    oldValue.blocker_note !== undefined ||
+    oldValue.waiting_on_user_id !== undefined ||
+    oldValue.blocked_reason !== undefined ||
+    oldValue.waiting_since !== undefined;
 
   if (!hasUndoableField) {
     return sendTwiml(res, "Your last task change cannot be safely undone.");
@@ -6231,6 +6463,12 @@ async function handleUndoLastTaskChange(res, user) {
   if (oldValue.progress !== undefined) patch.progress = oldValue.progress;
   if (oldValue.blocker_note !== undefined)
     patch.blocker_note = oldValue.blocker_note;
+  if (oldValue.waiting_on_user_id !== undefined)
+    patch.waiting_on_user_id = oldValue.waiting_on_user_id;
+  if (oldValue.blocked_reason !== undefined)
+    patch.blocked_reason = oldValue.blocked_reason;
+  if (oldValue.waiting_since !== undefined)
+    patch.waiting_since = oldValue.waiting_since;
 
   const { error: updateError } = await supabase
     .from("tasks")
@@ -9679,129 +9917,128 @@ loadUsers().then(loadTasks);
 }
 
 async function getDashboardData(orgId) {
-  const todayAttendanceDate = getCurrentAttendanceDayRange().attendanceDate;
+  const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
 
-  const [openTasksResult, overdueResult, blockedResult, attendanceRows] =
-    await Promise.all([
-      supabase
-        .from("tasks")
-        .select(
-          `
-          id,
-          org_id,
-          task_no,
-          title,
-          priority,
-          status,
-          deadline,
-          blocker_note
-        `,
-        )
-        .eq("org_id", orgId)
-        .or("status.is.null,status.not.in.(done,archived,cancelled,deleted)")
-        .order("deadline", { ascending: true, nullsFirst: false })
-        .limit(100),
+  const { data: users, error: usersError } = await supabase
+    .from("users")
+    .select("id, name, role, is_active")
+    .eq("org_id", orgId)
+    .eq("is_active", true)
+    .order("name", { ascending: true });
 
-      supabase
-        .from("tasks")
-        .select(
-          `
-          id,
-          org_id,
-          task_no,
-          title,
-          priority,
-          status,
-          deadline,
-          blocker_note
-        `,
-        )
-        .eq("org_id", orgId)
-        .lt("deadline", todayAttendanceDate)
-        .or("status.is.null,status.not.in.(done,archived,cancelled,deleted)")
-        .order("deadline", { ascending: true })
-        .limit(100),
+  if (usersError) throw usersError;
 
-      supabase
-        .from("tasks")
-        .select(
-          `
-          id,
-          org_id,
-          task_no,
-          title,
-          priority,
-          status,
-          deadline,
-          blocker_note
-        `,
-        )
-        .eq("org_id", orgId)
-        .not("blocker_note", "is", null)
-        .or("status.is.null,status.not.in.(done,archived,cancelled,deleted)")
-        .order("deadline", { ascending: true, nullsFirst: false })
-        .limit(100),
+  const { data: tasks, error: tasksError } = await supabase
+    .from("tasks")
+    .select(
+      `
+      id,
+      org_id,
+      task_no,
+      title,
+      status,
+      progress,
+      deadline,
+      waiting_on_user_id
+    `,
+    )
+    .eq("org_id", orgId)
+    .or("status.is.null,status.not.in.(done,archived,cancelled,deleted)");
 
-      getLatestAttendanceByUser(orgId),
-    ]);
+  if (tasksError) throw tasksError;
 
-  if (openTasksResult.error) throw openTasksResult.error;
-  if (overdueResult.error) throw overdueResult.error;
-  if (blockedResult.error) throw blockedResult.error;
+  const { data: ownerRows, error: ownerError } = await supabase
+    .from("task_owners")
+    .select(
+      `
+      task_id,
+      user_id
+    `,
+    )
+    .eq("org_id", orgId);
 
-  const openTasks = openTasksResult.data || [];
-  const overdueTasks = overdueResult.data || [];
-  const blockedTasks = blockedResult.data || [];
-  const attendance = attendanceRows || [];
+  if (ownerError) throw ownerError;
 
-  const allTasks = [...openTasks, ...overdueTasks, ...blockedTasks];
-  const uniqueTaskIds = [...new Set(allTasks.map((t) => t.id).filter(Boolean))];
+  const ownersByTaskId = {};
+  for (const row of ownerRows || []) {
+    if (!ownersByTaskId[row.task_id]) ownersByTaskId[row.task_id] = [];
+    ownersByTaskId[row.task_id].push(row.user_id);
+  }
 
-  let ownersByTaskId = {};
+  const activeTasks = tasks || [];
+  const todayDate = new Date(`${today}T00:00:00Z`);
 
-  if (uniqueTaskIds.length) {
-    const { data: ownerRows, error: ownerError } = await supabase
-      .from("task_owners")
-      .select(
-        `
-        task_id,
-        user_id,
-        users!task_owners_user_id_fkey(id, name)
-      `,
+  const summary = {
+    open_tasks: activeTasks.filter((t) =>
+      ["open", "pending", "in_progress", "blocked"].includes(
+        t.status || "open",
+      ),
+    ).length,
+    overdue_tasks: activeTasks.filter((t) => {
+      if (!t.deadline) return false;
+      if (
+        t.status === "done" ||
+        t.status === "cancelled" ||
+        t.status === "archived"
       )
-      .eq("org_id", orgId)
-      .in("task_id", uniqueTaskIds);
+        return false;
+      return new Date(`${t.deadline}T00:00:00Z`) < todayDate;
+    }).length,
+    blocked_tasks: activeTasks.filter((t) => t.status === "blocked").length,
+    team_members: (users || []).length,
+  };
 
-    if (ownerError) {
-      console.error("getDashboardData task_owners error:", ownerError);
-      throw ownerError;
-    }
+  const user_task_stats = (users || []).map((user) => {
+    const ownedTasks = activeTasks.filter((task) =>
+      (ownersByTaskId[task.id] || []).includes(user.id),
+    );
 
-    for (const row of ownerRows || []) {
-      if (!ownersByTaskId[row.task_id]) ownersByTaskId[row.task_id] = [];
-      ownersByTaskId[row.task_id].push(row.users?.name || "Unknown");
-    }
-  }
+    const open_count = ownedTasks.filter((t) =>
+      ["open", "pending", "in_progress", "blocked"].includes(
+        t.status || "open",
+      ),
+    ).length;
 
-  function attachOwners(task) {
+    const blocked_count = ownedTasks.filter(
+      (t) => t.status === "blocked",
+    ).length;
+
+    const not_started_count = ownedTasks.filter(
+      (t) => !t.status || t.status === "open" || t.status === "pending",
+    ).length;
+
+    const overdue_count = ownedTasks.filter((t) => {
+      if (!t.deadline) return false;
+      if (
+        t.status === "done" ||
+        t.status === "cancelled" ||
+        t.status === "archived"
+      )
+        return false;
+      return new Date(`${t.deadline}T00:00:00Z`) < todayDate;
+    }).length;
+
+    const waiting_on_them_count = activeTasks.filter(
+      (t) =>
+        t.status === "blocked" &&
+        Number(t.waiting_on_user_id) === Number(user.id),
+    ).length;
+
     return {
-      ...task,
-      owner_names: ownersByTaskId[task.id] || [],
-      assignee_name: (ownersByTaskId[task.id] || []).join(", ") || "Unknown",
+      user_id: user.id,
+      name: user.name,
+      role: user.role,
+      open_count,
+      blocked_count,
+      not_started_count,
+      overdue_count,
+      waiting_on_them_count,
     };
-  }
+  });
 
   return {
-    summary: {
-      open_tasks: openTasks.length,
-      overdue_tasks: overdueTasks.length,
-      blocked_tasks: blockedTasks.length,
-      active_today_count: attendance.filter((x) => x.has_login_today).length,
-    },
-    open_tasks: openTasks.map(attachOwners),
-    overdue_tasks: overdueTasks.map(attachOwners),
-    blocked_tasks: blockedTasks.map(attachOwners),
-    attendance,
+    summary,
+    user_task_stats,
   };
 }
 
@@ -9809,66 +10046,32 @@ app.use("/api", requireDashboardAuth);
 
 function renderDashboardPage(data) {
   const summary = data?.summary || {};
-  const attendance = data?.attendance || [];
-  const openTasks = data?.open_tasks || [];
-  const blockedTasks = data?.blocked_tasks || [];
-  const overdueTasks = data?.overdue_tasks || [];
-
-  const onBreakCount = attendance.filter((x) => x.status === "break").length;
-  const plannedOffCount = attendance.filter(
-    (x) => x.status === "planned_off",
-  ).length;
-  const noLoginCount = attendance.filter((x) => x.status === "no_login").length;
-  const teamCount = attendance.length;
+  const userTaskStats = data?.user_task_stats || [];
 
   const summaryCards = [
     {
       label: "Open Tasks",
-      value: summary.open_tasks ?? openTasks.length ?? 0,
-      note: "Active work requiring ownership",
+      value: summary.open_tasks ?? 0,
+      note: "All active tasks",
       cardClass: "info",
     },
     {
       label: "Overdue",
-      value: summary.overdue_tasks ?? overdueTasks.length ?? 0,
-      note: "Past deadline and needing action",
+      value: summary.overdue_tasks ?? 0,
+      note: "Past deadline and still active",
       cardClass: "danger",
     },
     {
       label: "Blocked",
-      value: summary.blocked_tasks ?? blockedTasks.length ?? 0,
-      note: "Waiting on help or dependency",
+      value: summary.blocked_tasks ?? 0,
+      note: "Tasks currently blocked",
       cardClass: "warn",
     },
     {
-      label: "Active Today",
-      value: summary.active_today_count ?? 0,
-      note: "Logged in at least once today",
+      label: "Team Members",
+      value: summary.team_members ?? 0,
+      note: "People in task dashboard",
       cardClass: "success",
-    },
-    {
-      label: "On Break",
-      value: onBreakCount,
-      note: "Live break status snapshot",
-      cardClass: "muted",
-    },
-    {
-      label: "Planned Off",
-      value: plannedOffCount,
-      note: "Approved off / leave state",
-      cardClass: "cyan",
-    },
-    {
-      label: "No Login",
-      value: noLoginCount,
-      note: "No attendance marked yet",
-      cardClass: "danger",
-    },
-    {
-      label: "Team Size",
-      value: teamCount,
-      note: "Active people in dashboard",
-      cardClass: "info",
     },
   ];
 
@@ -9884,70 +10087,38 @@ function renderDashboardPage(data) {
     )
     .join("");
 
-  const attendanceRows = attendance.length
-    ? attendance
-        .map((row) => {
-          const statusClass = badgeClass(row.status || "unknown");
-          return `
-            <tr>
-              <td><div class="primary-text">${escapeHtml(row.name || "-")}</div></td>
-              <td><span class="muted">${escapeHtml(row.role || "-")}</span></td>
-              <td><span class="${statusClass}">${escapeHtml(row.status || "unknown")}</span></td>
-              <td>${escapeHtml(row.break_duration_text || row.breakDurationText || "-")}</td>
-              <td>${escapeHtml(row.worked_today_text || row.workedTodayText || "-")}</td>
-              <td>${escapeHtml(row.last_action_at ? formatTimeOnly(row.last_action_at) : "-")}</td>
-            </tr>
-          `;
-        })
-        .join("")
-    : `<tr><td colspan="6" class="empty-cell">No attendance data found</td></tr>`;
-
-  const blockedTaskRows = blockedTasks.length
-    ? blockedTasks
+  const userRows = userTaskStats.length
+    ? userTaskStats
         .map(
-          (task) => `
-            <tr class="task-row-blocked">
-              <td>#${escapeHtml(task.task_no || task.id)}</td>
-              <td>${escapeHtml(task.title || "-")}</td>
-              <td>${escapeHtml(task.assignee_name || "-")}</td>
-              <td>${escapeHtml(task.priority || "-")}</td>
-              <td>${escapeHtml(task.deadline || "-")}</td>
-              <td>${escapeHtml(task.blocker_note || "-")}</td>
+          (row) => `
+            <tr onclick="goToTasksForUser(${Number(row.user_id)})" style="cursor:pointer;">
+              <td>${escapeHtml(row.name || "-")}</td>
+              <td>${escapeHtml(row.role || "-")}</td>
+              <td>${escapeHtml(row.open_count ?? 0)}</td>
+              <td>${escapeHtml(row.blocked_count ?? 0)}</td>
+              <td>${escapeHtml(row.not_started_count ?? 0)}</td>
+              <td>${escapeHtml(row.overdue_count ?? 0)}</td>
+              <td>${escapeHtml(row.waiting_on_them_count ?? 0)}</td>
             </tr>
           `,
         )
         .join("")
-    : `<tr><td colspan="6" class="empty-cell">No blocked tasks</td></tr>`;
-
-  const overdueTaskRows = overdueTasks.length
-    ? overdueTasks
-        .map(
-          (task) => `
-            <tr class="task-row-overdue">
-              <td>#${escapeHtml(task.task_no || task.id)}</td>
-              <td>${escapeHtml(task.title || "-")}</td>
-              <td>${escapeHtml(task.assignee_name || "-")}</td>
-              <td>${escapeHtml(task.priority || "-")}</td>
-              <td>${escapeHtml(task.deadline || "-")}</td>
-              <td>${escapeHtml(task.status || "-")}</td>
-            </tr>
-          `,
-        )
-        .join("")
-    : `<tr><td colspan="6" class="empty-cell">No overdue tasks</td></tr>`;
+    : `<tr><td colspan="7" class="empty-cell">No task data found</td></tr>`;
 
   return `
     <html>
       <head>
-        <title>WeSolveHR Dashboard</title>
+        <title>Dashboard</title>
         <style>
           ${buildThemeCss()}
           ${buildBasePageCss()}
 
-          .page {
-            max-width: 1480px;
+          .wrap {
+            max-width: 1320px;
             margin: 0 auto;
             padding: 24px 18px 36px;
+            position: relative;
+            z-index: 1;
           }
 
           .topbar, .panel, .stat-card {
@@ -10038,13 +10209,12 @@ function renderDashboardPage(data) {
           }
 
           .panel {
-            padding: 16px;
+            padding: 18px;
             margin-bottom: 18px;
           }
 
-          .panel h2 {
-            margin: 0 0 12px 0;
-            font-size: 18px;
+          .table-wrap {
+            overflow-x: auto;
           }
 
           table {
@@ -10054,9 +10224,8 @@ function renderDashboardPage(data) {
 
           th, td {
             text-align: left;
-            padding: 12px 10px;
+            padding: 12px;
             border-bottom: 1px solid rgba(255,255,255,0.08);
-            vertical-align: top;
           }
 
           th {
@@ -10066,31 +10235,24 @@ function renderDashboardPage(data) {
             letter-spacing: 0.08em;
           }
 
-          .grid-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 18px;
-          }
-
-          .primary-text {
-            font-weight: 600;
+          tr:hover td {
+            background: rgba(255,255,255,0.03);
           }
         </style>
       </head>
       <body>
-        <div class="page">
+        <div class="wrap">
           <div class="topbar">
             <div>
-              <div class="eyebrow">WeSolveHR // Live Operations</div>
+              <div class="eyebrow">WeSolveHR</div>
               <h1>Dashboard</h1>
-              <div class="subtitle">Tasks, attendance, blockers, and operating visibility</div>
+              <div class="subtitle">Team task visibility by user</div>
             </div>
             <div class="links">
               <a href="/dashboard">Dashboard</a>
               <a href="/tasks">Tasks</a>
               <a href="/attendance">Attendance</a>
               <a href="/logs">Logs</a>
-              <a href="/bugs">Bug Board</a>
               <a href="/reports">Reports</a>
             </div>
           </div>
@@ -10100,64 +10262,33 @@ function renderDashboardPage(data) {
           </div>
 
           <div class="panel">
-            <h2>Current Attendance</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Break</th>
-                  <th>Worked Today</th>
-                  <th>Last Activity</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${attendanceRows}
-              </tbody>
-            </table>
-          </div>
-
-          <div class="grid-2">
-            <div class="panel">
-              <h2>Blocked Tasks</h2>
+            <h2 style="margin-top:0;">Task load by user</h2>
+            <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>ID</th>
-                    <th>Title</th>
-                    <th>Owner</th>
-                    <th>Priority</th>
-                    <th>Deadline</th>
-                    <th>Blocker</th>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>Open</th>
+                    <th>Blocked</th>
+                    <th>Not Started</th>
+                    <th>Overdue</th>
+                    <th>Blocked On Them</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${blockedTaskRows}
-                </tbody>
-              </table>
-            </div>
-
-            <div class="panel">
-              <h2>Overdue Tasks</h2>
-              <table>
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Title</th>
-                    <th>Owner</th>
-                    <th>Priority</th>
-                    <th>Deadline</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${overdueTaskRows}
+                  ${userRows}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
+
+        <script>
+          function goToTasksForUser(userId) {
+            window.location.href = '/tasks?assignee=' + encodeURIComponent(userId);
+          }
+        </script>
       </body>
     </html>
   `;
@@ -12989,6 +13120,63 @@ app.post("/whatsapp", async (req, res) => {
         successType: "attendance_updated",
         failureType: "attendance_update_failed",
         action: () => handleCompanyOffDay(res, user, companyOffCommand),
+      });
+    }
+
+    const waitTaskCommand = parseWaitTaskCommand(body);
+    const clearWaitTaskCommand = parseClearWaitTaskCommand(body);
+
+    if (waitTaskCommand) {
+      await logParse({
+        intentDetected: "task_wait",
+        parserUsed: "parseWaitTaskCommand",
+        parsedJson: waitTaskCommand,
+      });
+
+      return runInboundAction({
+        successType: "task_wait",
+        successRefId: waitTaskCommand.taskId,
+        action: () => handleWaitTask(res, user, waitTaskCommand),
+      });
+    }
+
+    if (clearWaitTaskCommand) {
+      await logParse({
+        intentDetected: "task_clear_wait",
+        parserUsed: "parseClearWaitTaskCommand",
+        parsedJson: clearWaitTaskCommand,
+      });
+
+      return runInboundAction({
+        successType: "task_clear_wait",
+        successRefId: clearWaitTaskCommand.taskId,
+        action: () =>
+          handleUnblockTask(
+            res,
+            user,
+            clearWaitTaskCommand.taskId,
+            clearWaitTaskCommand.note,
+          ),
+      });
+    }
+
+    if (clearWaitTaskCommand) {
+      await logParse({
+        intentDetected: "task_clear_wait",
+        parserUsed: "parseClearWaitTaskCommand",
+        parsedJson: clearWaitTaskCommand,
+      });
+
+      return runInboundAction({
+        successType: "task_clear_wait",
+        successRefId: clearWaitTaskCommand.taskId,
+        action: () =>
+          handleUnblockTask(
+            res,
+            user,
+            clearWaitTaskCommand.taskId,
+            clearWaitTaskCommand.note,
+          ),
       });
     }
 
