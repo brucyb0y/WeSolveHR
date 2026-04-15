@@ -11806,30 +11806,30 @@ function renderHistoryDetail(item) {
     return "Task created";
   }
 
-if (item.changeType === "status_change") {
-  const oldStatus = oldValue.status || "-";
-  const newStatus = newValue.status || "-";
-  const oldProgress = oldValue.progress ?? "-";
-  const newProgress = newValue.progress ?? "-";
-  const note = newValue.note ? "\nNote: " + newValue.note : "";
+  if (item.changeType === "status_change") {
+    const oldStatus = oldValue.status || "-";
+    const newStatus = newValue.status || "-";
+    const oldProgress = oldValue.progress ?? "-";
+    const newProgress = newValue.progress ?? "-";
+    const note = newValue.note ? "\nNote: " + newValue.note : "";
 
-  return (
-    "Status: " + oldStatus + " → " + newStatus +
-    "\nProgress: " + oldProgress + "% → " + newProgress + "%" +
-    note
-  );
-}
+    return "Status: " + oldStatus + " → " + newStatus +
+      "\nProgress: " + oldProgress + "% → " + newProgress + "%" +
+      note;
+  }
 
   if (item.changeType === "progress_change") {
     const oldProgress = oldValue.progress ?? 0;
     const newProgress = newValue.progress ?? 0;
     const note = newValue.note ? "\nNote: " + newValue.note : "";
+
     return "Progress: " + oldProgress + "% → " + newProgress + "%" + note;
   }
 
   if (item.changeType === "owner_change") {
     const oldOwners = Array.isArray(oldValue.owners) ? oldValue.owners.join(", ") : "-";
     const newOwners = Array.isArray(newValue.owners) ? newValue.owners.join(", ") : "-";
+
     return "Owners: " + oldOwners + " → " + newOwners;
   }
 
