@@ -11797,18 +11797,19 @@ function renderHistoryDetail(item) {
     return "Task created";
   }
 
-  if (item.changeType === "status_change") {
-    const oldStatus = oldValue.status || "-";
-    const newStatus = newValue.status || "-";
-    const oldProgress = oldValue.progress ?? "-";
-    const newProgress = newValue.progress ?? "-";
-    const note = newValue.note ? "\nNote: " + newValue.note : "";
-    return (
-      "Status: " + oldStatus + " → " + newStatus +
-      "\nProgress: " + oldProgress + "% → " + newProgress + "%" +
-      note
-    );
-  }
+if (item.changeType === "status_change") {
+  const oldStatus = oldValue.status || "-";
+  const newStatus = newValue.status || "-";
+  const oldProgress = oldValue.progress ?? "-";
+  const newProgress = newValue.progress ?? "-";
+  const note = newValue.note ? "\nNote: " + newValue.note : "";
+
+  return (
+    "Status: " + oldStatus + " → " + newStatus +
+    "\nProgress: " + oldProgress + "% → " + newProgress + "%" +
+    note
+  );
+}
 
   if (item.changeType === "progress_change") {
     const oldProgress = oldValue.progress ?? 0;
