@@ -8539,9 +8539,12 @@ if (item.changeType === "status_change") {
     return "Deadline: " + (oldValue.deadline || "-") + " → " + (newValue.deadline || "-");
   }
 
-  if (item.fieldName === "blocker_note") {
-    return "Blocker: " + (newValue.blocker_note || "-");
-  }
+if (item.fieldName === "blocker_note") {
+  return [
+    "Blocker: " + (newValue.blocker_note || "-"),
+    newValue.note ? "Note: " + newValue.note : null
+  ].filter(Boolean).join("\n");
+}
 
   if (item.fieldName) {
     return (item.fieldName || "Field") + ": " +
@@ -11946,20 +11949,25 @@ document.addEventListener("keydown", function(event) {
 });
 
       
-          async function loadUsers() {
-            const res = await fetch('/api/users');
-            const json = await res.json();
-            console.log('loadTasks params:', params.toString());
-console.log('loadTasks response:', json);
-            const select = document.getElementById('assignee');
-            if (!json.ok) return;
-            for (const user of json.data) {
-              const opt = document.createElement('option');
-              opt.value = user.id;
-              opt.textContent = user.name;
-              select.appendChild(opt);
-            }
-          }
+async function loadUsers() {
+  const res = await fetch('/api/users');
+  const json = await res.json();
+
+  const select = document.getElementById('assignee');
+  if (!json.ok) {
+    console.error('loadUsers api error:', json);
+    return;
+  }
+
+  select.innerHTML = '<option value="">All assignee</option>';
+
+  for (const user of json.data) {
+    const opt = document.createElement('option');
+    opt.value = user.id;
+    opt.textContent = user.name;
+    select.appendChild(opt);
+  }
+}
 
           async function loadTasks() {
             const params = new URLSearchParams();
