@@ -10872,18 +10872,19 @@ async function getTasksPageData(filters = {}, orgId) {
     .from("tasks")
     .select(
       `
-      id,
-      org_id,
-      task_no,
-      title,
-      business,
-      area,
-      status,
-      progress,
-      priority,
-      deadline,
-      blocker_note
-      `,
+  id,
+  org_id,
+  task_no,
+  title,
+  business,
+  area,
+  status,
+  progress,
+  priority,
+  deadline,
+  blocker_note,
+  waiting_on_user_id
+  `,
     )
     .eq("org_id", orgId)
     .order("deadline", { ascending: true, nullsFirst: false });
@@ -10966,6 +10967,12 @@ async function getTasksPageData(filters = {}, orgId) {
         .join(", "),
     };
   });
+
+  if (waitingOn) {
+    rows = rows.filter(
+      (task) => String(task.waiting_on_user_id || "") === String(waitingOn),
+    );
+  }
 
   if (assignee) {
     rows = rows.filter((task) =>
