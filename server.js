@@ -10091,16 +10091,40 @@ function renderDashboardPage(data) {
     ? userTaskStats
         .map(
           (row) => `
-            <tr onclick="goToTasksForUser(${Number(row.user_id)})" style="cursor:pointer;">
-              <td>${escapeHtml(row.name || "-")}</td>
-              <td>${escapeHtml(row.role || "-")}</td>
-              <td>${escapeHtml(row.open_count ?? 0)}</td>
-              <td>${escapeHtml(row.blocked_count ?? 0)}</td>
-              <td>${escapeHtml(row.not_started_count ?? 0)}</td>
-              <td>${escapeHtml(row.overdue_count ?? 0)}</td>
-              <td>${escapeHtml(row.waiting_on_them_count ?? 0)}</td>
-            </tr>
-          `,
+          <tr>
+            <td>
+              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'all')">
+                ${escapeHtml(row.name || "-")}
+              </span>
+            </td>
+            <td>${escapeHtml(row.role || "-")}</td>
+            <td>
+              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'open')">
+                ${escapeHtml(row.open_count ?? 0)}
+              </span>
+            </td>
+            <td>
+              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'blocked')">
+                ${escapeHtml(row.blocked_count ?? 0)}
+              </span>
+            </td>
+            <td>
+              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'not_started')">
+                ${escapeHtml(row.not_started_count ?? 0)}
+              </span>
+            </td>
+            <td>
+              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'overdue')">
+                ${escapeHtml(row.overdue_count ?? 0)}
+              </span>
+            </td>
+            <td>
+              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'blocked_on_them')">
+                ${escapeHtml(row.waiting_on_them_count ?? 0)}
+              </span>
+            </td>
+          </tr>
+        `,
         )
         .join("")
     : `<tr><td colspan="7" class="empty-cell">No task data found</td></tr>`;
@@ -10284,11 +10308,39 @@ function renderDashboardPage(data) {
           </div>
         </div>
 
-        <script>
-          function goToTasksForUser(userId) {
-            window.location.href = '/tasks?assignee=' + encodeURIComponent(userId);
-          }
-        </script>
+<script>
+  function goToTaskFilter(userId, type) {
+    const params = new URLSearchParams();
+    params.set('assignee', String(userId));
+
+    if (type === 'blocked') {
+      params.set('blocked', 'true');
+    }
+
+    if (type === 'overdue') {
+      params.set('overdue', 'true');
+    }
+
+    if (type === 'not_started') {
+      params.append('progressBucket', 'not_begun');
+      params.append('progressBucket', 'hide_cancelled');
+    }
+
+if (type === 'open') {
+  params.set('assignee', String(userId));
+  params.append('progressBucket', 'not_begun');
+  params.append('progressBucket', 'zero_to_fifty');
+  params.append('progressBucket', 'fifty_to_hundred');
+  params.append('progressBucket', 'hide_cancelled');
+}
+
+    if (type === 'blocked_on_them') {
+      params.set('waitingOn', String(userId));
+    }
+
+    window.location.href = '/tasks?' + params.toString();
+  }
+</script>
       </body>
     </html>
   `;
@@ -10695,6 +10747,7 @@ async function getAttendancePageData(orgId) {
 async function getTasksPageData(filters = {}, orgId) {
   const search = String(filters.search || "").trim();
   const assignee = String(filters.assignee || "").trim();
+  const waitingOn = String(filters.waitingOn || "").trim();
   const business = String(filters.business || "")
     .trim()
     .toLowerCase();
@@ -10734,6 +10787,9 @@ async function getTasksPageData(filters = {}, orgId) {
   if (priority) query = query.eq("priority", priority);
   if (business) query = query.eq("business", business);
   if (area) query = query.eq("area", area);
+  if (waitingOn) {
+    query = query.eq("waiting_on_user_id", Number(waitingOn));
+  }
 
   if (blocked) {
     query = query.eq("status", "blocked");
@@ -12132,6 +12188,48 @@ async function loadUsers() {
   }
 }
 
+function applyFiltersFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+
+  const search = params.get('search') || '';
+  const assignee = params.get('assignee') || '';
+  const waitingOn = params.get('waitingOn') || '';
+  const business = params.get('business') || '';
+  const area = params.get('area') || '';
+  const status = params.get('status') || '';
+  const priority = params.get('priority') || '';
+  const blocked = params.get('blocked') === 'true';
+  const overdue = params.get('overdue') === 'true';
+  const progressBuckets = params.getAll('progressBucket');
+
+  const searchEl = document.getElementById('search');
+  const assigneeEl = document.getElementById('assignee');
+  const businessEl = document.getElementById('business');
+  const areaEl = document.getElementById('area');
+  const statusEl = document.getElementById('status');
+  const priorityEl = document.getElementById('priority');
+  const blockedEl = document.getElementById('blocked');
+  const overdueEl = document.getElementById('overdue');
+  const progressBucketEl = document.getElementById('progressBucket');
+
+  if (searchEl) searchEl.value = search;
+  if (assigneeEl) assigneeEl.value = assignee;
+  if (businessEl) businessEl.value = business;
+  if (areaEl) areaEl.value = area;
+  if (statusEl) statusEl.value = status;
+  if (priorityEl) priorityEl.value = priority;
+  if (blockedEl) blockedEl.checked = blocked;
+  if (overdueEl) overdueEl.checked = overdue;
+
+  if (progressBucketEl && progressBuckets.length) {
+    for (const opt of progressBucketEl.options) {
+      opt.selected = progressBuckets.includes(opt.value);
+    }
+  }
+
+  window.__waitingOn = waitingOn;
+}
+
           async function loadTasks() {
             const params = new URLSearchParams();
 const search = document.getElementById('search').value.trim();
@@ -12143,6 +12241,9 @@ const status = document.getElementById('status').value;
 const priority = document.getElementById('priority').value;
 const blocked = document.getElementById('blocked').checked;
 const overdue = document.getElementById('overdue').checked;
+const waitingOn = window.__waitingOn || '';
+if (waitingOn) params.set('waitingOn', waitingOn);
+
 const progressBucket = Array.from(
   document.getElementById('progressBucket').selectedOptions
 ).map(opt => opt.value);
@@ -12218,9 +12319,27 @@ document.getElementById('taskRows').innerHTML = rows.map(function(task) {
   );
 }).join('');
           }
+          
+          function clearHiddenWaitingOn() {
+  window.__waitingOn = '';
+}
+
+document.getElementById('assignee')?.addEventListener('change', clearHiddenWaitingOn);
+document.getElementById('business')?.addEventListener('change', clearHiddenWaitingOn);
+document.getElementById('area')?.addEventListener('change', clearHiddenWaitingOn);
+document.getElementById('status')?.addEventListener('change', clearHiddenWaitingOn);
+document.getElementById('priority')?.addEventListener('change', clearHiddenWaitingOn);
+document.getElementById('blocked')?.addEventListener('change', clearHiddenWaitingOn);
+document.getElementById('overdue')?.addEventListener('change', clearHiddenWaitingOn);
+document.getElementById('progressBucket')?.addEventListener('change', clearHiddenWaitingOn);
+document.getElementById('search')?.addEventListener('input', clearHiddenWaitingOn);
+
 
 loadUsers()
-  .then(() => loadTasks())
+  .then(() => {
+    applyFiltersFromUrl();
+    return loadTasks();
+  })
   .catch((error) => {
     console.error('Tasks page init failed:', error);
     const status = document.getElementById('statusText');
