@@ -10309,37 +10309,41 @@ function renderDashboardPage(data) {
         </div>
 
 <script>
-  function goToTaskFilter(userId, type) {
-    const params = new URLSearchParams();
+function goToTaskFilter(userId, type) {
+  const params = new URLSearchParams();
+
+  if (type !== 'blocked_on_them') {
     params.set('assignee', String(userId));
+  }
 
-    if (type === 'blocked') {
-      params.set('blocked', 'true');
-    }
+  if (type === 'blocked') {
+    params.set('blocked', 'true');
+  }
 
-    if (type === 'overdue') {
-      params.set('overdue', 'true');
-    }
+  if (type === 'overdue') {
+    params.set('overdue', 'true');
+  }
 
-    if (type === 'not_started') {
-      params.append('progressBucket', 'not_begun');
-      params.append('progressBucket', 'hide_cancelled');
-    }
+  if (type === 'not_started') {
+    params.append('progressBucket', 'not_begun');
+    params.append('progressBucket', 'hide_cancelled');
+  }
 
-if (type === 'open') {
-  params.set('assignee', String(userId));
-  params.append('progressBucket', 'not_begun');
-  params.append('progressBucket', 'zero_to_fifty');
-  params.append('progressBucket', 'fifty_to_hundred');
-  params.append('progressBucket', 'hide_cancelled');
+  if (type === 'open') {
+    params.append('progressBucket', 'not_begun');
+    params.append('progressBucket', 'zero_to_fifty');
+    params.append('progressBucket', 'fifty_to_hundred');
+    params.append('progressBucket', 'hide_cancelled');
+  }
+
+  if (type === 'blocked_on_them') {
+    params.set('waitingOn', String(userId));
+    params.set('blocked', 'true');
+  }
+
+  window.location.href = '/tasks?' + params.toString();
 }
 
-    if (type === 'blocked_on_them') {
-      params.set('waitingOn', String(userId));
-    }
-
-    window.location.href = '/tasks?' + params.toString();
-  }
 </script>
       </body>
     </html>
