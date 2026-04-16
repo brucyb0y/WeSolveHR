@@ -9727,7 +9727,15 @@ th, td {
   vertical-align: top;
 }
 
+.task-link {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
+.task-link:hover {
+  opacity: 0.85;
+}
 
 th {
   color: var(--muted);
@@ -10093,33 +10101,33 @@ function renderDashboardPage(data) {
           (row) => `
           <tr>
             <td>
-              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'all')">
+              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'all', this)">
                 ${escapeHtml(row.name || "-")}
               </span>
             </td>
             <td>${escapeHtml(row.role || "-")}</td>
             <td>
-              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'open')">
+              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'open', this)">
                 ${escapeHtml(row.open_count ?? 0)}
               </span>
             </td>
             <td>
-              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'blocked')">
+              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'blocked', this)">
                 ${escapeHtml(row.blocked_count ?? 0)}
               </span>
             </td>
             <td>
-              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'not_started')">
+              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'not_started', this)">
                 ${escapeHtml(row.not_started_count ?? 0)}
               </span>
             </td>
             <td>
-              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'overdue')">
+              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'overdue', this)">
                 ${escapeHtml(row.overdue_count ?? 0)}
               </span>
             </td>
             <td>
-              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'blocked_on_them')">
+              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'blocked_on_them', this)">
                 ${escapeHtml(row.waiting_on_them_count ?? 0)}
               </span>
             </td>
@@ -10225,6 +10233,55 @@ function renderDashboardPage(data) {
             font-size: 28px;
             font-weight: 700;
           }
+          
+          .loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(21, 26, 46, 0.78);
+  backdrop-filter: blur(4px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.loading-overlay.show {
+  display: flex;
+}
+
+.loading-card {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: 18px 22px;
+  min-width: 260px;
+  text-align: center;
+}
+
+.loading-spinner {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.16);
+  border-top-color: var(--primary);
+  margin: 0 auto 12px;
+  animation: spin 0.8s linear infinite;
+}
+
+.task-link {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.task-link:hover {
+  opacity: 0.85;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
           .stat-note {
             margin-top: 8px;
@@ -10309,7 +10366,8 @@ function renderDashboardPage(data) {
         </div>
 
 <script>
-function goToTaskFilter(userId, type) {
+
+function goToTaskFilter(userId, type, clickedEl) {
   const params = new URLSearchParams();
 
   if (type !== 'blocked_on_them') {
@@ -10341,10 +10399,43 @@ function goToTaskFilter(userId, type) {
     params.set('blocked', 'true');
   }
 
-  window.location.href = '/tasks?' + params.toString();
+  const overlay = document.getElementById('pageLoadingOverlay');
+  const title = document.getElementById('pageLoadingTitle');
+
+  if (title) {
+    if (type === 'blocked_on_them') {
+      title.textContent = 'Opening blocked tasks waiting on this person...';
+    } else if (type === 'blocked') {
+      title.textContent = 'Opening blocked tasks...';
+    } else if (type === 'overdue') {
+      title.textContent = 'Opening overdue tasks...';
+    } else if (type === 'not_started') {
+      title.textContent = 'Opening not started tasks...';
+    } else {
+      title.textContent = 'Opening task list...';
+    }
+  }
+
+  if (overlay) overlay.classList.add('show');
+
+  if (clickedEl) {
+    clickedEl.style.opacity = '0.65';
+    clickedEl.style.pointerEvents = 'none';
+  }
+
+  setTimeout(() => {
+    window.location.href = '/tasks?' + params.toString();
+  }, 80);
 }
 
 </script>
+<div id="pageLoadingOverlay" class="loading-overlay">
+  <div class="loading-card">
+    <div class="loading-spinner"></div>
+    <div id="pageLoadingTitle" style="font-weight:700;">Opening task list...</div>
+    <div class="muted" style="margin-top:6px;">Please wait</div>
+  </div>
+</div>
       </body>
     </html>
   `;
@@ -11801,18 +11892,6 @@ th, td {
   border-bottom: 1px solid rgba(255,255,255,0.06);
   text-align: left;
   vertical-align: top;
-}
-
-.task-link {
-  color: #60a5fa;
-  cursor: pointer;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.task-link:hover {
-  text-decoration: underline;
-  color: #93c5fd;
 }
 
 th:nth-child(1), td:nth-child(1) { min-width: 80px; }   /* ID */
