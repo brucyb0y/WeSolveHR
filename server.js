@@ -10427,6 +10427,15 @@ function goToTaskFilter(userId, type, clickedEl) {
     window.location.href = '/tasks?' + params.toString();
   }, 80);
 }
+window.addEventListener('pageshow', function() {
+  const overlay = document.getElementById('pageLoadingOverlay');
+  if (overlay) overlay.classList.remove('show');
+
+  document.querySelectorAll('.task-link').forEach(function(el) {
+    el.style.opacity = '';
+    el.style.pointerEvents = '';
+  });
+});
 
 </script>
 <div id="pageLoadingOverlay" class="loading-overlay">
@@ -12000,7 +12009,7 @@ tbody tr:hover {
 <button onclick="loadTasks()">Apply</button>
 </div>
 </div>
-
+<div id="activeSpecialFilters" class="muted" style="margin: 8px 0 12px;"></div>
 <div class="panel">
   <div id="statusText">Loading tasks...</div>
   <div class="table-wrap">
@@ -12313,8 +12322,43 @@ function applyFiltersFromUrl() {
   window.__waitingOn = waitingOn;
 }
 
+function renderSpecialFilterState() {
+  const box = document.getElementById('activeSpecialFilters');
+  if (!box) return;
+
+  if (!window.__waitingOn) {
+    box.innerHTML = '';
+    return;
+  }
+
+  const assigneeSelect = document.getElementById('assignee');
+  let waitingOnName = 'Selected user';
+
+  if (assigneeSelect) {
+    const opt = Array.from(assigneeSelect.options).find(
+      o => String(o.value) === String(window.__waitingOn)
+    );
+    if (opt && opt.textContent) waitingOnName = opt.textContent;
+  }
+
+  box.innerHTML =
+    'Filtered: waiting on <strong>' + waitingOnName + '</strong> ' +
+    '<button type="button" onclick="clearWaitingOnFilter()" style="margin-left:8px;">Clear</button>';
+}
+
+function clearWaitingOnFilter() {
+  window.__waitingOn = '';
+
+  const url = new URL(window.location.href);
+  url.searchParams.delete('waitingOn');
+  window.history.replaceState({}, '', url.toString());
+
+  loadTasks();
+}
+
           async function loadTasks() {
             const params = new URLSearchParams();
+            renderSpecialFilterState();
 const search = document.getElementById('search').value.trim();
 const assignee = document.getElementById('assignee').value;
 const business = document.getElementById('business').value;
@@ -12360,7 +12404,10 @@ if (!json.ok) {
 
             const rows = json.data || [];
 console.log('tasks rows:', rows);
-document.getElementById('statusText').textContent = rows.length ? '' : 'No tasks found';
+document.getElementById('statusText').textContent =
+  rows.length === 0
+    ? 'No tasks found'
+    : (rows.length + ' task' + (rows.length === 1 ? '' : 's') + ' shown');
 
 document.getElementById('taskRows').innerHTML = rows.map(function(task) {
   const status = String(task.status || '').toLowerCase();
