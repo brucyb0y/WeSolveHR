@@ -11379,27 +11379,26 @@ app.get("/api/attendance", requireDashboardAuth, async (_req, res) => {
 
 app.get("/api/tasks", requireDashboardAuth, async (req, res) => {
   try {
-    const filters = {
-      search: req.query.search || "",
-      assignee: req.query.assignee || "",
-      business: req.query.business || "",
-      area: req.query.area || "",
-      status: req.query.status || "",
-      priority: req.query.priority || "",
-      blocked: String(req.query.blocked || "") === "true",
-      overdue: String(req.query.overdue || "") === "true",
-      progressBucket: Array.isArray(req.query.progressBucket)
-        ? req.query.progressBucket
-        : req.query.progressBucket
-          ? [req.query.progressBucket]
-          : ["not_begun", "zero_to_fifty", "fifty_to_hundred"],
-    };
+    const rows = await getTasksPageData(
+      {
+        search: req.query.search,
+        assignee: req.query.assignee,
+        waitingOn: req.query.waitingOn,
+        business: req.query.business,
+        area: req.query.area,
+        status: req.query.status,
+        priority: req.query.priority,
+        blocked: req.query.blocked,
+        overdue: req.query.overdue,
+        progressBucket: req.query.progressBucket,
+      },
+      DASHBOARD_ORG_ID,
+    );
 
-    const data = await getTasksPageData(filters, DASHBOARD_ORG_ID);
-    return sendApiSuccess(res, data);
+    return sendApiSuccess(res, rows);
   } catch (error) {
-    console.error("API /api/tasks error:", error);
-    return sendApiError(res, 500, error?.message || "Failed to load tasks");
+    console.error("/api/tasks error:", error);
+    return sendApiError(res, 500, "Failed to load tasks");
   }
 });
 
