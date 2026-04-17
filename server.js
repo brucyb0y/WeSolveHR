@@ -10374,9 +10374,14 @@ function goToTaskFilter(userId, type, clickedEl) {
     params.set('assignee', String(userId));
   }
 
-  if (type === 'blocked') {
-    params.set('blocked', 'true');
-  }
+if (type === 'blocked') {
+  params.set('blocked', 'true');
+  params.append('progressBucket', 'not_begun');
+  params.append('progressBucket', 'zero_to_fifty');
+  params.append('progressBucket', 'fifty_to_hundred');
+  params.append('progressBucket', 'complete');
+  params.append('progressBucket', 'hide_cancelled');
+}
 
   if (type === 'overdue') {
     params.set('overdue', 'true');
@@ -12319,9 +12324,23 @@ function applyFiltersFromUrl() {
   if (blockedEl) blockedEl.checked = blocked;
   if (overdueEl) overdueEl.checked = overdue;
 
-  if (progressBucketEl && progressBuckets.length) {
-    for (const opt of progressBucketEl.options) {
-      opt.selected = progressBuckets.includes(opt.value);
+  if (progressBucketEl) {
+    if (progressBuckets.length) {
+      for (const opt of progressBucketEl.options) {
+        opt.selected = progressBuckets.includes(opt.value);
+      }
+    } else if (blocked) {
+      const blockedDefaults = new Set([
+        'not_begun',
+        'zero_to_fifty',
+        'fifty_to_hundred',
+        'complete',
+        'hide_cancelled',
+      ]);
+
+      for (const opt of progressBucketEl.options) {
+        opt.selected = blockedDefaults.has(opt.value);
+      }
     }
   }
 
