@@ -5219,6 +5219,45 @@ async function handleSelfAttendance(res, user, attendanceCommand) {
   return sendTwiml(res, `✅ ${attendanceCommand.action} marked successfully`);
 }
 
+async function getLogsPageData(orgId) {
+  let query = supabase
+    .from("message_logs")
+    .select(
+      `
+      id,
+      org_id,
+      user_id,
+      phone_number,
+      profile_name,
+      message_text,
+      twilio_message_sid,
+      created_at,
+      direction
+    `,
+    )
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (orgId != null) {
+    query = query.eq("org_id", orgId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) throw error;
+
+  return (data || []).map((row) => ({
+    id: row.id,
+    sender: row.profile_name || row.phone_number || "Unknown",
+    body: row.message_text,
+    message_sid: row.twilio_message_sid,
+    created_at: row.created_at,
+    created_at_text: row.created_at ? formatDateTime(row.created_at) : "-",
+    direction: row.direction || "-",
+    org_id: row.org_id,
+  }));
+}
+
 async function createPlannedOffDay(
   userId,
   offDate,
@@ -13068,6 +13107,16 @@ async function loadLogs() {
       </body>
     </html>
   `);
+});
+
+app.get("/api/logs", requireDashboardAuth, async (_req, res) => {
+  try {
+    const data = await getLogsPageData(null);
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("API /api/logs error:", error);
+    return sendApiError(res, 500, error?.message || "Failed to load logs");
+  }
 });
 
 app.post("/whatsapp", async (req, res) => {
