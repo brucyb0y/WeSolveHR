@@ -11162,45 +11162,6 @@ async function getTaskDetailData(taskId, orgId) {
   };
 }
 
-async function getLogsPageData(orgId) {
-  let query = supabase
-    .from("message_logs")
-    .select(
-      `
-      id,
-      org_id,
-      user_id,
-      phone_number,
-      profile_name,
-      message_text,
-      twilio_message_sid,
-      created_at,
-      direction
-    `,
-    )
-    .order("created_at", { ascending: false })
-    .limit(100);
-
-  if (orgId != null) {
-    query = query.eq("org_id", orgId);
-  }
-
-  const { data, error } = await query;
-
-  if (error) throw error;
-
-  return (data || []).map((row) => ({
-    id: row.id,
-    sender: row.profile_name || row.phone_number || "Unknown",
-    body: row.message_text,
-    message_sid: row.twilio_message_sid,
-    created_at: row.created_at,
-    created_at_text: row.created_at ? formatDateTime(row.created_at) : "-",
-    direction: row.direction || "-",
-    org_id: row.org_id,
-  }));
-}
-
 async function getStage0BugBoardData(orgId) {
   const { data, error } = await supabase
     .from("stage0_bug_board")
