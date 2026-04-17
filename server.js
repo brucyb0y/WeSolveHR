@@ -11124,7 +11124,7 @@ async function getTaskDetailData(taskId, orgId) {
 }
 
 async function getLogsPageData(orgId) {
-  const { data, error } = await supabase
+  let query = supabase
     .from("message_logs")
     .select(
       `
@@ -11139,10 +11139,14 @@ async function getLogsPageData(orgId) {
       direction
     `,
     )
-    .eq("org_id", orgId)
-    .eq("direction", "inbound")
     .order("created_at", { ascending: false })
     .limit(100);
+
+  if (orgId != null) {
+    query = query.eq("org_id", orgId);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
 
@@ -11153,6 +11157,8 @@ async function getLogsPageData(orgId) {
     message_sid: row.twilio_message_sid,
     created_at: row.created_at,
     created_at_text: row.created_at ? formatDateTime(row.created_at) : "-",
+    direction: row.direction || "-",
+    org_id: row.org_id,
   }));
 }
 
@@ -13005,28 +13011,47 @@ th {
           <div class="panel">
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Time</th><th>Sender</th><th>Message</th><th>Message SID</th></tr></thead>
-                <tbody id="logRows"></tbody>
+<thead>
+  <tr>
+    <th>Time</th>
+    <th>Sender</th>
+    <th>Message</th>
+    <th>Direction</th>
+    <th>Org</th>
+    <th>Message SID</th>
+  </tr>
+</thead>
+<tbody id="logRows"></tbody>
               </table>
             </div>
           </div>
         </div>
 
         <script>
-          async function loadLogs() {
-            const res = await fetch('/api/logs');
-            const json = await res.json();
-            if (!json.ok) return;
 
-            document.getElementById('logRows').innerHTML = (json.data || []).map(row => \`
-              <tr>
-                <td>\${row.created_at_text || ''}</td>
-                <td>\${row.sender || ''}</td>
-                <td class="msg">\${row.body || ''}</td>
-                <td>\${row.message_sid || '-'}</td>
-              </tr>
-            \`).join('');
-          }
+async function loadLogs() {
+  try {
+    const res = await fetch('/api/logs');
+    const json = await res.json();
+
+    if (!json.ok) return;
+
+    document.getElementById('logRows').innerHTML = (json.data || [])
+      .map(row =>
+        '<tr>' +
+          '<td>' + (row.created_at_text || row.created_at || '') + '</td>' +
+          '<td>' + (row.sender || '') + '</td>' +
+          '<td class="msg">' + (row.body || '') + '</td>' +
+          '<td>' + (row.direction || '-') + '</td>' +
+          '<td>' + (row.org_id ?? '-') + '</td>' +
+          '<td>' + (row.message_sid || '-') + '</td>' +
+        '</tr>'
+      )
+      .join('');
+  } catch (err) {
+    console.error('Failed to load logs:', err);
+  }
+}
 
           loadLogs();
 
