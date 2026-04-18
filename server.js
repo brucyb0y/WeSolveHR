@@ -9119,6 +9119,164 @@ async function getLatestAttendanceByUser(orgId) {
   });
 }
 
+function buildEmployeeMonthlyAttendanceSummaryFromData({
+  events = [],
+  leaveRows = [],
+  lateRows = [],
+  auditRows = [],
+  startDate,
+  endDateExclusive,
+  redReportDates = [],
+}) {
+  const eventsByAttendanceDay = new Map();
+
+  for (const ev of events || []) {
+    const attendanceDate = parseIsoToAttendanceDateString(ev.created_at);
+    if (!attendanceDate) continue;
+
+    if (!eventsByAttendanceDay.has(attendanceDate)) {
+      eventsByAttendanceDay.set(attendanceDate, []);
+    }
+    eventsByAttendanceDay.get(attendanceDate).push(ev);
+  }
+
+  const nowDate = getAttendanceDayDateStringFromDate(new Date());
+
+  let presentDays = 0;
+  let leaveDays = leaveRows.length;
+  let lateJoins = 0;
+  let approvedLate = 0;
+  let unapprovedLate = 0;
+  let uninformedLate = 0;
+  let totalLoginMinutes = 0;
+  let loginDays = 0;
+  let totalBreakMin = 0;
+  let breakDays = 0;
+  let longShiftCount = 0;
+  let longBreakCount = 0;
+  let possibleHalfDays = 0;
+
+  for (
+    let date = startDate;
+    date < endDateExclusive;
+    date = addDaysToDateString(date, 1)
+  ) {
+    const dayEvents = eventsByAttendanceDay.get(date) || [];
+    if (!dayEvents.length) continue;
+
+    const summary = getAttendanceSummaryFromEvents(dayEvents);
+
+    if (summary.firstLogin) {
+      presentDays += 1;
+
+      const firstLogin = new Date(summary.firstLogin.created_at);
+      const midnight = new Date(`${date}T00:00:00${APP_TIMEZONE_OFFSET}`);
+      const minsFromMidnight =
+        firstLogin.getHours() * 60 + firstLogin.getMinutes();
+
+      totalLoginMinutes += minsFromMidnight;
+      loginDays += 1;
+    }
+
+    if (summary.breakMinutes > 0) {
+      totalBreakMin += summary.breakMinutes;
+      breakDays += 1;
+    }
+
+    if (summary.longShiftFlag) longShiftCount += 1;
+    if (summary.longBreakFlag) longBreakCount += 1;
+    if (summary.possibleHalfDay) possibleHalfDays += 1;
+  }
+
+  for (const row of lateRows || []) {
+    lateJoins += 1;
+
+    const firstDayEvents = eventsByAttendanceDay.get(row.late_date) || [];
+    const firstLogin = getFirstLoginEvent(firstDayEvents);
+
+    if (row.is_approved) {
+      approvedLate += 1;
+    } else if (firstLogin) {
+      unapprovedLate += 1;
+    } else {
+      uninformedLate += 1;
+    }
+  }
+
+  const avgLoginTimeText =
+    loginDays > 0
+      ? (() => {
+          const avgMinutes = Math.round(totalLoginMinutes / loginDays);
+          const hh = Math.floor(avgMinutes / 60);
+          const mm = avgMinutes % 60;
+
+          const d = new Date();
+          d.setHours(hh, mm, 0, 0);
+
+          return d.toLocaleTimeString("en-IN", {
+            timeZone: APP_TIMEZONE,
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          });
+        })()
+      : "-";
+
+  const avgBreakMin = breakDays > 0 ? Math.round(totalBreakMin / breakDays) : 0;
+
+  const pastLeaveDates = leaveRows
+    .map((x) => x.off_date)
+    .filter((d) => d < nowDate);
+
+  const upcomingLeaveDates = leaveRows
+    .map((x) => x.off_date)
+    .filter((d) => d >= nowDate);
+
+  const managerCorrectionCount = (auditRows || []).filter(
+    (row) =>
+      String(row.action_type || "").startsWith("mark_") ||
+      String(row.action_type || "").startsWith("fix_") ||
+      String(row.action_type || "").startsWith("force_") ||
+      String(row.action_type || "").startsWith("remove_") ||
+      String(row.action_type || "").startsWith("undo_") ||
+      String(row.action_type || "").startsWith("reset_") ||
+      String(row.action_type || "").startsWith("lock_") ||
+      String(row.action_type || "").startsWith("unlock_"),
+  ).length;
+
+  let totalWorkingDays = 0;
+  for (
+    let date = startDate;
+    date < endDateExclusive;
+    date = addDaysToDateString(date, 1)
+  ) {
+    const weekday = getWeekdayNameFromDateString(date);
+    if (weekday !== "sunday") {
+      totalWorkingDays += 1;
+    }
+  }
+
+  return {
+    redReportDays: redReportDates.length,
+    redReportDates,
+    presentDays,
+    leaveDays,
+    pastLeaveDates,
+    upcomingLeaveDates,
+    lateJoins,
+    approvedLate,
+    unapprovedLate,
+    uninformedLate,
+    avgLoginTimeText,
+    avgBreakMin,
+    longShiftCount,
+    longBreakCount,
+    possibleHalfDays,
+    managerCorrectionCount,
+    totalWorkingDays,
+  };
+}
+
 async function getEmployeeMonthlyAttendanceSummary(userId, orgId) {
   const { startDate, endDateExclusive } = getMonthDateRangeForTimeZone(
     new Date(),
@@ -9397,7 +9555,7 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
     lateResult,
     auditResult,
     overrideResult,
-    monthlySummary,
+    redReportDates,
   ] = await Promise.all([
     supabase
       .from("users")
@@ -9489,7 +9647,12 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
       .lt("override_date", endDateExclusive)
       .order("override_date", { ascending: true }),
 
-    getEmployeeMonthlyAttendanceSummary(userId, orgId),
+    getMissingReportDatesForUserInRange({
+      orgId,
+      userId,
+      startDate,
+      endDateExclusive,
+    }),
   ]);
 
   if (userResult.error) throw userResult.error;
@@ -9511,16 +9674,23 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
   const lateRows = lateResult.data || [];
   const auditRows = auditResult.data || [];
   const overrideRows = overrideResult.data || [];
+  const lateByDate = new Map((lateRows || []).map((x) => [x.late_date, x]));
+  const leaveByDate = new Map((leaveRows || []).map((x) => [x.off_date, x]));
+  const auditCountByDate = new Map();
+
+  for (const row of auditRows || []) {
+    const auditDate = parseIsoToAttendanceDateString(row.created_at);
+    if (!auditDate) continue;
+    auditCountByDate.set(auditDate, (auditCountByDate.get(auditDate) || 0) + 1);
+  }
 
   const overrideByDate = new Map(
     (overrideRows || []).map((x) => [x.override_date, x.mode]),
   );
 
   const todaySummary = getAttendanceSummaryFromEvents(todayEvents);
-  const leaveToday =
-    leaveRows.find((x) => x.off_date === todayAttendanceDate) || null;
-  const lateToday =
-    lateRows.find((x) => x.late_date === todayAttendanceDate) || null;
+  const leaveToday = leaveByDate.get(todayAttendanceDate) || null;
+  const lateToday = lateByDate.get(todayAttendanceDate) || null;
 
   const todayOverrideMode = overrideByDate.get(todayAttendanceDate) || null;
 
@@ -9562,13 +9732,21 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
     a < b ? 1 : -1,
   );
 
+  const monthlySummary = buildEmployeeMonthlyAttendanceSummaryFromData({
+    events: monthlyEvents,
+    leaveRows,
+    lateRows,
+    auditRows,
+    startDate,
+    endDateExclusive,
+    redReportDates: redReportDates || [],
+  });
+
   for (const attendanceDate of sortedAttendanceDates) {
     const dayEvents = eventsByAttendanceDay.get(attendanceDate) || [];
     const daySummary = getAttendanceSummaryFromEvents(dayEvents);
-    const dayLate =
-      lateRows.find((x) => x.late_date === attendanceDate) || null;
-    const dayLeave =
-      leaveRows.find((x) => x.off_date === attendanceDate) || null;
+    const dayLate = lateByDate.get(attendanceDate) || null;
+    const dayLeave = leaveByDate.get(attendanceDate) || null;
 
     const overrideMode = overrideByDate.get(attendanceDate) || null;
 
@@ -9587,10 +9765,7 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
     const effectiveLeaveText =
       !expectation.expectedToWork && dayLeave ? "Yes" : "No";
 
-    const dayAuditCount = auditRows.filter((x) => {
-      const auditDate = parseIsoToAttendanceDateString(x.created_at);
-      return auditDate === attendanceDate;
-    }).length;
+    const dayAuditCount = auditCountByDate.get(attendanceDate) || 0;
 
     history.push({
       attendance_date: attendanceDate,
