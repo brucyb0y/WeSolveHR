@@ -1555,6 +1555,34 @@ function parseCompanyOffCommand(text) {
   };
 }
 
+function parseCompanyWorkDayOverrideCommand(text) {
+  const raw = normalizeText(text);
+
+  let match = raw.match(
+    /^company\s+day\s+on\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
+  );
+
+  if (match) {
+    return {
+      date_text: match[1].trim(),
+      mode: "full_day",
+    };
+  }
+
+  match = raw.match(
+    /^company\s+day\s+half\s+(today|tomorrow|[a-z]+\s+\d{1,2}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+)$/i,
+  );
+
+  if (match) {
+    return {
+      date_text: match[1].trim(),
+      mode: "half_day",
+    };
+  }
+
+  return null;
+}
+
 function parseAttendanceCommand(text) {
   const raw = normalizeText(text);
 
@@ -4124,6 +4152,9 @@ async function handleHelp(res, user, topic = "") {
           isManager ? "company off today" : null,
           isManager ? "company off tomorrow" : null,
           isManager ? "company off 15 april" : null,
+          isManager ? "company day on today" : null,
+          isManager ? "company day on 18 april" : null,
+          isManager ? "company day half sunday" : null,
           isManager ? "day on saturday Aj" : null,
           isManager ? "day half sunday Ruhab" : null,
           isManager ? "day on 11 april Mahesh" : null,
@@ -4163,6 +4194,9 @@ async function handleHelp(res, user, topic = "") {
           "day on saturday Aj",
           "day half sunday Ruhab",
           "day on 11 april Mahesh",
+          "company day on today",
+          "company day on 18 april",
+          "company day half sunday",
           "now",
           "",
           "Tasks:",
@@ -5093,6 +5127,105 @@ Mode: ${command.mode}`,
   );
 }
 
+async function handleCompanyWorkDayOverride(res, actingUser, command) {
+  if (!isManagerOrAdmin(actingUser)) {
+    return sendTwiml(
+      res,
+      "You are not allowed to change company-wide work-day expectation.",
+    );
+  }
+
+  const overrideDate = parseFlexibleDateText(command.date_text);
+  if (!overrideDate) {
+    return sendTwiml(
+      res,
+      `I could not understand the date "${command.date_text}". Use today, tomorrow, 11 april, or april 11.`,
+    );
+  }
+
+  const { users, error: usersError } = await getAllActiveUsersInOrg(
+    actingUser.org_id,
+  );
+
+  if (usersError) {
+    console.error("handleCompanyWorkDayOverride get users error:", usersError);
+    return sendTwiml(res, "Failed to fetch team users.");
+  }
+
+  if (!users.length) {
+    return sendTwiml(res, "No active users found in the company.");
+  }
+
+  const lockedUsers = [];
+  const unlockedUsers = [];
+
+  for (const user of users) {
+    const locked = await isAttendanceDayLocked(
+      user.id,
+      overrideDate,
+      actingUser.org_id,
+    );
+
+    if (locked) {
+      lockedUsers.push(user);
+    } else {
+      unlockedUsers.push(user);
+    }
+  }
+
+  if (!unlockedUsers.length) {
+    return sendTwiml(
+      res,
+      `❌ Company-wide work-day override could not be applied because all users are locked for ${overrideDate}.`,
+    );
+  }
+
+  const rows = unlockedUsers.map((user) => ({
+    org_id: actingUser.org_id,
+    user_id: user.id,
+    override_date: overrideDate,
+    mode: command.mode,
+    note: `Company-wide ${command.mode} marked by ${actingUser.name}`,
+    created_by_user_id: actingUser.id,
+  }));
+
+  const { error } = await supabase
+    .from("work_day_expectation_overrides")
+    .upsert(rows, { onConflict: "org_id,user_id,override_date" });
+
+  if (error) {
+    console.error("handleCompanyWorkDayOverride upsert error:", error);
+    return sendTwiml(res, "Failed to save company-wide work-day override.");
+  }
+
+  for (const user of unlockedUsers) {
+    await insertAttendanceAudit(
+      user.id,
+      actingUser.id,
+      "mark_company_work_day_override",
+      null,
+      { override_date: overrideDate, mode: command.mode },
+      `Company-wide ${command.mode} marked by ${actingUser.name}`,
+      actingUser.org_id,
+    );
+  }
+
+  const lines = [
+    `✅ Company-wide work-day override saved`,
+    `Date: ${overrideDate}`,
+    `Mode: ${command.mode}`,
+    `Applied to: ${unlockedUsers.length} user(s)`,
+  ];
+
+  if (lockedUsers.length) {
+    lines.push(
+      `Skipped locked users: ${lockedUsers.map((x) => x.name).join(", ")}`,
+    );
+  }
+
+  return sendTwiml(res, lines.join("\n"));
+}
+
 async function handleSelfAttendance(res, user, attendanceCommand) {
   const lastAction = await getLastAction(user.id, user.org_id);
   const validationError = validateAttendanceTransition(
@@ -5198,9 +5331,26 @@ async function handleSelfAttendance(res, user, attendanceCommand) {
         ? `\n🌴 On leave today: ${otherNames.join(", ")}`
         : `\n🌴 On leave today: None`;
 
+      const { data: todayOverride, error: todayOverrideError } = await supabase
+        .from("work_day_expectation_overrides")
+        .select("mode")
+        .eq("org_id", user.org_id)
+        .eq("user_id", user.id)
+        .eq("override_date", today)
+        .maybeSingle();
+
+      if (todayOverrideError) {
+        console.error("Login override lookup error:", todayOverrideError);
+      }
+
+      const fullDayReminder =
+        todayOverride?.mode === "full_day"
+          ? `\n⚠️ Don't forget: today is a full working day`
+          : "";
+
       return sendTwiml(
         res,
-        `✅ Logged in successfully\nWelcome, ${user.name}${lateLine}${leaveLine}`,
+        `✅ Logged in successfully\nWelcome, ${user.name}${fullDayReminder}${lateLine}${leaveLine}`,
       );
     } catch (error) {
       console.error("Login leave lookup error:", error);
@@ -13516,6 +13666,21 @@ app.post("/whatsapp", async (req, res) => {
         successType: "attendance_update",
         failureType: "attendance_update_failed",
         action: () => handleWorkDayOverride(res, user, workDayOverrideCommand),
+      });
+    }
+
+    const companyWorkDayOverrideCommand =
+      parseCompanyWorkDayOverrideCommand(body);
+    if (companyWorkDayOverrideCommand) {
+      return runInboundAction({
+        successType: "attendance_update",
+        failureType: "attendance_update_failed",
+        action: () =>
+          handleCompanyWorkDayOverride(
+            res,
+            user,
+            companyWorkDayOverrideCommand,
+          ),
       });
     }
 
