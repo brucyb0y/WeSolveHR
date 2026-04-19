@@ -9647,12 +9647,7 @@ async function getEmployeeAttendanceOverview(userId, orgId) {
       .lt("override_date", endDateExclusive)
       .order("override_date", { ascending: true }),
 
-    getMissingReportDatesForUserInRange({
-      orgId,
-      userId,
-      startDate,
-      endDateExclusive,
-    }),
+    Promise.resolve([]),
   ]);
 
   if (userResult.error) throw userResult.error;
@@ -10200,21 +10195,14 @@ th {
                 <div class="k">Long break flags</div><div>${escapeHtml(String(monthly.longBreakCount || 0))}</div>
                 <div class="k">Possible half days</div><div>${escapeHtml(String(monthly.possibleHalfDays || 0))}</div>
                 <div class="k">Manager corrections</div><div>${escapeHtml(String(monthly.managerCorrectionCount || 0))}</div>
-                <div class="k">Red report days</div>
-<div>${escapeHtml(String(monthly.redReportDays || 0))}</div>
+<div class="k">Red report days</div>
+<div id="redReportDaysValue">
+  <span class="muted">Loading...</span>
+</div>
 
 <div class="k">Red report dates</div>
-<div>
-  ${
-    (monthly.redReportDates || []).length
-      ? `
-      <details>
-        <summary>${escapeHtml(String(monthly.redReportDays || 0))} date(s)</summary>
-        <div style="margin-top:8px;">${escapeHtml(formatDateListForHumans(monthly.redReportDates || []))}</div>
-      </details>
-    `
-      : "None"
-  }
+<div id="redReportDatesValue">
+  <span class="muted">Loading...</span>
 </div>
               </div>
             </div>
@@ -10279,7 +10267,65 @@ th {
           </div>
         </div>
 
-        <script>
+<script>
+  async function loadRedReports(userId) {
+    const daysEl = document.getElementById("redReportDaysValue");
+    const datesEl = document.getElementById("redReportDatesValue");
+
+    if (!daysEl || !datesEl || !userId) return;
+
+    try {
+const res = await fetch('/api/attendance/' + userId + '/red-reports', {
+  headers: { Accept: "application/json" },
+});
+
+      const json = await res.json();
+
+      if (!json.ok) {
+        daysEl.innerHTML = '<span class="muted">Failed to load</span>';
+        datesEl.innerHTML = '<span class="muted">Failed to load</span>';
+        return;
+      }
+
+      const data = json.data || {};
+      const redReportDays = Number(data.redReportDays || 0);
+      const redReportDates = Array.isArray(data.redReportDates)
+        ? data.redReportDates
+        : [];
+      const redReportDatesText = data.redReportDatesText || "None";
+
+      daysEl.textContent = String(redReportDays);
+
+      if (redReportDates.length) {
+datesEl.innerHTML =
+  '<details>' +
+    '<summary>' + redReportDays + ' date(s)</summary>' +
+    '<div style="margin-top:8px;">' +
+      escapeHtmlClient(redReportDatesText) +
+    '</div>' +
+  '</details>';
+      } else {
+        datesEl.textContent = "None";
+      }
+    } catch (error) {
+      console.error("Red reports fetch failed:", error);
+      daysEl.innerHTML = '<span class="muted">Failed to load</span>';
+      datesEl.innerHTML = '<span class="muted">Failed to load</span>';
+    }
+  }
+
+  function escapeHtmlClient(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    loadRedReports(${Number(employee.id) || 0});
+  });
+</script>
 loadUsers().then(loadTasks);
 
         </script>
@@ -11001,7 +11047,10 @@ app.get("/attendance/:userId", requireDashboardAuth, async (req, res) => {
 
     const days = Number(req.query.days) === 7 ? 7 : 1;
 
-    const data = await getEmployeeAttendanceOverview(userId, DASHBOARD_ORG_ID);
+    const data = await getEmployeeAttendanceOverview(userId, DASHBOARD_ORG_ID, {
+      days,
+    });
+
     return res.status(200).send(
       renderEmployeeAttendancePage({
         ...data,
@@ -11048,6 +11097,43 @@ app.get("/attendance/:userId", requireDashboardAuth, async (req, res) => {
     `);
   }
 });
+
+app.get(
+  "/api/attendance/:userId/red-reports",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const userId = Number(req.params.userId);
+      if (!userId) {
+        return sendApiError(res, 400, "Invalid user id");
+      }
+
+      const nowAttendanceDate = getAttendanceDayDateStringFromDate(new Date());
+      const startDate = getMonthStartDateString(nowAttendanceDate);
+      const endDateExclusive = addDaysToDateString(nowAttendanceDate, 1);
+
+      const redReportDates = await getMissingReportDatesForUserInRange({
+        orgId: DASHBOARD_ORG_ID,
+        userId,
+        startDate,
+        endDateExclusive,
+      });
+
+      return sendApiSuccess(res, {
+        redReportDays: redReportDates.length,
+        redReportDates,
+        redReportDatesText: formatDateListForHumans(redReportDates),
+      });
+    } catch (error) {
+      console.error("Employee red reports API error:", error);
+      return sendApiError(
+        res,
+        500,
+        error?.message || "Failed to load red reports",
+      );
+    }
+  },
+);
 
 async function getDashboardSummaryData(orgId) {
   const { startUtc, endUtc, attendanceDate } = getCurrentAttendanceDayRange();
