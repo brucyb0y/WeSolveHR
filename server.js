@@ -3,6 +3,8 @@ import dotenv from "dotenv";
 import twilio from "twilio";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
+import bcrypt from "bcrypt";
+import session from "express-session";
 
 dotenv.config();
 
@@ -56,6 +58,19 @@ function normalizeText(text) {
 }
 
 app.use(express.json());
+
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "wesolve-secret",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: false,
+      httpOnly: true,
+      maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+    },
+  }),
+);
 
 function sendTwiml(res, message) {
   try {
@@ -121,6 +136,17 @@ function parseDeadlineCommand(text) {
   return {
     taskId: Number(match[1]),
     dateText: match[2].trim(),
+  };
+}
+
+function parseChangePasswordCommand(text) {
+  const raw = normalizeText(text);
+  const match = raw.match(/^change password\s+(.+)$/i);
+
+  if (!match) return null;
+
+  return {
+    newPassword: match[1].trim(),
   };
 }
 
@@ -798,6 +824,49 @@ function parseLateForOtherCommand(text) {
     target_name: match[1].trim(),
     time_text: match[2].trim().replace(/\s+/g, " "),
     note: match[5]?.trim() || null,
+  };
+}
+
+function parseFeedbackCommand(text) {
+  const raw = normalizeText(text);
+
+  const patterns = [
+    { type: "feedback", regex: /^feedback\s+(.+?)\s+(.+)$/i },
+    { type: "appreciation", regex: /^appreciation\s+(.+?)\s+(.+)$/i },
+    { type: "coaching", regex: /^coaching\s+(.+?)\s+(.+)$/i },
+    { type: "one_on_one", regex: /^1on1\s+(.+?)\s+(.+)$/i },
+  ];
+
+  for (const p of patterns) {
+    const match = raw.match(p.regex);
+
+    if (match) {
+      return {
+        type: p.type,
+        target_name: match[1].trim(),
+        note: match[2].trim(),
+      };
+    }
+  }
+
+  return null;
+}
+
+function parseAppraisalCommand(text) {
+  const raw = normalizeText(text);
+
+  const match = raw.match(
+    /^appraisal\s+(.+?)\s+rating\s+(\d+)\s+strengths\s+(.+?)\s+improve\s+(.+?)\s+comment\s+(.+)$/i,
+  );
+
+  if (!match) return null;
+
+  return {
+    target_name: match[1].trim(),
+    rating: Number(match[2]),
+    strengths: match[3].trim(),
+    improvement_areas: match[4].trim(),
+    manager_comment: match[5].trim(),
   };
 }
 
@@ -1816,6 +1885,28 @@ function checkRateLimit(key) {
   return true;
 }
 
+async function requireUserLogin(req, res, next) {
+  const userId = req.session?.userId;
+
+  if (!userId) {
+    return res.redirect("/login");
+  }
+
+  const { data: user } = await supabase
+    .from("users")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!user) {
+    req.session.destroy(() => {});
+    return res.redirect("/login");
+  }
+
+  req.loggedInUser = user;
+  next();
+}
+
 function requireDashboardAuth(req, res, next) {
   const username = process.env.DASHBOARD_USERNAME;
   const password = process.env.DASHBOARD_PASSWORD;
@@ -2120,19 +2211,6 @@ async function getAllActiveUsersInOrg(orgId) {
   }
 
   return { users: data || [], error: null };
-}
-
-async function findUsersByNames(names, orgId) {
-  const matchedUsers = [];
-  const missingNames = [];
-
-  for (const name of names) {
-    const user = await findUniqueUserByName(name, orgId);
-    if (user) matchedUsers.push(user);
-    else missingNames.push(name);
-  }
-
-  return { matchedUsers, missingNames };
 }
 
 async function getTaskOwnerIds(taskId, orgId) {
@@ -4319,6 +4397,85 @@ Status: ${task.status}
 Progress: ${task.progress}%
 Title: ${task.title}
 Deadline: ${task.deadline ?? "no deadline"}${detail}${waitingOn}${blockerReason}`,
+  );
+}
+
+async function handleFeedbackCommand(res, actingUser, feedbackCommand) {
+  if (!isManagerOrAdmin(actingUser)) {
+    return sendTwiml(res, "Only managers/admins can add feedback.");
+  }
+
+  const targetUser = await findUniqueUserByName(
+    feedbackCommand.target_name,
+    actingUser.org_id,
+  );
+
+  if (!targetUser) {
+    return sendTwiml(
+      res,
+      `I could not uniquely find an active user named "${feedbackCommand.target_name}".`,
+    );
+  }
+
+  const { error } = await supabase.from("employee_feedback").insert([
+    {
+      org_id: actingUser.org_id,
+      user_id: targetUser.id,
+      created_by_user_id: actingUser.id,
+      type: feedbackCommand.type,
+      note: feedbackCommand.note,
+    },
+  ]);
+
+  if (error) {
+    console.error("Feedback insert error:", error);
+    return sendTwiml(res, "❌ Failed to save feedback.");
+  }
+
+  return sendTwiml(
+    res,
+    `✅ ${feedbackCommand.type} saved for ${targetUser.name}.`,
+  );
+}
+
+async function handleAppraisalCommand(res, actingUser, appraisalCommand) {
+  if (!isManagerOrAdmin(actingUser)) {
+    return sendTwiml(res, "Only managers/admins can add appraisals.");
+  }
+
+  const targetUser = await findUniqueUserByName(
+    appraisalCommand.target_name,
+    actingUser.org_id,
+  );
+
+  if (!targetUser) {
+    return sendTwiml(
+      res,
+      `I could not uniquely find an active user named "${appraisalCommand.target_name}".`,
+    );
+  }
+
+  const { error } = await supabase.from("employee_feedback").insert([
+    {
+      org_id: actingUser.org_id,
+      user_id: targetUser.id,
+      created_by_user_id: actingUser.id,
+      type: "appraisal",
+      rating: appraisalCommand.rating,
+      strengths: appraisalCommand.strengths,
+      improvement_areas: appraisalCommand.improvement_areas,
+      manager_comment: appraisalCommand.manager_comment,
+    },
+  ]);
+
+  if (error) {
+    console.error("Appraisal insert error:", error);
+    return sendTwiml(res, "❌ Failed to save appraisal.");
+  }
+
+  return sendTwiml(
+    res,
+    `✅ Appraisal saved for ${targetUser.name}. Rating: ${appraisalCommand.rating}`,
   );
 }
 
@@ -11608,6 +11765,131 @@ app.get("/health/live", (_req, res) => {
   return res.status(200).json({ ok: true, status: "live" });
 });
 
+app.get("/account", requireUserLogin, async (req, res) => {
+  const user = req.loggedInUser;
+
+  const { data: appraisal } = await supabase
+    .from("employee_feedback")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("type", "appraisal")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: feedbackItems } = await supabase
+    .from("employee_feedback")
+    .select("*")
+    .eq("user_id", user.id)
+    .neq("type", "appraisal")
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  const ptoRemaining = user.pto_total - user.pto_used;
+  const sickRemaining = user.sick_total - user.sick_used;
+
+  res.send(`
+    <html>
+      <body style="font-family:sans-serif;padding:40px;">
+        <h1>${escapeHtml(user.name)}</h1>
+        <p>${escapeHtml(user.role || "")}</p>
+
+        <h2>Leave Balance</h2>
+        <p>PTO Remaining: ${ptoRemaining}</p>
+        <p>Sick Remaining: ${sickRemaining}</p>
+
+        <h2>Last Appraisal</h2>
+        ${
+          appraisal
+            ? `
+              <p>Rating: ${appraisal.rating || "-"}</p>
+              <p>Strengths: ${escapeHtml(appraisal.strengths || "-")}</p>
+              <p>Improvement Areas: ${escapeHtml(appraisal.improvement_areas || "-")}</p>
+              <p>Manager Comment: ${escapeHtml(appraisal.manager_comment || "-")}</p>
+            `
+            : "<p>No appraisal yet</p>"
+        }
+
+        <h2>Feedback Timeline</h2>
+        ${
+          feedbackItems?.length
+            ? feedbackItems
+                .map(
+                  (item) => `
+                  <div style="border:1px solid #ddd;padding:12px;margin-bottom:12px;">
+                    <strong>${escapeHtml(item.type)}</strong><br/>
+                    <small>${formatDateTime(item.created_at)}</small><br/><br/>
+                    ${escapeHtml(item.note || item.manager_comment || "")}
+                  </div>
+                `,
+                )
+                .join("")
+            : "<p>No feedback yet</p>"
+        }
+
+        <br/>
+        <a href="/logout">Logout</a>
+      </body>
+    </html>
+  `);
+});
+
+app.get("/login", (req, res) => {
+  res.send(`
+    <html>
+      <body style="font-family:sans-serif;padding:40px;">
+        <h2>Login</h2>
+        <form method="POST" action="/login">
+          <div style="margin-bottom:12px;">
+            <input name="phone_number" placeholder="Phone number" />
+          </div>
+          <div style="margin-bottom:12px;">
+            <input type="password" name="password" placeholder="Password" />
+          </div>
+          <button type="submit">Login</button>
+        </form>
+      </body>
+    </html>
+  `);
+});
+
+app.post("/login", async (req, res) => {
+  const phoneNumber = String(req.body.phone_number || "").trim();
+  const password = String(req.body.password || "").trim();
+
+  const { data: user } = await supabase
+    .from("users")
+    .select("*")
+    .eq("phone_number", phoneNumber)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (!user || !user.password_hash) {
+    return res.status(401).send("Invalid credentials");
+  }
+
+  const matches = await bcrypt.compare(password, user.password_hash);
+
+  if (!matches) {
+    return res.status(401).send("Invalid credentials");
+  }
+
+  req.session.userId = user.id;
+
+  await supabase
+    .from("users")
+    .update({ last_login_at: new Date().toISOString() })
+    .eq("id", user.id);
+
+  return res.redirect("/account");
+});
+
+app.get("/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.redirect("/login");
+  });
+});
+
 app.get("/reports", requireDashboardAuth, async (req, res) => {
   try {
     const userId = req.query.userId ? Number(req.query.userId) : null;
@@ -14919,6 +15201,24 @@ app.post("/whatsapp", async (req, res) => {
       });
     }
 
+    const passwordCommand = parseChangePasswordCommand(body);
+
+    if (passwordCommand) {
+      const passwordHash = await bcrypt.hash(passwordCommand.newPassword, 10);
+
+      await supabase
+        .from("users")
+        .update({
+          password_hash: passwordHash,
+        })
+        .eq("id", user.id);
+
+      return sendTwiml(
+        res,
+        "✅ Password changed successfully. You can now use it for web login.",
+      );
+    }
+
     const employeeSummaryCommand = parseEmployeeSummaryCommand(body);
     if (employeeSummaryCommand) {
       return runInboundAction({
@@ -14935,6 +15235,16 @@ app.post("/whatsapp", async (req, res) => {
         failureType: "attendance_update_failed",
         action: () => handleCompanyOffDay(res, user, companyOffCommand),
       });
+    }
+
+    const feedbackCommand = parseFeedbackCommand(body);
+    if (feedbackCommand) {
+      return await handleFeedbackCommand(res, user, feedbackCommand);
+    }
+
+    const appraisalCommand = parseAppraisalCommand(body);
+    if (appraisalCommand) {
+      return await handleAppraisalCommand(res, user, appraisalCommand);
     }
 
     const waitTaskCommand = parseWaitTaskCommand(body);
@@ -14974,25 +15284,25 @@ app.post("/whatsapp", async (req, res) => {
       });
     }
 
-    if (clearWaitTaskCommand) {
-      await logParse({
-        intentDetected: "task_clear_wait",
-        parserUsed: "parseClearWaitTaskCommand",
-        parsedJson: clearWaitTaskCommand,
-      });
+    // if (clearWaitTaskCommand) {
+    //   await logParse({
+    //     intentDetected: "task_clear_wait",
+    //     parserUsed: "parseClearWaitTaskCommand",
+    //     parsedJson: clearWaitTaskCommand,
+    //   });
 
-      return runInboundAction({
-        successType: "task_clear_wait",
-        successRefId: clearWaitTaskCommand.taskId,
-        action: () =>
-          handleUnblockTask(
-            res,
-            user,
-            clearWaitTaskCommand.taskId,
-            clearWaitTaskCommand.note,
-          ),
-      });
-    }
+    //   return runInboundAction({
+    //     successType: "task_clear_wait",
+    //     successRefId: clearWaitTaskCommand.taskId,
+    //     action: () =>
+    //       handleUnblockTask(
+    //         res,
+    //         user,
+    //         clearWaitTaskCommand.taskId,
+    //         clearWaitTaskCommand.note,
+    //       ),
+    //   });
+    // }
 
     // ------------------------------------------------------------------
     // Admin cleanup / correction commands
