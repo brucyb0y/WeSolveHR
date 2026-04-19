@@ -11485,6 +11485,7 @@ function renderDashboardPage(data) {
         </style>
       </head>
       <body>
+      ${renderTopNav("dashboard")}
         <div class="wrap">
           <div class="topbar">
             <div>
@@ -11845,6 +11846,7 @@ app.get("/account", requireUserLogin, async (req, res) => {
       <head>
         <title>My Account</title>
         <style>
+        ${buildTopNavCss()}
           body {
             margin: 0;
             font-family: Inter, Arial, sans-serif;
@@ -11880,16 +11882,6 @@ app.get("/account", requireUserLogin, async (req, res) => {
             margin: 8px 0 0;
             color: #c4cce0;
             font-size: 14px;
-          }
-
-          .logout-btn {
-            text-decoration: none;
-            color: #f3f6ff;
-            background: rgba(139,124,246,0.16);
-            border: 1px solid rgba(255,255,255,0.12);
-            padding: 10px 14px;
-            border-radius: 12px;
-            font-weight: 600;
           }
 
           .grid {
@@ -13774,13 +13766,6 @@ tbody tr:hover {
               <div class="eyebrow">Task Operations</div>
               <h1>WeSolveHR // Tasks Console</h1>
               <div class="subtitle">Filter and inspect work across the team without changing backend behavior</div>
-            </div>
-            <div class="actions">
-              <a href="/dashboard">Dashboard</a>
-              <a href="/attendance">Attendance</a>
-              <a href="/logs">Logs</a>
-              <a href="/bugs">Bug Board</a>
-              <a href="/reports">Reports</a>
             </div>
           </div>
 
