@@ -2218,41 +2218,95 @@ async function requireUserLogin(req, res, next) {
   next();
 }
 
-function requireDashboardAuth(req, res, next) {
-  const username = process.env.DASHBOARD_USERNAME;
-  const password = process.env.DASHBOARD_PASSWORD;
-
-  if (!username || !password) {
-    console.warn("Dashboard auth env vars missing; dashboard is unprotected.");
-    return next();
-  }
-
-  const header = req.get("Authorization") || "";
-  if (!header.startsWith("Basic ")) {
-    res.set("WWW-Authenticate", 'Basic realm="WeSolveHR Dashboard"');
-    return res.status(401).send("Authentication required");
-  }
-
-  const base64 = header.slice(6);
-  let decoded = "";
+async function requireDashboardAuth(req, res, next) {
   try {
-    decoded = Buffer.from(base64, "base64").toString("utf8");
-  } catch {
-    res.set("WWW-Authenticate", 'Basic realm="WeSolveHR Dashboard"');
-    return res.status(401).send("Invalid auth header");
+    // 1) Prefer real user session if present
+    const sessionUserId = req.session?.userId;
+
+    if (sessionUserId) {
+      const { data: user, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", sessionUserId)
+        .eq("org_id", DASHBOARD_ORG_ID)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (error) {
+        console.error("requireDashboardAuth session lookup error:", error);
+        return res.status(500).send("Failed to validate logged in user");
+      }
+
+      if (user) {
+        req.loggedInUser = user;
+        return next();
+      }
+
+      // session exists but user no longer valid -> clear it
+      req.session.destroy(() => {});
+      return res.redirect("/login");
+    }
+
+    // 2) Fallback to existing dashboard basic auth
+    const username = process.env.DASHBOARD_USERNAME;
+    const password = process.env.DASHBOARD_PASSWORD;
+
+    if (!username || !password) {
+      console.warn(
+        "Dashboard auth env vars missing; dashboard is unprotected.",
+      );
+      return next();
+    }
+
+    const header = req.get("Authorization") || "";
+    if (!header.startsWith("Basic ")) {
+      return res.redirect("/login");
+    }
+
+    const base64 = header.slice(6);
+    let decoded = "";
+
+    try {
+      decoded = Buffer.from(base64, "base64").toString("utf8");
+    } catch {
+      return res.redirect("/login");
+    }
+
+    const separatorIndex = decoded.indexOf(":");
+    const inputUser =
+      separatorIndex >= 0 ? decoded.slice(0, separatorIndex) : "";
+    const inputPass =
+      separatorIndex >= 0 ? decoded.slice(separatorIndex + 1) : "";
+
+    if (inputUser !== username || inputPass !== password) {
+      return res.redirect("/login");
+    }
+
+    // Optional: attach one admin user for legacy dashboard flows if needed
+    const { data: fallbackAdmin, error: fallbackAdminError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("org_id", DASHBOARD_ORG_ID)
+      .eq("is_active", true)
+      .in("role", ["admin", "manager"])
+      .order("id", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (fallbackAdminError) {
+      console.error(
+        "requireDashboardAuth fallback admin lookup error:",
+        fallbackAdminError,
+      );
+    } else if (fallbackAdmin) {
+      req.loggedInUser = fallbackAdmin;
+    }
+
+    return next();
+  } catch (error) {
+    console.error("requireDashboardAuth fatal error:", error);
+    return res.status(500).send("Authentication failed");
   }
-
-  const separatorIndex = decoded.indexOf(":");
-  const inputUser = separatorIndex >= 0 ? decoded.slice(0, separatorIndex) : "";
-  const inputPass =
-    separatorIndex >= 0 ? decoded.slice(separatorIndex + 1) : "";
-
-  if (inputUser !== username || inputPass !== password) {
-    res.set("WWW-Authenticate", 'Basic realm="WeSolveHR Dashboard"');
-    return res.status(401).send("Invalid credentials");
-  }
-
-  return next();
 }
 
 const STAGE0_BUG_COLUMNS = [
@@ -12090,6 +12144,8 @@ app.get("/account", requireUserLogin, async (req, res) => {
             margin-bottom: 22px;
           }
 
+
+
           .title-block h1 {
             margin: 0;
             font-size: 32px;
@@ -12399,7 +12455,7 @@ app.post("/login", async (req, res) => {
       })
       .eq("id", user.id);
 
-    return res.redirect("/account");
+    return res.redirect("/dashboard");
   } catch (err) {
     console.error("Login route error:", err);
     return res
