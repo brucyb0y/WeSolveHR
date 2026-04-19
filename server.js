@@ -11854,15 +11854,34 @@ app.get("/login", (req, res) => {
 });
 
 app.post("/login", async (req, res) => {
-  const phoneNumber = String(req.body.phone_number || "").trim();
+  const rawPhone = String(req.body.phone_number || "").trim();
   const password = String(req.body.password || "").trim();
 
-  const { data: user } = await supabase
+  const digitsOnly = rawPhone.replace(/\D/g, "");
+
+  const phoneCandidates = [
+    rawPhone,
+    `+${digitsOnly}`,
+    digitsOnly,
+    `whatsapp:${rawPhone}`,
+    `whatsapp:+${digitsOnly}`,
+    digitsOnly.length === 10 ? `whatsapp:+1${digitsOnly}` : null,
+    digitsOnly.length === 10 ? `+1${digitsOnly}` : null,
+  ].filter(Boolean);
+
+  const { data: users, error } = await supabase
     .from("users")
     .select("*")
-    .eq("phone_number", phoneNumber)
+    .in("phone_number", phoneCandidates)
     .eq("is_active", true)
-    .maybeSingle();
+    .limit(1);
+
+  if (error) {
+    console.error("Login lookup error:", error);
+    return res.status(500).send("Login failed");
+  }
+
+  const user = users?.[0];
 
   if (!user || !user.password_hash) {
     return res.status(401).send("Invalid credentials");
