@@ -8783,6 +8783,7 @@ async function getDailyNarrativeReport({ orgId, reportDate, userId = null }) {
     const hasExtraWork = row.extraWork.length > 0;
 
     const cardStatus = getReportCardStatus({
+      reportDate,
       isOnLeave: row.isOnLeave,
       expectedToWork: row.expectedToWork,
       workMode: row.workMode,
@@ -9291,8 +9292,8 @@ function renderReportsPage(data) {
     <div class="status-chip-names">${escapeHtml(compliance.onLeave.join(", ") || "None")}</div>
   </div>
   <div class="status-chip-box">
-    <div class="status-chip-title">Off / not expected</div>
-    <div class="status-chip-count">${escapeHtml(compliance.off.length)}</div>
+<div class="status-chip-title">Off day</div>
+<div class="status-chip-count">${escapeHtml(compliance.off.length)}</div>
     <div class="status-chip-names">${escapeHtml(compliance.off.join(", ") || "None")}</div>
   </div>
 </div>
