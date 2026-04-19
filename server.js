@@ -13028,6 +13028,7 @@ app.get("/api/top-nav-summary", requireDashboardAuth, async (req, res) => {
 
 app.get("/account", requireUserLogin, async (req, res) => {
   const user = req.loggedInUser;
+  const isAdminView = isManagerOrAdmin(user);
 
   const { data: appraisal } = await supabase
     .from("employee_feedback")
@@ -13070,12 +13071,194 @@ app.get("/account", requireUserLogin, async (req, res) => {
         .join("")
     : `<div class="empty-state">No feedback yet</div>`;
 
+  let futureLeaveRows = [];
+  let teamFeedbackRows = [];
+  let teamAppraisalRows = [];
+  let leaveSummaryRows = [];
+
+  if (isAdminView) {
+    const today = getAttendanceDayDateStringFromDate(new Date());
+
+    const [
+      futureLeaveResult,
+      teamFeedbackResult,
+      teamAppraisalResult,
+      usersResult,
+      allPlannedLeaveResult,
+    ] = await Promise.all([
+      supabase
+        .from("planned_time_off")
+        .select(
+          `
+          id,
+          off_date,
+          note,
+          created_at,
+          users!planned_time_off_user_id_fkey(name),
+          created_by:users!planned_time_off_created_by_user_id_fkey(name)
+        `,
+        )
+        .eq("org_id", user.org_id)
+        .gte("off_date", today)
+        .order("off_date", { ascending: true })
+        .limit(30),
+
+      supabase
+        .from("employee_feedback")
+        .select(
+          `
+          id,
+          type,
+          note,
+          manager_comment,
+          created_at,
+          users!employee_feedback_user_id_fkey(name),
+          created_by:users!employee_feedback_created_by_user_id_fkey(name)
+        `,
+        )
+        .eq("org_id", user.org_id)
+        .neq("type", "appraisal")
+        .order("created_at", { ascending: false })
+        .limit(30),
+
+      supabase
+        .from("employee_feedback")
+        .select(
+          `
+          id,
+          rating,
+          strengths,
+          improvement_areas,
+          manager_comment,
+          created_at,
+          users!employee_feedback_user_id_fkey(name),
+          created_by:users!employee_feedback_created_by_user_id_fkey(name)
+        `,
+        )
+        .eq("org_id", user.org_id)
+        .eq("type", "appraisal")
+        .order("created_at", { ascending: false })
+        .limit(20),
+
+      supabase
+        .from("users")
+        .select("id, name")
+        .eq("org_id", user.org_id)
+        .eq("is_active", true)
+        .order("name", { ascending: true }),
+
+      supabase
+        .from("planned_time_off")
+        .select(
+          `
+          id,
+          user_id,
+          off_date,
+          users!planned_time_off_user_id_fkey(name)
+        `,
+        )
+        .eq("org_id", user.org_id)
+        .order("off_date", { ascending: false }),
+    ]);
+
+    futureLeaveRows = futureLeaveResult.data || [];
+    teamFeedbackRows = teamFeedbackResult.data || [];
+    teamAppraisalRows = teamAppraisalResult.data || [];
+
+    const allUsers = usersResult.data || [];
+    const allLeaves = allPlannedLeaveResult.data || [];
+
+    leaveSummaryRows = allUsers.map((u) => {
+      const userLeaves = allLeaves.filter((x) => x.user_id === u.id);
+      const upcomingLeaves = userLeaves
+        .filter((x) => x.off_date >= today)
+        .sort((a, b) => String(a.off_date).localeCompare(String(b.off_date)));
+
+      return {
+        name: u.name,
+        totalLeaveCount: userLeaves.length,
+        upcomingLeaveCount: upcomingLeaves.length,
+        nextLeaveDate: upcomingLeaves[0]?.off_date || null,
+      };
+    });
+  }
+
+  const futureLeaveHtml = futureLeaveRows.length
+    ? futureLeaveRows
+        .map(
+          (row) => `
+          <tr>
+            <td>${escapeHtml(row.users?.name || "-")}</td>
+            <td>${escapeHtml(formatDateOnly(row.off_date))}</td>
+            <td>${escapeHtml(row.created_by?.name || "-")}</td>
+            <td>${escapeHtml(row.note || "-")}</td>
+          </tr>
+        `,
+        )
+        .join("")
+    : `<tr><td colspan="4" class="empty-cell">No upcoming leave found</td></tr>`;
+
+  const teamFeedbackHtml = teamFeedbackRows.length
+    ? teamFeedbackRows
+        .map((row) => {
+          const labelMap = {
+            feedback: "Feedback",
+            appreciation: "Appreciation",
+            coaching: "Coaching",
+            one_on_one: "1:1 Note",
+          };
+
+          return `
+            <tr>
+              <td>${escapeHtml(row.users?.name || "-")}</td>
+              <td>${escapeHtml(labelMap[row.type] || row.type || "-")}</td>
+              <td>${escapeHtml(row.note || row.manager_comment || "-")}</td>
+              <td>${escapeHtml(row.created_by?.name || "-")}</td>
+              <td>${escapeHtml(formatDateTime(row.created_at))}</td>
+            </tr>
+          `;
+        })
+        .join("")
+    : `<tr><td colspan="5" class="empty-cell">No team feedback found</td></tr>`;
+
+  const teamAppraisalHtml = teamAppraisalRows.length
+    ? teamAppraisalRows
+        .map(
+          (row) => `
+          <tr>
+            <td>${escapeHtml(row.users?.name || "-")}</td>
+            <td>${escapeHtml(row.rating || "-")}</td>
+            <td>${escapeHtml(row.strengths || "-")}</td>
+            <td>${escapeHtml(row.improvement_areas || "-")}</td>
+            <td>${escapeHtml(row.manager_comment || "-")}</td>
+            <td>${escapeHtml(formatDateTime(row.created_at))}</td>
+          </tr>
+        `,
+        )
+        .join("")
+    : `<tr><td colspan="6" class="empty-cell">No team appraisals found</td></tr>`;
+
+  const leaveSummaryHtml = leaveSummaryRows.length
+    ? leaveSummaryRows
+        .map(
+          (row) => `
+          <tr>
+            <td>${escapeHtml(row.name || "-")}</td>
+            <td>${escapeHtml(String(row.totalLeaveCount ?? 0))}</td>
+            <td>${escapeHtml(String(row.upcomingLeaveCount ?? 0))}</td>
+            <td>${escapeHtml(row.nextLeaveDate ? formatDateOnly(row.nextLeaveDate) : "-")}</td>
+          </tr>
+        `,
+        )
+        .join("")
+    : `<tr><td colspan="4" class="empty-cell">No leave summary found</td></tr>`;
+
   res.send(`
     <html>
       <head>
         <title>My Account</title>
         <style>
-        ${buildTopNavCss()}
+          ${buildTopNavCss()}
           body {
             margin: 0;
             font-family: Inter, Arial, sans-serif;
@@ -13087,7 +13270,7 @@ app.get("/account", requireUserLogin, async (req, res) => {
           }
 
           .wrap {
-            max-width: 1100px;
+            max-width: 1200px;
             margin: 0 auto;
             padding: 28px 18px 40px;
           }
@@ -13100,8 +13283,6 @@ app.get("/account", requireUserLogin, async (req, res) => {
             flex-wrap: wrap;
             margin-bottom: 22px;
           }
-
-
 
           .title-block h1 {
             margin: 0;
@@ -13117,55 +13298,31 @@ app.get("/account", requireUserLogin, async (req, res) => {
 
           .grid {
             display: grid;
-            grid-template-columns: 1.1fr 1fr;
+            grid-template-columns: 1.05fr 0.95fr;
             gap: 18px;
           }
 
           .card {
-            background: linear-gradient(180deg, rgba(31,39,63,0.92), rgba(26,33,55,0.96));
-            border: 1px solid rgba(255,255,255,0.10);
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
             border-radius: 18px;
             padding: 18px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.22);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.18);
           }
 
           .card h2 {
             margin: 0 0 14px;
-            font-size: 18px;
+            font-size: 20px;
           }
 
-          .profile-meta {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 12px;
-          }
-
-          .meta-box {
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.08);
-            border-radius: 14px;
-            padding: 12px;
-          }
-
-          .meta-label {
-            font-size: 12px;
-            color: #c4cce0;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-bottom: 8px;
-          }
-
-          .meta-value {
-            font-size: 18px;
-            font-weight: 700;
-          }
-
+          .profile-meta,
           .stats-row {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 12px;
           }
 
+          .meta-box,
           .stat-card {
             background: rgba(255,255,255,0.04);
             border: 1px solid rgba(255,255,255,0.08);
@@ -13173,12 +13330,20 @@ app.get("/account", requireUserLogin, async (req, res) => {
             padding: 14px;
           }
 
+          .meta-label,
           .stat-label {
             font-size: 12px;
             color: #c4cce0;
             text-transform: uppercase;
             letter-spacing: 0.08em;
             margin-bottom: 8px;
+          }
+
+          .meta-value,
+          .appraisal-value,
+          .timeline-note {
+            font-size: 15px;
+            line-height: 1.6;
           }
 
           .stat-value {
@@ -13204,11 +13369,6 @@ app.get("/account", requireUserLogin, async (req, res) => {
             text-transform: uppercase;
             letter-spacing: 0.08em;
             margin-bottom: 6px;
-          }
-
-          .appraisal-value {
-            font-size: 15px;
-            line-height: 1.5;
           }
 
           .timeline {
@@ -13241,11 +13401,6 @@ app.get("/account", requireUserLogin, async (req, res) => {
             margin-bottom: 8px;
           }
 
-          .timeline-note {
-            font-size: 15px;
-            line-height: 1.6;
-          }
-
           .empty-state {
             color: #c4cce0;
             padding: 16px;
@@ -13254,11 +13409,53 @@ app.get("/account", requireUserLogin, async (req, res) => {
             text-align: center;
           }
 
-          @media (max-width: 860px) {
-            .grid {
-              grid-template-columns: 1fr;
-            }
+          .admin-section {
+            margin-top: 24px;
+            display: grid;
+            gap: 18px;
+          }
 
+          .section-eyebrow {
+            font-size: 12px;
+            color: #c4cce0;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 8px;
+          }
+
+          .table-wrap {
+            overflow-x: auto;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+          }
+
+          th,
+          td {
+            text-align: left;
+            padding: 12px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            vertical-align: top;
+          }
+
+          th {
+            color: #c4cce0;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+          }
+
+          .empty-cell {
+            text-align: center;
+            color: #c4cce0;
+            padding: 18px;
+          }
+
+          @media (max-width: 860px) {
+            .grid,
             .profile-meta,
             .stats-row {
               grid-template-columns: 1fr;
@@ -13267,7 +13464,7 @@ app.get("/account", requireUserLogin, async (req, res) => {
         </style>
       </head>
       <body>
-      ${renderTopNav("account")}
+        ${renderTopNav("account")}
         <div class="wrap">
           <div class="topbar">
             <div class="title-block">
@@ -13346,6 +13543,97 @@ app.get("/account", requireUserLogin, async (req, res) => {
               </div>
             </div>
           </div>
+
+          ${
+            isAdminView
+              ? `
+                <div class="admin-section">
+                  <div class="card">
+                    <div class="section-eyebrow">Admin only</div>
+                    <h2>Future Leave</h2>
+                    <div class="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Employee</th>
+                            <th>Leave Date</th>
+                            <th>Created By</th>
+                            <th>Note</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${futureLeaveHtml}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div class="card">
+                    <div class="section-eyebrow">Admin only</div>
+                    <h2>Team Feedback</h2>
+                    <div class="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Employee</th>
+                            <th>Type</th>
+                            <th>Note</th>
+                            <th>Created By</th>
+                            <th>Created At</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${teamFeedbackHtml}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div class="card">
+                    <div class="section-eyebrow">Admin only</div>
+                    <h2>Team Appraisals</h2>
+                    <div class="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Employee</th>
+                            <th>Rating</th>
+                            <th>Strengths</th>
+                            <th>Improvement Areas</th>
+                            <th>Manager Comment</th>
+                            <th>Created At</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${teamAppraisalHtml}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div class="card">
+                    <div class="section-eyebrow">Admin only</div>
+                    <h2>Leave Summary</h2>
+                    <div class="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Employee</th>
+                            <th>Total Leave Entries</th>
+                            <th>Upcoming Leaves</th>
+                            <th>Next Leave</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${leaveSummaryHtml}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              `
+              : ""
+          }
         </div>
       </body>
     </html>
