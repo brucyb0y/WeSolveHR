@@ -10653,46 +10653,54 @@ function renderEmployeeAttendancePage(data) {
 }
 
 async function getDashboardData(orgId) {
-  const today = getTodayDateStringInTimeZone(APP_TIMEZONE);
+  const today = getAttendanceDayDateStringFromDate(new Date());
 
-  const { data: users, error: usersError } = await supabase
-    .from("users")
-    .select("id, name, role, is_active")
-    .eq("org_id", orgId)
-    .eq("is_active", true)
-    .order("name", { ascending: true });
+  const [
+    { data: users, error: usersError },
+    { data: tasks, error: tasksError },
+    { data: ownerRows, error: ownerError },
+    attendanceRows,
+    plannedOffRows,
+    lateRows,
+    reportPageData,
+  ] = await Promise.all([
+    supabase
+      .from("users")
+      .select("id, name, role, is_active")
+      .eq("org_id", orgId)
+      .eq("is_active", true)
+      .order("name", { ascending: true }),
+
+    supabase
+      .from("tasks")
+      .select(
+        `
+        id,
+        org_id,
+        task_no,
+        title,
+        priority,
+        status,
+        progress,
+        deadline,
+        waiting_on_user_id,
+        updated_at,
+        business,
+        area
+      `,
+      )
+      .eq("org_id", orgId),
+
+    supabase.from("task_owners").select("task_id, user_id").eq("org_id", orgId),
+
+    getTodayAttendanceEventsForAllUsers(orgId),
+    getPlannedOffRowsForDate(today, orgId),
+    getLateArrivalRowsForDate(today, orgId),
+    Promise.resolve(null),
+  ]);
 
   if (usersError) throw usersError;
-
-  const { data: tasks, error: tasksError } = await supabase
-    .from("tasks")
-    .select(
-      `
-      id,
-      org_id,
-      task_no,
-      title,
-      status,
-      progress,
-      deadline,
-      waiting_on_user_id
-    `,
-    )
-    .eq("org_id", orgId)
-    .or("status.is.null,status.not.in.(done,archived,cancelled,deleted)");
-
   if (tasksError) throw tasksError;
-
-  const { data: ownerRows, error: ownerError } = await supabase
-    .from("task_owners")
-    .select(
-      `
-      task_id,
-      user_id
-    `,
-    )
-    .eq("org_id", orgId);
-
   if (ownerError) throw ownerError;
 
   const ownersByTaskId = {};
@@ -10701,39 +10709,90 @@ async function getDashboardData(orgId) {
     ownersByTaskId[row.task_id].push(row.user_id);
   }
 
-  const activeTasks = tasks || [];
+  const usersById = {};
+  for (const user of users || []) {
+    usersById[user.id] = user;
+  }
+
+  const activeTasks = (tasks || []).filter(
+    (t) => !["done", "cancelled", "archived"].includes(t.status || "open"),
+  );
+
   const todayDate = new Date(`${today}T00:00:00Z`);
 
-  const summary = {
-    open_tasks: activeTasks.filter((t) =>
-      ["open", "pending", "in_progress", "blocked"].includes(
-        t.status || "open",
-      ),
-    ).length,
-    overdue_tasks: activeTasks.filter((t) => {
-      if (!t.deadline) return false;
-      if (
-        t.status === "done" ||
-        t.status === "cancelled" ||
-        t.status === "archived"
-      )
-        return false;
-      return new Date(`${t.deadline}T00:00:00Z`) < todayDate;
-    }).length,
-    blocked_tasks: activeTasks.filter((t) => t.status === "blocked").length,
-    team_members: (users || []).length,
-  };
+  const overdueTasks = activeTasks.filter((t) => {
+    if (!t.deadline) return false;
+    return new Date(`${t.deadline}T00:00:00Z`) < todayDate;
+  });
+
+  const blockedTasks = activeTasks.filter((t) => t.status === "blocked");
+
+  const notStartedTasks = activeTasks.filter(
+    (t) => !t.status || t.status === "open" || t.status === "pending",
+  );
+
+  const highPriorityTasks = activeTasks.filter((t) =>
+    ["high", "urgent"].includes((t.priority || "").toLowerCase()),
+  );
+
+  const staleTasks = activeTasks.filter((t) => {
+    if (!t.updated_at) return false;
+    const updated = new Date(t.updated_at);
+    const diffDays = (Date.now() - updated.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays >= 5;
+  });
+
+  const plannedOff = plannedOffRows || [];
+  const lateEntries = lateRows || [];
+  const attendanceEvents = attendanceRows || [];
+
+  const plannedOffUserIds = new Set(plannedOff.map((x) => x.user_id));
+
+  const latestAttendanceByUser = new Map();
+  for (const ev of attendanceEvents) {
+    latestAttendanceByUser.set(ev.user_id, ev);
+  }
+
+  let employeesOnline = 0;
+  let employeesOnBreak = 0;
+  let employeesLoggedOut = 0;
+  let employeesNoAttendance = 0;
+
+  for (const user of users || []) {
+    if (plannedOffUserIds.has(user.id)) continue;
+
+    const latest = latestAttendanceByUser.get(user.id);
+
+    if (!latest) {
+      employeesNoAttendance += 1;
+      continue;
+    }
+
+    if (latest.action === "break") employeesOnBreak += 1;
+    else if (latest.action === "logout") employeesLoggedOut += 1;
+    else if (latest.action === "login" || latest.action === "back")
+      employeesOnline += 1;
+  }
+
+  const approvedLateCount = lateEntries.filter((x) => x.is_approved).length;
+  const unapprovedLateCount = lateEntries.filter((x) => !x.is_approved).length;
+
+  let missingReportsToday = 0;
+  let redReportDays = 0;
+
+  if (reportPageData?.rows?.length) {
+    for (const row of reportPageData.rows) {
+      if (row.report_status === "missing") missingReportsToday += 1;
+      if (row.red_flag) redReportDays += 1;
+    }
+  }
 
   const user_task_stats = (users || []).map((user) => {
     const ownedTasks = activeTasks.filter((task) =>
       (ownersByTaskId[task.id] || []).includes(user.id),
     );
 
-    const open_count = ownedTasks.filter((t) =>
-      ["open", "pending", "in_progress", "blocked"].includes(
-        t.status || "open",
-      ),
-    ).length;
+    const open_count = ownedTasks.length;
 
     const blocked_count = ownedTasks.filter(
       (t) => t.status === "blocked",
@@ -10745,13 +10804,18 @@ async function getDashboardData(orgId) {
 
     const overdue_count = ownedTasks.filter((t) => {
       if (!t.deadline) return false;
-      if (
-        t.status === "done" ||
-        t.status === "cancelled" ||
-        t.status === "archived"
-      )
-        return false;
       return new Date(`${t.deadline}T00:00:00Z`) < todayDate;
+    }).length;
+
+    const high_priority_count = ownedTasks.filter((t) =>
+      ["high", "urgent"].includes((t.priority || "").toLowerCase()),
+    ).length;
+
+    const stale_count = ownedTasks.filter((t) => {
+      if (!t.updated_at) return false;
+      const updated = new Date(t.updated_at);
+      const diffDays = (Date.now() - updated.getTime()) / (1000 * 60 * 60 * 24);
+      return diffDays >= 5;
     }).length;
 
     const waiting_on_them_count = activeTasks.filter(
@@ -10759,6 +10823,20 @@ async function getDashboardData(orgId) {
         t.status === "blocked" &&
         Number(t.waiting_on_user_id) === Number(user.id),
     ).length;
+
+    const load_score =
+      open_count +
+      overdue_count * 3 +
+      blocked_count * 2 +
+      high_priority_count * 2 +
+      stale_count +
+      waiting_on_them_count * 2;
+
+    let health = "Healthy";
+    if (load_score >= 35) health = "Critical";
+    else if (load_score >= 22) health = "High Risk";
+    else if (load_score >= 12) health = "Watch";
+    else health = "Healthy";
 
     return {
       user_id: user.id,
@@ -10768,13 +10846,44 @@ async function getDashboardData(orgId) {
       blocked_count,
       not_started_count,
       overdue_count,
+      high_priority_count,
+      stale_count,
       waiting_on_them_count,
+      load_score,
+      health,
     };
   });
+
+  const summary = {
+    open_tasks: activeTasks.length,
+    overdue_tasks: overdueTasks.length,
+    blocked_tasks: blockedTasks.length,
+    not_started_tasks: notStartedTasks.length,
+    high_priority_tasks: highPriorityTasks.length,
+    stale_tasks: staleTasks.length,
+    team_members: (users || []).length,
+    employees_online: employeesOnline,
+    employees_on_break: employeesOnBreak,
+    employees_logged_out: employeesLoggedOut,
+    employees_no_attendance: employeesNoAttendance,
+    employees_on_leave: plannedOff.length,
+    late_today_approved: approvedLateCount,
+    late_today_unapproved: unapprovedLateCount,
+    missing_reports_today: missingReportsToday,
+    red_report_days: redReportDays,
+  };
 
   return {
     summary,
     user_task_stats,
+    task_groups: {
+      overdue: overdueTasks
+        .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))
+        .slice(0, 20),
+      blocked: blockedTasks.slice(0, 20),
+      stale: staleTasks.slice(0, 20),
+      high_priority: highPriorityTasks.slice(0, 20),
+    },
   };
 }
 
@@ -10783,6 +10892,7 @@ app.use("/api", requireDashboardAuth);
 function renderDashboardPage(data) {
   const summary = data?.summary || {};
   const userTaskStats = data?.user_task_stats || [];
+  const taskGroups = data?.task_groups || {};
 
   const summaryCards = [
     {
@@ -10804,10 +10914,48 @@ function renderDashboardPage(data) {
       cardClass: "warn",
     },
     {
+      label: "High Priority",
+      value: summary.high_priority_tasks ?? 0,
+      note: "High + urgent active tasks",
+      cardClass: "warn",
+    },
+    {
+      label: "Stale Tasks",
+      value: summary.stale_tasks ?? 0,
+      note: "No updates in 5+ days",
+      cardClass: "danger",
+    },
+    {
       label: "Team Members",
       value: summary.team_members ?? 0,
       note: "People in task dashboard",
       cardClass: "success",
+    },
+    {
+      label: "Online Now",
+      value: summary.employees_online ?? 0,
+      note: "Logged in / back",
+      cardClass: "success",
+    },
+    {
+      label: "On Leave",
+      value: summary.employees_on_leave ?? 0,
+      note: "Planned leave today",
+      cardClass: "info",
+    },
+    {
+      label: "Missing Reports",
+      value: summary.missing_reports_today ?? 0,
+      note: "Missing report today",
+      cardClass: "danger",
+    },
+    {
+      label: "Late Today",
+      value:
+        (summary.late_today_approved ?? 0) +
+        (summary.late_today_unapproved ?? 0),
+      note: "Approved + not approved",
+      cardClass: "warn",
     },
   ];
 
@@ -10823,47 +10971,79 @@ function renderDashboardPage(data) {
     )
     .join("");
 
-  const userRows = userTaskStats.length
-    ? userTaskStats
+  const sortedUsers = [...userTaskStats].sort(
+    (a, b) => (b.load_score || 0) - (a.load_score || 0),
+  );
+
+  const userRows = sortedUsers.length
+    ? sortedUsers
         .map(
           (row) => `
-          <tr>
-            <td>
-              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'all', this)">
-                ${escapeHtml(row.name || "-")}
-              </span>
-            </td>
-            <td>${escapeHtml(row.role || "-")}</td>
-            <td>
-              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'open', this)">
-                ${escapeHtml(row.open_count ?? 0)}
-              </span>
-            </td>
-            <td>
-              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'blocked', this)">
-                ${escapeHtml(row.blocked_count ?? 0)}
-              </span>
-            </td>
-            <td>
-              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'not_started', this)">
-                ${escapeHtml(row.not_started_count ?? 0)}
-              </span>
-            </td>
-            <td>
-              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'overdue', this)">
-                ${escapeHtml(row.overdue_count ?? 0)}
-              </span>
-            </td>
-            <td>
-              <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'blocked_on_them', this)">
-                ${escapeHtml(row.waiting_on_them_count ?? 0)}
-              </span>
-            </td>
-          </tr>
-        `,
+            <tr class="health-${normalizeText(row.health)}">
+              <td>
+                <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'all', this)">
+                  ${escapeHtml(row.name || "-")}
+                </span>
+              </td>
+              <td>${escapeHtml(row.role || "-")}</td>
+              <td>
+                <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'open', this)">
+                  ${escapeHtml(row.open_count ?? 0)}
+                </span>
+              </td>
+              <td>
+                <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'blocked', this)">
+                  ${escapeHtml(row.blocked_count ?? 0)}
+                </span>
+              </td>
+              <td>
+                <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'not_started', this)">
+                  ${escapeHtml(row.not_started_count ?? 0)}
+                </span>
+              </td>
+              <td>
+                <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'overdue', this)">
+                  ${escapeHtml(row.overdue_count ?? 0)}
+                </span>
+              </td>
+              <td>
+                <span class="task-link" onclick="goToTaskFilter(${Number(row.user_id)}, 'blocked_on_them', this)">
+                  ${escapeHtml(row.waiting_on_them_count ?? 0)}
+                </span>
+              </td>
+              <td>${escapeHtml(row.high_priority_count ?? 0)}</td>
+              <td>${escapeHtml(row.stale_count ?? 0)}</td>
+              <td>${escapeHtml(row.load_score ?? 0)}</td>
+              <td><span class="mini-badge health-pill ${normalizeText(row.health).replace(/\s+/g, "-")}">${escapeHtml(row.health || "Healthy")}</span></td>
+            </tr>
+          `,
         )
         .join("")
-    : `<tr><td colspan="7" class="empty-cell">No task data found</td></tr>`;
+    : `
+      <tr>
+        <td colspan="11" class="empty-cell">No task load data found.</td>
+      </tr>
+    `;
+
+  function renderMiniTaskRows(rows, typeLabel) {
+    if (!rows?.length) {
+      return `<tr><td colspan="5" class="empty-cell">No ${escapeHtml(typeLabel)} tasks</td></tr>`;
+    }
+
+    return rows
+      .map(
+        (task) => `
+        <tr>
+          <td>#${escapeHtml(task.task_no || task.id)}</td>
+          <td>${escapeHtml(task.title || "-")}</td>
+          <td>${escapeHtml(task.priority || "-")}</td>
+          <td>${escapeHtml(task.status || "-")}</td>
+          <td>${escapeHtml(task.deadline || "-")}</td>
+        </tr>
+      `,
+      )
+      .join("");
+  }
 
   return `
     <html>
@@ -10873,14 +11053,7 @@ function renderDashboardPage(data) {
           ${buildThemeCss()}
           ${buildBasePageCss()}
 
-          .wrap {
-            max-width: 1320px;
-            margin: 0 auto;
-            padding: 24px 18px 36px;
-            position: relative;
-            z-index: 1;
-          }
-
+          .wrap { max-width: 1700px; margin: 0 auto; padding: 24px 18px 36px; }
           .topbar, .panel, .stat-card {
             background: linear-gradient(180deg, var(--panel), var(--panel-strong));
             border: 1px solid var(--line);
@@ -10908,17 +11081,8 @@ function renderDashboardPage(data) {
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
           }
 
-          h1 {
-            margin: 0;
-            font-size: 30px;
-            letter-spacing: -0.04em;
-          }
-
-          .subtitle {
-            color: var(--muted);
-            margin-top: 8px;
-            font-size: 14px;
-          }
+          h1 { margin: 0; font-size: 30px; letter-spacing: -0.04em; }
+          .subtitle { color: var(--muted); margin-top: 8px; font-size: 14px; }
 
           .links {
             display: flex;
@@ -10938,15 +11102,12 @@ function renderDashboardPage(data) {
 
           .stats {
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(5, minmax(0, 1fr));
             gap: 12px;
             margin-bottom: 20px;
           }
 
-          .stat-card {
-            padding: 14px;
-          }
-
+          .stat-card { padding: 14px; }
           .stat-label {
             color: var(--muted);
             font-size: 12px;
@@ -10955,67 +11116,8 @@ function renderDashboardPage(data) {
             font-weight: 700;
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
           }
-
-          .stat-value {
-            margin-top: 10px;
-            font-size: 28px;
-            font-weight: 700;
-          }
-          
-          .loading-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(21, 26, 46, 0.78);
-  backdrop-filter: blur(4px);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-}
-
-.loading-overlay.show {
-  display: flex;
-}
-
-.loading-card {
-  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-soft);
-  padding: 18px 22px;
-  min-width: 260px;
-  text-align: center;
-}
-
-.loading-spinner {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 3px solid rgba(255,255,255,0.16);
-  border-top-color: var(--primary);
-  margin: 0 auto 12px;
-  animation: spin 0.8s linear infinite;
-}
-
-.task-link {
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.task-link:hover {
-  opacity: 0.85;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-          .stat-note {
-            margin-top: 8px;
-            color: var(--muted);
-            font-size: 13px;
-          }
+          .stat-value { margin-top: 10px; font-size: 28px; font-weight: 700; }
+          .stat-note { margin-top: 8px; color: var(--muted); font-size: 13px; }
 
           .panel {
             padding: 18px;
@@ -11035,6 +11137,7 @@ function renderDashboardPage(data) {
             text-align: left;
             padding: 12px;
             border-bottom: 1px solid rgba(255,255,255,0.08);
+            vertical-align: middle;
           }
 
           th {
@@ -11047,6 +11150,142 @@ function renderDashboardPage(data) {
           tr:hover td {
             background: rgba(255,255,255,0.03);
           }
+
+          .task-link {
+            cursor: pointer;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+          }
+
+          .task-link:hover {
+            opacity: 0.85;
+          }
+
+          .tabbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 18px;
+          }
+
+          .tab-btn {
+            appearance: none;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.04);
+            color: var(--text);
+            padding: 10px 14px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 700;
+          }
+
+          .tab-btn.active {
+            background: var(--primary-soft);
+            border-color: rgba(139,124,246,0.45);
+          }
+
+          .tab-panel {
+            display: none;
+          }
+
+          .tab-panel.active {
+            display: block;
+          }
+
+          .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
+          }
+
+          .mini-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            border: 1px solid rgba(255,255,255,0.12);
+          }
+
+          .health-pill.healthy { background: var(--success-soft); }
+          .health-pill.watch { background: var(--accent-soft); }
+          .health-pill.high-risk { background: rgba(255, 140, 0, 0.18); }
+          .health-pill.critical { background: var(--danger-soft); }
+
+          .health-critical td:first-child { border-left: 4px solid #ef6b73; }
+          .health-high-risk td:first-child { border-left: 4px solid #f59e0b; }
+          .health-watch td:first-child { border-left: 4px solid #f3b562; }
+          .health-healthy td:first-child { border-left: 4px solid #58c98a; }
+
+          .alert-list {
+            display: grid;
+            gap: 12px;
+          }
+
+          .alert-item {
+            padding: 14px;
+            border-radius: 14px;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.03);
+          }
+
+          .kpi-inline {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+          }
+
+          .kpi-chip {
+            padding: 8px 12px;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.04);
+            font-size: 13px;
+          }
+
+          .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(8, 12, 22, 0.72);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+          }
+
+          .loading-overlay.show {
+            display: flex;
+          }
+
+          .loading-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+            padding: 18px 22px;
+            min-width: 260px;
+            text-align: center;
+          }
+
+          .loading-spinner {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 3px solid rgba(255,255,255,0.16);
+            border-top-color: var(--primary);
+            margin: 0 auto 12px;
+            animation: spin 0.8s linear infinite;
+          }
+
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+
+          @media (max-width: 1100px) {
+            .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .grid-2 { grid-template-columns: 1fr; }
+          }
         </style>
       </head>
       <body>
@@ -11055,7 +11294,7 @@ function renderDashboardPage(data) {
             <div>
               <div class="eyebrow">WeSolveHR</div>
               <h1>Dashboard</h1>
-              <div class="subtitle">Team task visibility by user</div>
+              <div class="subtitle">Company-wide overview dashboard</div>
             </div>
             <div class="links">
               <a href="/dashboard">Dashboard</a>
@@ -11063,6 +11302,7 @@ function renderDashboardPage(data) {
               <a href="/attendance">Attendance</a>
               <a href="/logs">Logs</a>
               <a href="/reports">Reports</a>
+              <a href="/bugs">Bug Board</a>
             </div>
           </div>
 
@@ -11070,114 +11310,295 @@ function renderDashboardPage(data) {
             ${summaryCardsHtml}
           </div>
 
-          <div class="panel">
-            <h2 style="margin-top:0;">Task load by user</h2>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Role</th>
-                    <th>Open</th>
-                    <th>Blocked</th>
-                    <th>Not Started</th>
-                    <th>Overdue</th>
-                    <th>Blocked On Them</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${userRows}
-                </tbody>
-              </table>
+          <div class="tabbar">
+            <button class="tab-btn active" data-tab="overview">Overview</button>
+            <button class="tab-btn" data-tab="taskload">Task Load by User</button>
+            <button class="tab-btn" data-tab="attention">Needs Attention</button>
+            <button class="tab-btn" data-tab="taskviews">Task Views</button>
+          </div>
+
+          <div id="tab-overview" class="tab-panel active">
+            <div class="panel">
+              <h2 style="margin-top:0;">Leadership snapshot</h2>
+              <div class="kpi-inline">
+                <div class="kpi-chip">Online now: ${escapeHtml(summary.employees_online ?? 0)}</div>
+                <div class="kpi-chip">On break: ${escapeHtml(summary.employees_on_break ?? 0)}</div>
+                <div class="kpi-chip">No attendance yet: ${escapeHtml(summary.employees_no_attendance ?? 0)}</div>
+                <div class="kpi-chip">Approved late: ${escapeHtml(summary.late_today_approved ?? 0)}</div>
+                <div class="kpi-chip">Late not approved: ${escapeHtml(summary.late_today_unapproved ?? 0)}</div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h2 style="margin-top:0;">Task load by user</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Role</th>
+                      <th>Open</th>
+                      <th>Blocked</th>
+                      <th>Not Started</th>
+                      <th>Overdue</th>
+                      <th>Blocked On Them</th>
+                      <th>High Priority</th>
+                      <th>Stale</th>
+                      <th>Load Score</th>
+                      <th>Health</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${userRows}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div id="tab-taskload" class="tab-panel">
+            <div class="panel">
+              <h2 style="margin-top:0;">Full task load by user</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Role</th>
+                      <th>Open</th>
+                      <th>Blocked</th>
+                      <th>Not Started</th>
+                      <th>Overdue</th>
+                      <th>Blocked On Them</th>
+                      <th>High Priority</th>
+                      <th>Stale</th>
+                      <th>Load Score</th>
+                      <th>Health</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${userRows}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div id="tab-attention" class="tab-panel">
+            <div class="grid-2">
+              <div class="panel">
+                <h2 style="margin-top:0;">Immediate attention</h2>
+                <div class="alert-list">
+                  <div class="alert-item">Overdue tasks: <strong>${escapeHtml(summary.overdue_tasks ?? 0)}</strong></div>
+                  <div class="alert-item">Blocked tasks: <strong>${escapeHtml(summary.blocked_tasks ?? 0)}</strong></div>
+                  <div class="alert-item">Missing reports today: <strong>${escapeHtml(summary.missing_reports_today ?? 0)}</strong></div>
+                  <div class="alert-item">No attendance today: <strong>${escapeHtml(summary.employees_no_attendance ?? 0)}</strong></div>
+                  <div class="alert-item">Stale tasks (5+ days no update): <strong>${escapeHtml(summary.stale_tasks ?? 0)}</strong></div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <h2 style="margin-top:0;">Most overloaded people</h2>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Open</th>
+                        <th>Overdue</th>
+                        <th>Blocked</th>
+                        <th>Score</th>
+                        <th>Health</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${sortedUsers
+                        .slice(0, 8)
+                        .map(
+                          (row) => `
+                          <tr>
+                            <td>${escapeHtml(row.name)}</td>
+                            <td>${escapeHtml(row.open_count ?? 0)}</td>
+                            <td>${escapeHtml(row.overdue_count ?? 0)}</td>
+                            <td>${escapeHtml(row.blocked_count ?? 0)}</td>
+                            <td>${escapeHtml(row.load_score ?? 0)}</td>
+                            <td><span class="mini-badge health-pill ${normalizeText(row.health).replace(/\s+/g, "-")}">${escapeHtml(row.health)}</span></td>
+                          </tr>
+                        `,
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="tab-taskviews" class="tab-panel">
+            <div class="grid-2">
+              <div class="panel">
+                <h2 style="margin-top:0;">Top overdue tasks</h2>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Deadline</th>
+                      </tr>
+                    </thead>
+                    <tbody>${renderMiniTaskRows(taskGroups.overdue, "overdue")}</tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="panel">
+                <h2 style="margin-top:0;">Top blocked tasks</h2>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Deadline</th>
+                      </tr>
+                    </thead>
+                    <tbody>${renderMiniTaskRows(taskGroups.blocked, "blocked")}</tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="panel">
+                <h2 style="margin-top:0;">High priority tasks</h2>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Deadline</th>
+                      </tr>
+                    </thead>
+                    <tbody>${renderMiniTaskRows(taskGroups.high_priority, "high priority")}</tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="panel">
+                <h2 style="margin-top:0;">Stale tasks</h2>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Priority</th>
+                        <th>Status</th>
+                        <th>Deadline</th>
+                      </tr>
+                    </thead>
+                    <tbody>${renderMiniTaskRows(taskGroups.stale, "stale")}</tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-<script>
+        <div id="pageLoadingOverlay" class="loading-overlay">
+          <div class="loading-card">
+            <div class="loading-spinner"></div>
+            <div id="pageLoadingTitle">Opening task list...</div>
+          </div>
+        </div>
 
-function goToTaskFilter(userId, type, clickedEl) {
-  const params = new URLSearchParams();
+        <script>
+          const tabButtons = document.querySelectorAll('.tab-btn');
+          const tabPanels = document.querySelectorAll('.tab-panel');
 
-  if (type !== 'blocked_on_them') {
-    params.set('assignee', String(userId));
-  }
+          tabButtons.forEach((btn) => {
+            btn.addEventListener('click', () => {
+              const tab = btn.dataset.tab;
 
-if (type === 'blocked') {
-  params.set('blocked', 'true');
-  params.append('progressBucket', 'not_begun');
-  params.append('progressBucket', 'zero_to_fifty');
-  params.append('progressBucket', 'fifty_to_hundred');
-  params.append('progressBucket', 'complete');
-  params.append('progressBucket', 'hide_cancelled');
-}
+              tabButtons.forEach((b) => b.classList.remove('active'));
+              tabPanels.forEach((p) => p.classList.remove('active'));
 
-  if (type === 'overdue') {
-    params.set('overdue', 'true');
-  }
+              btn.classList.add('active');
+              const panel = document.getElementById('tab-' + tab);
+              if (panel) panel.classList.add('active');
+            });
+          });
 
-  if (type === 'not_started') {
-    params.append('progressBucket', 'not_begun');
-    params.append('progressBucket', 'hide_cancelled');
-  }
+          function goToTaskFilter(userId, type, clickedEl) {
+            const params = new URLSearchParams();
 
-  if (type === 'open') {
-    params.append('progressBucket', 'not_begun');
-    params.append('progressBucket', 'zero_to_fifty');
-    params.append('progressBucket', 'fifty_to_hundred');
-    params.append('progressBucket', 'hide_cancelled');
-  }
+            if (type !== 'blocked_on_them') {
+              params.set('assignee', String(userId));
+            }
 
-  if (type === 'blocked_on_them') {
-    params.set('waitingOn', String(userId));
-    params.set('blocked', 'true');
-  }
+            if (type === 'blocked') {
+              params.set('blocked', 'true');
+              params.append('progressBucket', 'not_begun');
+              params.append('progressBucket', 'zero_to_fifty');
+              params.append('progressBucket', 'fifty_to_hundred');
+              params.append('progressBucket', 'complete');
+              params.append('progressBucket', 'hide_cancelled');
+            }
 
-  const overlay = document.getElementById('pageLoadingOverlay');
-  const title = document.getElementById('pageLoadingTitle');
+            if (type === 'overdue') {
+              params.set('overdue', 'true');
+            }
 
-  if (title) {
-    if (type === 'blocked_on_them') {
-      title.textContent = 'Opening blocked tasks waiting on this person...';
-    } else if (type === 'blocked') {
-      title.textContent = 'Opening blocked tasks...';
-    } else if (type === 'overdue') {
-      title.textContent = 'Opening overdue tasks...';
-    } else if (type === 'not_started') {
-      title.textContent = 'Opening not started tasks...';
-    } else {
-      title.textContent = 'Opening task list...';
-    }
-  }
+            if (type === 'not_started') {
+              params.append('progressBucket', 'not_begun');
+              params.append('progressBucket', 'hide_cancelled');
+            }
 
-  if (overlay) overlay.classList.add('show');
+            if (type === 'open' || type === 'all') {
+              params.append('progressBucket', 'not_begun');
+              params.append('progressBucket', 'zero_to_fifty');
+              params.append('progressBucket', 'fifty_to_hundred');
+              params.append('progressBucket', 'hide_cancelled');
+            }
 
-  if (clickedEl) {
-    clickedEl.style.opacity = '0.65';
-    clickedEl.style.pointerEvents = 'none';
-  }
+            if (type === 'blocked_on_them') {
+              params.set('waitingOn', String(userId));
+              params.set('blocked', 'true');
+            }
 
-  setTimeout(() => {
-    window.location.href = '/tasks?' + params.toString();
-  }, 80);
-}
-window.addEventListener('pageshow', function() {
-  const overlay = document.getElementById('pageLoadingOverlay');
-  if (overlay) overlay.classList.remove('show');
+            const overlay = document.getElementById('pageLoadingOverlay');
+            const title = document.getElementById('pageLoadingTitle');
 
-  document.querySelectorAll('.task-link').forEach(function(el) {
-    el.style.opacity = '';
-    el.style.pointerEvents = '';
-  });
-});
+            if (title) {
+              if (type === 'blocked_on_them') {
+                title.textContent = 'Opening blocked tasks waiting on this person...';
+              } else if (type === 'blocked') {
+                title.textContent = 'Opening blocked tasks...';
+              } else if (type === 'overdue') {
+                title.textContent = 'Opening overdue tasks...';
+              } else if (type === 'not_started') {
+                title.textContent = 'Opening not started tasks...';
+              } else {
+                title.textContent = 'Opening task list...';
+              }
+            }
 
-</script>
-<div id="pageLoadingOverlay" class="loading-overlay">
-  <div class="loading-card">
-    <div class="loading-spinner"></div>
-    <div id="pageLoadingTitle" style="font-weight:700;">Opening task list...</div>
-    <div class="muted" style="margin-top:6px;">Please wait</div>
-  </div>
-</div>
+            if (overlay) overlay.classList.add('show');
+
+            if (clickedEl) {
+              clickedEl.style.opacity = '0.65';
+              clickedEl.style.pointerEvents = 'none';
+            }
+
+            window.location.href = '/tasks?' + params.toString();
+          }
+        </script>
       </body>
     </html>
   `;
