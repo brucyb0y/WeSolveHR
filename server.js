@@ -11964,13 +11964,14 @@ async function getDashboardSummaryData(orgId) {
 }
 
 async function getAttendancePageData(orgId) {
-  const { startUtc, endUtc } = getCurrentAttendanceDayRange();
   const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
+  const { startUtc, endUtc } = getCurrentAttendanceDayRange();
 
   const [
     { data: users, error: usersError },
     { data: events, error: eventsError },
     plannedOffRows,
+    lateRows,
   ] = await Promise.all([
     supabase
       .from("users")
@@ -11987,64 +11988,126 @@ async function getAttendancePageData(orgId) {
       .eq("org_id", orgId)
       .gte("created_at", startUtc)
       .lt("created_at", endUtc)
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: true }),
 
     getPlannedOffRowsForDate(attendanceDate, orgId),
+    getLateArrivalRowsForDate(attendanceDate, orgId),
   ]);
 
   if (usersError) throw usersError;
   if (eventsError) throw eventsError;
 
-  const plannedOffUserIds = new Set(
-    (plannedOffRows || []).map((x) => x.user_id),
-  );
+  const plannedOff = plannedOffRows || [];
+  const plannedOffUserIds = new Set(plannedOff.map((x) => x.user_id));
+  const lateByUser = new Map((lateRows || []).map((x) => [x.user_id, x]));
 
-  const latestByUser = new Map();
-  for (const event of events || []) {
-    if (!latestByUser.has(event.user_id)) {
-      latestByUser.set(event.user_id, event);
+  const eventsByUser = new Map();
+  for (const ev of events || []) {
+    if (!eventsByUser.has(ev.user_id)) {
+      eventsByUser.set(ev.user_id, []);
     }
+    eventsByUser.get(ev.user_id).push(ev);
   }
 
-  const currentStatus = (users || []).map((user) => {
-    const latest = latestByUser.get(user.id);
-    const status = plannedOffUserIds.has(user.id)
-      ? "leave"
-      : latest?.action || "unknown";
+  const rows = (users || []).map((user) => {
+    const userEvents = eventsByUser.get(user.id) || [];
+    const latest = userEvents[userEvents.length - 1] || null;
+    const summary = getAttendanceSummaryFromEvents(userEvents);
+    const firstLogin = summary.firstLogin;
+    const lateInfo = lateByUser.get(user.id) || null;
+
+    let status = "no_update";
+    if (plannedOffUserIds.has(user.id)) status = "leave";
+    else if (latest?.action) status = latest.action;
+
+    const flags = [];
+    if (summary.longShiftFlag) flags.push("Long shift");
+    if (summary.longBreakFlag) flags.push("Long break");
+    if (lateInfo && !lateInfo.is_approved) flags.push("Late not approved");
+    if (lateInfo && String(lateInfo.note || "").includes("TIME_UNSURE")) {
+      flags.push("Time unsure");
+    }
 
     return {
       user_id: user.id,
       name: user.name,
       role: user.role,
       status,
-      last_event_at: latest?.created_at || null,
-      last_event_at_text: latest?.created_at
-        ? formatDateTime(latest.created_at)
+      since: latest?.created_at || null,
+      since_text: latest?.created_at
+        ? formatTimeOnly(latest.created_at)
         : plannedOffUserIds.has(user.id)
           ? "On leave today"
+          : "-",
+      worked_today_min: summary.workedMinutes || 0,
+      worked_today_text: formatDurationMinutes(summary.workedMinutes || 0),
+      break_today_min: summary.breakMinutes || 0,
+      break_today_text: formatDurationMinutes(summary.breakMinutes || 0),
+      first_login_at: firstLogin?.created_at || null,
+      first_login_text: firstLogin?.created_at
+        ? formatTimeOnly(firstLogin.created_at)
+        : "-",
+      late_status: lateInfo
+        ? lateInfo.is_approved
+          ? "Approved"
+          : "Not approved"
+        : firstLogin
+          ? summary.lateMinutes > 10
+            ? "No prior info"
+            : "No"
+          : "-",
+      is_on_leave: plannedOffUserIds.has(user.id),
+      flags,
+      late_expected_login_text: lateInfo?.expected_login_at
+        ? formatTimeOnly(lateInfo.expected_login_at)
+        : String(lateInfo?.note || "").includes("TIME_UNSURE")
+          ? "Time unsure"
           : "-",
     };
   });
 
-  const activeTodayUserIds = new Set((events || []).map((e) => e.user_id));
+  const summary = {
+    logged_in_now: rows.filter(
+      (x) => x.status === "login" || x.status === "back",
+    ).length,
+    on_break_now: rows.filter((x) => x.status === "break").length,
+    not_logged_in_yet: rows.filter((x) => x.status === "no_update").length,
+    on_leave_today: rows.filter((x) => x.status === "leave").length,
+    late_today: rows.filter(
+      (x) =>
+        x.late_status === "Approved" ||
+        x.late_status === "Not approved" ||
+        x.late_status === "No prior info",
+    ).length,
+    approved_late: rows.filter((x) => x.late_status === "Approved").length,
+    unapproved_late: rows.filter((x) => x.late_status === "Not approved")
+      .length,
+    no_prior_info_late: rows.filter((x) => x.late_status === "No prior info")
+      .length,
+    long_break_flags: rows.filter((x) => x.flags.includes("Long break")).length,
+    long_shift_flags: rows.filter((x) => x.flags.includes("Long shift")).length,
+  };
 
-  const loggedInCount = currentStatus.filter(
-    (x) => x.status === "login" || x.status === "back",
-  ).length;
-
-  const onBreakCount = currentStatus.filter((x) => x.status === "break").length;
+  const groups = {
+    on_break_now: rows.filter((x) => x.status === "break"),
+    on_leave_today: rows.filter((x) => x.status === "leave"),
+    expected_late: rows.filter(
+      (x) => x.late_status === "Approved" || x.late_status === "Not approved",
+    ),
+    no_update_yet: rows.filter((x) => x.status === "no_update"),
+    exceptions: rows.filter(
+      (x) =>
+        x.flags.length > 0 ||
+        x.late_status === "Not approved" ||
+        x.late_status === "No prior info",
+    ),
+  };
 
   return {
-    summary: {
-      logged_in_count: loggedInCount,
-      on_break_count: onBreakCount,
-      active_today_count: activeTodayUserIds.size,
-    },
-    current_status: currentStatus,
-    recent_events: (events || []).slice(0, 50).map((row) => ({
-      ...row,
-      created_at_text: row.created_at ? formatDateTime(row.created_at) : "-",
-    })),
+    attendance_date: attendanceDate,
+    summary,
+    rows,
+    groups,
   };
 }
 
@@ -13690,22 +13753,23 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
       <head>
         <title>Attendance</title>
         <style>
-    ${buildThemeCss()}   ${buildBasePageCss()}
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
 
           .wrap {
-            max-width: 1320px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 24px 18px 36px;
             position: relative;
             z-index: 1;
           }
 
-.topbar, .panel, .card {
-  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-soft);
-}
+          .topbar, .panel, .stat-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
 
           .topbar {
             display: flex;
@@ -13745,139 +13809,196 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
             flex-wrap: wrap;
           }
 
-.links a {
-  color: var(--text);
-  text-decoration: none;
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
-  background: var(--secondary-soft);
-  font-weight: 600;
-}
-
-.links a:hover {
-  color: var(--text-strong);
-  border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
-}
-
-          .cards {
-            display:grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap:16px;
-            margin-bottom:18px;
+          .links a {
+            color: var(--text);
+            text-decoration: none;
+            padding: 10px 14px;
+            border-radius: 12px;
+            border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
+            background: var(--secondary-soft);
+            font-weight: 600;
           }
 
-          .card {
-            padding:16px;
+          .stats {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
           }
 
-          .card-label {
+          .stat-card { padding: 14px; }
+          .stat-label {
             color: var(--muted);
             font-size: 12px;
-            letter-spacing: 0.08em;
             text-transform: uppercase;
+            letter-spacing: 0.08em;
             font-weight: 700;
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
           }
-
-          .card h2 {
-            margin: 10px 0 0;
-            font-size: 34px;
-            color: var(--primary);
+          .stat-value {
+            margin-top: 10px;
+            font-size: 28px;
+            font-weight: 700;
           }
+          .stat-note {
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 13px;
+          }
+
+          .tabbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 18px;
+          }
+
+          .tab-btn {
+            appearance: none;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.04);
+            color: var(--text);
+            padding: 10px 14px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 700;
+          }
+
+          .tab-btn.active {
+            background: var(--primary-soft);
+            border-color: rgba(139,124,246,0.45);
+          }
+
+          .tab-panel { display: none; }
+          .tab-panel.active { display: block; }
 
           .panel {
             padding: 18px;
             margin-bottom: 18px;
           }
 
-          h2 {
-            margin: 0 0 12px;
-            font-size: 19px;
+          .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 18px;
           }
 
           .table-wrap {
             overflow-x: auto;
-            border: 1px solid rgba(74, 222, 128, 0.08);
-            border-radius: 14px;
-            background: rgba(5, 14, 11, 0.65);
+            border: 1px solid var(--line);
+            border-radius: var(--radius-md);
+            background: rgba(255,255,255,0.03);
           }
 
           table {
-            width:100%;
-            border-collapse:collapse;
+            width: 100%;
+            border-collapse: collapse;
           }
 
           th, td {
-            padding:12px;
-            border-bottom:1px solid rgba(74, 222, 128, 0.08);
-            text-align:left;
+            padding: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            text-align: left;
+            vertical-align: middle;
           }
 
           th {
-            color: #9fdab7;
-            font-size: 11px;
-            font-weight: 800;
+            color: var(--muted);
+            font-size: 12px;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
-            background: rgba(8, 22, 17, 0.98);
-            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            letter-spacing: 0.08em;
           }
 
-          tbody tr:hover {
-            background: rgba(97,255,161,0.045);
+          tr:hover td {
+            background: rgba(255,255,255,0.03);
           }
-          
+
+          .person-link {
+            cursor: pointer;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+          }
+
+          .status-pill, .flag-pill {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            border: 1px solid rgba(255,255,255,0.12);
+            margin-right: 6px;
+            margin-bottom: 6px;
+          }
+
+          .status-login, .status-back { background: var(--success-soft); }
+          .status-break { background: var(--accent-soft); }
+          .status-logout { background: var(--neutral-soft); }
+          .status-leave { background: var(--info-soft); }
+          .status-no_update, .status-unknown { background: var(--dangerSoft); }
+
+          .flag-danger { background: var(--danger-soft); }
+          .flag-warn { background: var(--accent-soft); }
+          .flag-info { background: var(--info-soft); }
+
+          .alert-list {
+            display: grid;
+            gap: 12px;
+          }
+
+          .alert-item {
+            padding: 14px;
+            border-radius: 14px;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.03);
+          }
+
+          .loading-state, .error-state {
+            color: var(--muted);
+            padding: 20px 0;
+          }
+
           .loading-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(21, 26, 46, 0.78);
-  backdrop-filter: blur(4px);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-}
-
-.loading-overlay.show {
-  display: flex;
-}
-
-#currentStatusRows tr:hover {
-  background: rgba(255,255,255,0.05);
-}
-
-.loading-card {
-  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-soft);
-  padding: 18px 22px;
-  min-width: 260px;
-  text-align: center;
-}
-
-.loading-spinner {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 3px solid rgba(255,255,255,0.16);
-  border-top-color: var(--primary);
-  margin: 0 auto 12px;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-          @media (max-width: 900px) {
-            .cards { grid-template-columns: 1fr; }
+            position: fixed;
+            inset: 0;
+            background: rgba(8, 12, 22, 0.72);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
           }
 
-          @media (max-width: 700px) {
-            .wrap { padding: 16px 12px 28px; }
-            h1 { font-size: 24px; }
+          .loading-overlay.show {
+            display: flex;
+          }
+
+          .loading-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+            padding: 18px 22px;
+            min-width: 260px;
+            text-align: center;
+          }
+
+          .loading-spinner {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 3px solid rgba(255,255,255,0.16);
+            border-top-color: var(--primary);
+            margin: 0 auto 12px;
+            animation: spin 0.8s linear infinite;
+          }
+
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+
+          @media (max-width: 1100px) {
+            .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .grid-2 { grid-template-columns: 1fr; }
           }
         </style>
       </head>
@@ -13885,141 +14006,369 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
         <div class="wrap">
           <div class="topbar">
             <div>
-              <div class="eyebrow">Attendance Monitoring</div>
-              <h1>WeSolveHR // Attendance Console</h1>
-              <div class="subtitle">Live attendance state, recent activity, and operational visibility</div>
+              <div class="eyebrow">WeSolveHR</div>
+              <h1>Attendance</h1>
+              <div class="subtitle">Team attendance overview and exceptions</div>
             </div>
             <div class="links">
               <a href="/dashboard">Dashboard</a>
               <a href="/tasks">Tasks</a>
+              <a href="/attendance">Attendance</a>
               <a href="/logs">Logs</a>
-              <a href="/bugs">Bug Board</a>
               <a href="/reports">Reports</a>
+              <a href="/bugs">Bug Board</a>
             </div>
           </div>
 
-          <div class="cards">
-            <div class="card"><div class="card-label">Logged In</div><h2 id="loggedIn">-</h2></div>
-            <div class="card"><div class="card-label">On Break</div><h2 id="onBreak">-</h2></div>
-            <div class="card"><div class="card-label">Active Today</div><h2 id="activeToday">-</h2></div>
+          <div id="statsGrid" class="stats">
+            <div class="stat-card"><div class="stat-label">Loading</div><div class="stat-value">...</div><div class="stat-note">Fetching attendance</div></div>
           </div>
 
-          <div class="panel">
-            <h2>Current Status</h2>
-            <div class="muted">Click any row to open full employee attendance details.</div>
-            <div class="table-wrap">
-              <table>
-<thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Last Activity</th></tr></thead>                <tbody id="currentStatusRows"></tbody>
-              </table>
+          <div class="tabbar">
+            <button class="tab-btn active" data-tab="overview">Live Overview</button>
+            <button class="tab-btn" data-tab="exceptions">Late & Exceptions</button>
+            <button class="tab-btn" data-tab="leave">Leave & No Update</button>
+            <button class="tab-btn" data-tab="summary">Team Summary</button>
+          </div>
+
+          <div id="tab-overview" class="tab-panel active">
+            <div class="grid-2">
+              <div class="panel">
+                <h2 style="margin-top:0;">Needs attention now</h2>
+                <div id="attentionNow" class="alert-list">
+                  <div class="loading-state">Loading...</div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <h2 style="margin-top:0;">Live grouped view</h2>
+                <div id="liveGroups" class="alert-list">
+                  <div class="loading-state">Loading...</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h2 style="margin-top:0;">Live employee table</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Role</th>
+                      <th>Current Status</th>
+                      <th>Since</th>
+                      <th>Worked Today</th>
+                      <th>Break Today</th>
+                      <th>First Login</th>
+                      <th>Late</th>
+                      <th>Leave</th>
+                      <th>Flags</th>
+                    </tr>
+                  </thead>
+                  <tbody id="attendanceTableBody">
+                    <tr><td colspan="10" class="loading-state">Loading attendance...</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
-          <div class="panel">
-            <h2>Recent Events</h2>
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th>Time</th><th>User ID</th><th>Action</th><th>Duration</th><th>Note</th></tr></thead>
-                <tbody id="recentEventRows"></tbody>
-              </table>
+          <div id="tab-exceptions" class="tab-panel">
+            <div class="panel">
+              <h2 style="margin-top:0;">Late & exception cases</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Status</th>
+                      <th>Late</th>
+                      <th>Expected Login</th>
+                      <th>Worked</th>
+                      <th>Break</th>
+                      <th>Flags</th>
+                    </tr>
+                  </thead>
+                  <tbody id="exceptionsTableBody">
+                    <tr><td colspan="7" class="loading-state">Loading exceptions...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div id="tab-leave" class="tab-panel">
+            <div class="grid-2">
+              <div class="panel">
+                <h2 style="margin-top:0;">On leave today</h2>
+                <div id="leaveList" class="alert-list">
+                  <div class="loading-state">Loading...</div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <h2 style="margin-top:0;">No update yet</h2>
+                <div id="noUpdateList" class="alert-list">
+                  <div class="loading-state">Loading...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="tab-summary" class="tab-panel">
+            <div class="panel">
+              <h2 style="margin-top:0;">Team summary</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Role</th>
+                      <th>Status</th>
+                      <th>Worked</th>
+                      <th>Break</th>
+                      <th>First Login</th>
+                      <th>Late</th>
+                      <th>Flags</th>
+                    </tr>
+                  </thead>
+                  <tbody id="summaryTableBody">
+                    <tr><td colspan="8" class="loading-state">Loading summary...</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
 
-        <script>
-
-async function loadAttendance() {
-  const res = await fetch('/api/attendance');
-  const json = await res.json();
-
-  if (!json.ok) {
-    document.getElementById('loggedIn').textContent = 'ERR';
-    document.getElementById('onBreak').textContent = 'ERR';
-    document.getElementById('activeToday').textContent = 'ERR';
-    document.getElementById('currentStatusRows').innerHTML =
-      '<tr><td colspan="4">Could not load attendance: ' + (json.error || 'unknown error') + '</td></tr>';
-    document.getElementById('recentEventRows').innerHTML = '';
-    console.error('loadAttendance api error:', json);
-    return;
-  }
-
-  const data = json.data;
-
-  document.getElementById('loggedIn').textContent =
-    data.summary.logged_in_count;
-
-  document.getElementById('onBreak').textContent =
-    data.summary.on_break_count;
-
-  document.getElementById('activeToday').textContent =
-    data.summary.active_today_count;
-
-  document.getElementById('currentStatusRows').innerHTML =
-    (data.current_status || [])
-      .map(function (row) {
-        return (
-          '<tr style="cursor:pointer" data-id="' + (row.user_id || '') + '">' +
-            '<td>' + (row.name || '') + '</td>' +
-            '<td>' + (row.role || '') + '</td>' +
-            '<td>' + (row.status || '') + '</td>' +
-            '<td>' + (row.last_event_at_text || '-') + '</td>' +
-          '</tr>'
-        );
-      })
-      .join('');
-
-  document.getElementById('recentEventRows').innerHTML =
-    (data.recent_events || [])
-      .map(function (row) {
-        return (
-          '<tr>' +
-            '<td>' + (row.created_at_text || '') + '</td>' +
-            '<td>' + (row.user_id || '') + '</td>' +
-            '<td>' + (row.action || '') + '</td>' +
-            '<td>' + (row.duration_min || '-') + '</td>' +
-            '<td>' + (row.note || '-') + '</td>' +
-          '</tr>'
-        );
-      })
-      .join('');
-}
-
-          loadAttendance();
-document.getElementById("currentStatusRows").addEventListener("click", function (e) {
-  const tr = e.target.closest("tr[data-id]");
-  if (!tr) return;
-
-  const userId = tr.getAttribute("data-id");
-  if (!userId) return;
-
-  const overlay = document.getElementById("pageLoadingOverlay");
-  if (overlay) overlay.classList.add("show");
-
-  tr.style.opacity = "0.65";
-  tr.style.pointerEvents = "none";
-
-  setTimeout(() => {
-  window.location.href = "/attendance/" + userId;
-}, 80);
-});
-
-            setInterval(() => {
-    window.location.reload();
-  }, 60000);
-
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-      location.reload();
-    }
-  });
-        </script>
-        
         <div id="pageLoadingOverlay" class="loading-overlay">
-  <div class="loading-card">
-    <div class="loading-spinner"></div>
-    <div style="font-weight:700;">Opening attendance details...</div>
-    <div class="muted" style="margin-top:6px;">Please wait</div>
-  </div>
-</div>
+          <div class="loading-card">
+            <div class="loading-spinner"></div>
+            <div style="font-weight:700;">Opening attendance details...</div>
+          </div>
+        </div>
+
+        <script>
+          function escapeHtmlClient(value) {
+            return String(value ?? '')
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;');
+          }
+
+          function statusPill(status) {
+            const safe = String(status || 'unknown');
+            const cls = 'status-pill status-' + safe;
+            return '<span class="' + cls + '">' + escapeHtmlClient(safe) + '</span>';
+          }
+
+          function flagPills(flags) {
+            if (!flags || !flags.length) return '-';
+
+            return flags.map((flag) => {
+              let cls = 'flag-pill flag-info';
+              if (
+                flag === 'Late not approved' ||
+                flag === 'Long shift'
+              ) cls = 'flag-pill flag-danger';
+              else if (
+                flag === 'Long break' ||
+                flag === 'Time unsure'
+              ) cls = 'flag-pill flag-warn';
+
+              return '<span class="' + cls + '">' + escapeHtmlClient(flag) + '</span>';
+            }).join(' ');
+          }
+
+          function employeeLink(userId, name) {
+            return '<span class="person-link" onclick="openAttendanceDetail(' + Number(userId) + ')">' + escapeHtmlClient(name) + '</span>';
+          }
+
+          function openAttendanceDetail(userId) {
+            const overlay = document.getElementById('pageLoadingOverlay');
+            if (overlay) overlay.classList.add('show');
+            setTimeout(() => {
+              window.location.href = '/attendance/' + userId;
+            }, 80);
+          }
+
+          async function loadAttendancePage() {
+            const statsGrid = document.getElementById('statsGrid');
+            const tableBody = document.getElementById('attendanceTableBody');
+            const exceptionsBody = document.getElementById('exceptionsTableBody');
+            const summaryBody = document.getElementById('summaryTableBody');
+            const attentionNow = document.getElementById('attentionNow');
+            const liveGroups = document.getElementById('liveGroups');
+            const leaveList = document.getElementById('leaveList');
+            const noUpdateList = document.getElementById('noUpdateList');
+
+            try {
+              const res = await fetch('/api/attendance');
+              const json = await res.json();
+
+              if (!json.ok) {
+                throw new Error(json.error || 'Failed to load attendance');
+              }
+
+              const data = json.data || {};
+              const summary = data.summary || {};
+              const rows = data.rows || [];
+              const groups = data.groups || {};
+
+              const cards = [
+                ['Logged in now', summary.logged_in_now ?? 0, 'Working currently'],
+                ['On break now', summary.on_break_now ?? 0, 'Currently on break'],
+                ['Not logged in yet', summary.not_logged_in_yet ?? 0, 'No attendance update'],
+                ['On leave today', summary.on_leave_today ?? 0, 'Planned leave'],
+                ['Late today', summary.late_today ?? 0, 'All late categories'],
+                ['Approved late', summary.approved_late ?? 0, 'Prior info approved'],
+                ['Late not approved', summary.unapproved_late ?? 0, 'Needs attention'],
+                ['No prior info', summary.no_prior_info_late ?? 0, 'Joined late directly'],
+                ['Long breaks', summary.long_break_flags ?? 0, 'Break exception'],
+                ['Long shifts', summary.long_shift_flags ?? 0, 'Shift exception'],
+              ];
+
+              statsGrid.innerHTML = cards.map((card) => {
+                return '<div class="stat-card">' +
+                  '<div class="stat-label">' + escapeHtmlClient(card[0]) + '</div>' +
+                  '<div class="stat-value">' + escapeHtmlClient(card[1]) + '</div>' +
+                  '<div class="stat-note">' + escapeHtmlClient(card[2]) + '</div>' +
+                '</div>';
+              }).join('');
+
+              const sortedRows = [...rows].sort((a, b) => {
+                const aRisk = (a.flags?.length || 0) + (a.late_status === 'Not approved' ? 2 : 0) + (a.late_status === 'No prior info' ? 2 : 0);
+                const bRisk = (b.flags?.length || 0) + (b.late_status === 'Not approved' ? 2 : 0) + (b.late_status === 'No prior info' ? 2 : 0);
+                return bRisk - aRisk;
+              });
+
+              tableBody.innerHTML = sortedRows.map((row) => {
+                return '<tr>' +
+                  '<td>' + employeeLink(row.user_id, row.name) + '</td>' +
+                  '<td>' + escapeHtmlClient(row.role || '-') + '</td>' +
+                  '<td>' + statusPill(row.status) + '</td>' +
+                  '<td>' + escapeHtmlClient(row.since_text || '-') + '</td>' +
+                  '<td>' + escapeHtmlClient(row.worked_today_text || '-') + '</td>' +
+                  '<td>' + escapeHtmlClient(row.break_today_text || '-') + '</td>' +
+                  '<td>' + escapeHtmlClient(row.first_login_text || '-') + '</td>' +
+                  '<td>' + escapeHtmlClient(row.late_status || '-') + '</td>' +
+                  '<td>' + (row.is_on_leave ? 'Yes' : 'No') + '</td>' +
+                  '<td>' + flagPills(row.flags || []) + '</td>' +
+                '</tr>';
+              }).join('') || '<tr><td colspan="10" class="empty-cell">No attendance data found</td></tr>';
+
+              const exceptionRows = rows.filter((row) =>
+                (row.flags && row.flags.length) ||
+                row.late_status === 'Not approved' ||
+                row.late_status === 'No prior info'
+              );
+
+              exceptionsBody.innerHTML = exceptionRows.map((row) => {
+                return '<tr>' +
+                  '<td>' + employeeLink(row.user_id, row.name) + '</td>' +
+                  '<td>' + statusPill(row.status) + '</td>' +
+                  '<td>' + escapeHtmlClient(row.late_status || '-') + '</td>' +
+                  '<td>' + escapeHtmlClient(row.late_expected_login_text || '-') + '</td>' +
+                  '<td>' + escapeHtmlClient(row.worked_today_text || '-') + '</td>' +
+                  '<td>' + escapeHtmlClient(row.break_today_text || '-') + '</td>' +
+                  '<td>' + flagPills(row.flags || []) + '</td>' +
+                '</tr>';
+              }).join('') || '<tr><td colspan="7" class="empty-cell">No exceptions today</td></tr>';
+
+              summaryBody.innerHTML = rows.map((row) => {
+                return '<tr>' +
+                  '<td>' + employeeLink(row.user_id, row.name) + '</td>' +
+                  '<td>' + escapeHtmlClient(row.role || '-') + '</td>' +
+                  '<td>' + statusPill(row.status) + '</td>' +
+                  '<td>' + escapeHtmlClient(row.worked_today_text || '-') + '</td>' +
+                  '<td>' + escapeHtmlClient(row.break_today_text || '-') + '</td>' +
+                  '<td>' + escapeHtmlClient(row.first_login_text || '-') + '</td>' +
+                  '<td>' + escapeHtmlClient(row.late_status || '-') + '</td>' +
+                  '<td>' + flagPills(row.flags || []) + '</td>' +
+                '</tr>';
+              }).join('') || '<tr><td colspan="8" class="empty-cell">No summary data</td></tr>';
+
+              const attentionItems = [];
+              if ((summary.unapproved_late ?? 0) > 0) {
+                attentionItems.push('Late not approved: ' + summary.unapproved_late);
+              }
+              if ((summary.no_prior_info_late ?? 0) > 0) {
+                attentionItems.push('Late without prior info: ' + summary.no_prior_info_late);
+              }
+              if ((summary.long_break_flags ?? 0) > 0) {
+                attentionItems.push('Long break flags: ' + summary.long_break_flags);
+              }
+              if ((summary.long_shift_flags ?? 0) > 0) {
+                attentionItems.push('Long shift flags: ' + summary.long_shift_flags);
+              }
+              if ((summary.not_logged_in_yet ?? 0) > 0) {
+                attentionItems.push('No attendance update yet: ' + summary.not_logged_in_yet);
+              }
+
+              attentionNow.innerHTML = attentionItems.length
+                ? attentionItems.map((item) => '<div class="alert-item">' + escapeHtmlClient(item) + '</div>').join('')
+                : '<div class="alert-item">No immediate issues right now</div>';
+
+              liveGroups.innerHTML = [
+                '<div class="alert-item"><strong>On break now:</strong><br>' + ((groups.on_break_now || []).map((x) => escapeHtmlClient(x.name)).join('<br>') || 'None') + '</div>',
+                '<div class="alert-item"><strong>Expected late:</strong><br>' + ((groups.expected_late || []).map((x) => escapeHtmlClient(x.name + ' (' + (x.late_expected_login_text || '-') + ')')).join('<br>') || 'None') + '</div>',
+                '<div class="alert-item"><strong>No update yet:</strong><br>' + ((groups.no_update_yet || []).map((x) => escapeHtmlClient(x.name)).join('<br>') || 'None') + '</div>',
+                '<div class="alert-item"><strong>On leave today:</strong><br>' + ((groups.on_leave_today || []).map((x) => escapeHtmlClient(x.name)).join('<br>') || 'None') + '</div>'
+              ].join('');
+
+              leaveList.innerHTML = (groups.on_leave_today || []).length
+                ? (groups.on_leave_today || []).map((x) => '<div class="alert-item">' + employeeLink(x.user_id, x.name) + '</div>').join('')
+                : '<div class="alert-item">Nobody is on leave today</div>';
+
+              noUpdateList.innerHTML = (groups.no_update_yet || []).length
+                ? (groups.no_update_yet || []).map((x) => '<div class="alert-item">' + employeeLink(x.user_id, x.name) + '</div>').join('')
+                : '<div class="alert-item">Everyone has updated attendance</div>';
+
+            } catch (error) {
+              console.error('Attendance page load failed:', error);
+              statsGrid.innerHTML = '<div class="stat-card"><div class="stat-label">Error</div><div class="stat-value">!</div><div class="stat-note">' + escapeHtmlClient(error.message || 'Failed to load') + '</div></div>';
+              tableBody.innerHTML = '<tr><td colspan="10" class="error-state">Failed to load attendance</td></tr>';
+              exceptionsBody.innerHTML = '<tr><td colspan="7" class="error-state">Failed to load attendance</td></tr>';
+              summaryBody.innerHTML = '<tr><td colspan="8" class="error-state">Failed to load attendance</td></tr>';
+              attentionNow.innerHTML = '<div class="alert-item">Failed to load attendance</div>';
+              liveGroups.innerHTML = '<div class="alert-item">Failed to load attendance</div>';
+              leaveList.innerHTML = '<div class="alert-item">Failed to load attendance</div>';
+              noUpdateList.innerHTML = '<div class="alert-item">Failed to load attendance</div>';
+            }
+          }
+
+          const tabButtons = document.querySelectorAll('.tab-btn');
+          const tabPanels = document.querySelectorAll('.tab-panel');
+
+          tabButtons.forEach((btn) => {
+            btn.addEventListener('click', () => {
+              const tab = btn.dataset.tab;
+              tabButtons.forEach((b) => b.classList.remove('active'));
+              tabPanels.forEach((p) => p.classList.remove('active'));
+              btn.classList.add('active');
+              const panel = document.getElementById('tab-' + tab);
+              if (panel) panel.classList.add('active');
+            });
+          });
+
+          loadAttendancePage();
+
+          setInterval(() => {
+            loadAttendancePage().catch((error) => {
+              console.error('Periodic attendance load failed:', error);
+            });
+          }, 60000);
+
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+              loadAttendancePage().catch((error) => {
+                console.error('Visibility attendance load failed:', error);
+              });
+            }
+          });
+        </script>
       </body>
     </html>
   `);
