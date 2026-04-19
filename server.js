@@ -11106,7 +11106,13 @@ app.get(
       }
 
       const nowAttendanceDate = getAttendanceDayDateStringFromDate(new Date());
-      const startDate = getMonthStartDateString(nowAttendanceDate);
+      const currentAttendanceDateAsDate = new Date(
+        `${nowAttendanceDate}T00:00:00${APP_TIMEZONE_OFFSET}`,
+      );
+      const { startDate } = getMonthDateRangeForTimeZone(
+        currentAttendanceDateAsDate,
+        APP_TIMEZONE,
+      );
       const endDateExclusive = addDaysToDateString(nowAttendanceDate, 1);
 
       const redReportDates = await getMissingReportDatesForUserInRange({
@@ -11123,11 +11129,10 @@ app.get(
       });
     } catch (error) {
       console.error("Employee red reports API error:", error);
-
       return res.status(500).json({
         ok: false,
         error: error?.message || String(error),
-        stack: process.env.NODE_ENV !== "production" ? error?.stack : undefined,
+        stack: error?.stack || null,
       });
     }
   },
