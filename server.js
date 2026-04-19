@@ -316,6 +316,51 @@ function renderLoginPage(errorMessage = "") {
             .login-wrap { grid-template-columns: 1fr; }
             .login-card { margin-left: 0; max-width: 100%; }
           }
+          
+          .loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(9, 12, 24, 0.55);
+  backdrop-filter: blur(6px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.loading-overlay.show {
+  display: flex;
+}
+
+.loading-card {
+  min-width: 240px;
+  padding: 22px 24px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+  text-align: center;
+}
+
+.loading-spinner {
+  width: 34px;
+  height: 34px;
+  margin: 0 auto 12px;
+  border-radius: 999px;
+  border: 3px solid rgba(255,255,255,0.14);
+  border-top-color: var(--primary);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.login-btn:disabled {
+  opacity: 0.75;
+  cursor: wait;
+}
+
         </style>
       </head>
       <body>
@@ -343,19 +388,57 @@ function renderLoginPage(errorMessage = "") {
 
               ${errorMessage ? `<div class="login-error">${escapeHtml(errorMessage)}</div>` : ""}
 
-              <form method="POST" action="/login">
-                <div class="form-group">
-                  <label class="label">Phone number</label>
-                  <input class="input" name="phone_number" placeholder="e.g. whatsapp:+12133081594" />
-                </div>
+<form method="POST" action="/login" id="loginForm">
+  <div class="form-group">
+    <label class="label">Phone number</label>
+    <input
+      class="input"
+      name="phone_number"
+      placeholder="e.g. whatsapp:+12133081594"
+      autocomplete="username"
+    />
+  </div>
 
-                <div class="form-group">
-                  <label class="label">Password</label>
-                  <input class="input" type="password" name="password" placeholder="Enter password" />
-                </div>
+  <div class="form-group">
+    <label class="label">Password</label>
+    <input
+      class="input"
+      type="password"
+      name="password"
+      placeholder="Enter password"
+      autocomplete="current-password"
+    />
+  </div>
 
-                <button class="login-btn" type="submit">Login</button>
-              </form>
+  <button class="login-btn" id="loginSubmitBtn" type="submit">Login</button>
+</form>
+
+<div id="loginLoadingOverlay" class="loading-overlay">
+  <div class="loading-card">
+    <div class="loading-spinner"></div>
+    <div style="font-weight:700;">Logging you in...</div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const form = document.getElementById("loginForm");
+    const overlay = document.getElementById("loginLoadingOverlay");
+    const btn = document.getElementById("loginSubmitBtn");
+
+    if (!form) return;
+
+    form.addEventListener("submit", function () {
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Logging in...";
+      }
+      if (overlay) {
+        overlay.classList.add("show");
+      }
+    });
+  })();
+</script>
 
               <div class="helper">
                 First-time users can use the default password assigned by admin.
@@ -941,7 +1024,8 @@ function buildTopNavCss() {
       flex-wrap: wrap;
     }
 
-    .nav-links a {
+    .nav-links a,
+    .nav-links button {
       color: var(--text);
       text-decoration: none;
       padding: 10px 14px;
@@ -950,9 +1034,12 @@ function buildTopNavCss() {
       background: var(--secondary-soft);
       font-weight: 600;
       transition: all 0.15s ease;
+      font: inherit;
+      cursor: pointer;
     }
 
-    .nav-links a:hover {
+    .nav-links a:hover,
+    .nav-links button:hover {
       color: var(--text-strong);
       border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
     }
@@ -971,6 +1058,387 @@ function buildTopNavCss() {
     .nav-links a.logout-link:hover {
       background: rgba(255,255,255,0.10);
     }
+
+    .quick-action-btn {
+      background: var(--primary-soft) !important;
+      border-color: color-mix(in srgb, var(--primary) 55%, transparent) !important;
+      color: var(--text-strong) !important;
+    }
+
+    .quick-action-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(3, 8, 20, 0.68);
+      backdrop-filter: blur(8px);
+      z-index: 9998;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+
+    .quick-action-overlay.open {
+      display: flex;
+    }
+
+    .quick-action-modal {
+      width: min(920px, 100%);
+      max-height: 88vh;
+      overflow: auto;
+      background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow-soft);
+      padding: 18px;
+    }
+
+    .quick-action-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .quick-action-title {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .quick-action-close {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      color: var(--text);
+      padding: 10px 12px;
+      cursor: pointer;
+      font: inherit;
+    }
+
+    .quick-action-input {
+      width: 100%;
+      padding: 16px 18px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      font-size: 16px;
+      outline: none;
+      margin-bottom: 14px;
+    }
+
+    .quick-action-input:focus {
+      border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+      box-shadow: 0 0 0 3px rgba(139,124,246,0.14);
+    }
+
+    .quick-action-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 16px;
+    }
+
+    .quick-action-panel {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 14px;
+    }
+
+    .quick-action-panel h3 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.10em;
+      color: var(--muted);
+    }
+
+    .quick-action-chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .quick-action-chip {
+      padding: 9px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+    }
+
+    .quick-action-preview,
+    .quick-action-result {
+      white-space: pre-wrap;
+      line-height: 1.55;
+      color: var(--text);
+      font-size: 14px;
+      min-height: 70px;
+    }
+
+    .quick-action-preview.muted,
+    .quick-action-result.muted {
+      color: var(--muted);
+    }
+
+    .quick-action-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 14px;
+    }
+
+    .quick-action-submit,
+    .quick-action-secondary {
+      padding: 11px 14px;
+      border-radius: 12px;
+      font: inherit;
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.10);
+    }
+
+    .quick-action-submit {
+      background: var(--primary-soft);
+      color: var(--text-strong);
+    }
+
+    .quick-action-secondary {
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+    }
+
+    @media (max-width: 820px) {
+      .quick-action-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  `;
+}
+
+function renderQuickActionModal() {
+  return `
+    <button type="button" class="quick-action-btn" onclick="openQuickActionModal()">
+      Quick Action
+    </button>
+
+    <div id="quickActionOverlay" class="quick-action-overlay" onclick="closeQuickActionModal(event)">
+      <div class="quick-action-modal" onclick="event.stopPropagation()">
+        <div class="quick-action-head">
+          <div class="quick-action-title">Quick Action</div>
+          <button type="button" class="quick-action-close" onclick="closeQuickActionModal()">Close</button>
+        </div>
+
+        <input
+          id="quickActionInput"
+          class="quick-action-input"
+          placeholder="Type a command like: show task 12"
+          autocomplete="off"
+        />
+
+        <div class="quick-action-grid">
+          <div class="quick-action-panel">
+            <h3>Suggested commands</h3>
+            <div class="quick-action-chips">
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('show task 2')">show task 2</button>
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('my tasks')">my tasks</button>
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('status')">status</button>
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('login')">login</button>
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('break')">break</button>
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('back')">back</button>
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('logout')">logout</button>
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('progress 2 50 finished API testing properly')">progress 2 50 ...</button>
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('done 2 tested and verified properly')">done 2 ...</button>
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('wait 23 on aj for API response')">wait 23 on aj ...</button>
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('clear wait 23 aj responded')">clear wait 23 ...</button>
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('who is on break')">who is on break</button>
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('who is off today')">who is off today</button>
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('summary today')">summary today</button>
+              <button type="button" class="quick-action-chip" onclick="setQuickActionCommand('now')">now</button>
+            </div>
+          </div>
+
+          <div class="quick-action-panel">
+            <h3>Preview</h3>
+            <div id="quickActionPreview" class="quick-action-preview muted">Start typing to see a quick preview.</div>
+          </div>
+        </div>
+
+        <div class="quick-action-panel" style="margin-top:16px;">
+          <h3>Result</h3>
+          <div id="quickActionResult" class="quick-action-result muted">Nothing run yet.</div>
+        </div>
+
+        <div class="quick-action-actions">
+          <button type="button" class="quick-action-secondary" onclick="clearQuickAction()">Clear</button>
+          <button type="button" class="quick-action-submit" onclick="runQuickAction()">Run command</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function openQuickActionModal() {
+        const overlay = document.getElementById("quickActionOverlay");
+        const input = document.getElementById("quickActionInput");
+        if (!overlay || !input) return;
+        overlay.classList.add("open");
+        setTimeout(() => input.focus(), 0);
+      }
+
+      function closeQuickActionModal(event) {
+        if (event && event.target && event.target.id !== "quickActionOverlay") return;
+        const overlay = document.getElementById("quickActionOverlay");
+        if (overlay) overlay.classList.remove("open");
+      }
+
+      function setQuickActionCommand(value) {
+        const input = document.getElementById("quickActionInput");
+        if (!input) return;
+        input.value = value;
+        updateQuickActionPreview();
+        input.focus();
+      }
+
+      function clearQuickAction() {
+        const input = document.getElementById("quickActionInput");
+        const preview = document.getElementById("quickActionPreview");
+        const result = document.getElementById("quickActionResult");
+        if (input) input.value = "";
+        if (preview) {
+          preview.textContent = "Start typing to see a quick preview.";
+          preview.classList.add("muted");
+        }
+        if (result) {
+          result.textContent = "Nothing run yet.";
+          result.classList.add("muted");
+        }
+      }
+
+      function updateQuickActionPreview() {
+        const input = document.getElementById("quickActionInput");
+        const preview = document.getElementById("quickActionPreview");
+        if (!input || !preview) return;
+
+        const value = String(input.value || "").trim();
+
+        if (!value) {
+          preview.textContent = "Start typing to see a quick preview.";
+          preview.classList.add("muted");
+          return;
+        }
+
+        preview.classList.remove("muted");
+
+        if (/^show\\s+task\\s+\\d+$/i.test(value)) {
+          preview.textContent = "Will fetch and display one task.";
+          return;
+        }
+
+        if (/^my\\s+tasks$/i.test(value)) {
+          preview.textContent = "Will fetch your open tasks.";
+          return;
+        }
+
+        if (/^status$/i.test(value)) {
+          preview.textContent = "Will fetch your current attendance status.";
+          return;
+        }
+
+        if (/^(login|break|back|logout)$/i.test(value)) {
+          preview.textContent = "Will update your attendance.";
+          return;
+        }
+
+        if (/^progress\\s+\\d+\\s+\\d{1,3}%?\\s+.+$/i.test(value)) {
+          preview.textContent = "Will update task progress and save task history.";
+          return;
+        }
+
+        if (/^done\\s+\\d+\\s+.+$/i.test(value)) {
+          preview.textContent = "Will mark task done and set progress to 100%.";
+          return;
+        }
+
+        if (/^wait\\s+\\d+\\s+on\\s+.+\\s+for\\s+.+$/i.test(value)) {
+          preview.textContent = "Will mark the task blocked and set waiting-on user.";
+          return;
+        }
+
+        if (/^clear\\s+wait\\s+\\d+(?:\\s+.+)?$/i.test(value)) {
+          preview.textContent = "Will clear waiting/blocker state and reopen the task.";
+          return;
+        }
+
+        if (/^(who\\s+is\\s+on\\s+break|who\\s+is\\s+off\\s+today|summary\\s+today|now)$/i.test(value)) {
+          preview.textContent = "Will run a team summary command.";
+          return;
+        }
+
+        preview.textContent = "Will send this command to the server.";
+      }
+
+      async function runQuickAction() {
+        const input = document.getElementById("quickActionInput");
+        const result = document.getElementById("quickActionResult");
+
+        if (!input || !result) return;
+
+        const command = String(input.value || "").trim();
+        if (!command) {
+          result.textContent = "Please type a command first.";
+          result.classList.remove("muted");
+          return;
+        }
+
+        result.textContent = "Running...";
+        result.classList.remove("muted");
+
+        try {
+          const res = await fetch("/api/command-palette/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ command })
+          });
+
+          const json = await res.json();
+
+          if (!json.ok) {
+            result.textContent = json.error || "Failed to run command.";
+            return;
+          }
+
+          result.textContent = json.data?.message || "Done.";
+
+          if (json.data?.reload) {
+            setTimeout(() => window.location.reload(), 700);
+          }
+        } catch (error) {
+          result.textContent = error?.message || "Something went wrong.";
+        }
+      }
+
+      document.addEventListener("keydown", function (event) {
+        const isMac = navigator.platform.toUpperCase().includes("MAC");
+        const hotkey = (isMac ? event.metaKey : event.ctrlKey) && event.key.toLowerCase() === "k";
+
+        if (hotkey) {
+          event.preventDefault();
+          openQuickActionModal();
+        }
+
+        if (event.key === "Escape") {
+          closeQuickActionModal();
+        }
+      });
+
+      document.addEventListener("input", function (event) {
+        if (event.target && event.target.id === "quickActionInput") {
+          updateQuickActionPreview();
+        }
+      });
+    </script>
   `;
 }
 
@@ -1003,6 +1471,7 @@ function renderTopNav(active = "") {
               `,
             )
             .join("")}
+          ${renderQuickActionModal()}
         </div>
       </div>
     </div>
