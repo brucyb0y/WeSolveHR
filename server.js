@@ -1471,7 +1471,6 @@ function renderTopNav(active = "") {
               `,
             )
             .join("")}
-          ${renderQuickActionModal()}
         </div>
       </div>
     </div>
