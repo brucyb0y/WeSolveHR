@@ -8137,17 +8137,10 @@ function getReportCardStatus({
   hasExtraWork,
 }) {
   if (!expectedToWork) {
-    const isSunday =
-      reportDate && new Date(`${reportDate}T12:00:00`).getDay() === 0;
-
     return {
       status: isOnLeave ? "leave" : "off",
       cardClass: isOnLeave ? "report-card-leave" : "report-card-off",
-      reason: isOnLeave
-        ? "On leave"
-        : isSunday
-          ? "Sunday Off"
-          : "Not expected to work",
+      reason: isOnLeave ? "On leave" : "Not expected to work",
     };
   }
 
@@ -9291,11 +9284,15 @@ function renderReportsPage(data) {
     <div class="status-chip-count">${escapeHtml(compliance.onLeave.length)}</div>
     <div class="status-chip-names">${escapeHtml(compliance.onLeave.join(", ") || "None")}</div>
   </div>
-  <div class="status-chip-box">
-<div class="status-chip-title">Off day</div>
-<div class="status-chip-count">${escapeHtml(compliance.off.length)}</div>
-    <div class="status-chip-names">${escapeHtml(compliance.off.join(", ") || "None")}</div>
-  </div>
+<div class="status-chip-box">
+  <div class="status-chip-title">${
+    new Date(`${reportDate}T12:00:00`).getDay() === 0
+      ? "Sunday Off"
+      : "Off / not expected"
+  }</div>
+  <div class="status-chip-count">${escapeHtml(compliance.off.length)}</div>
+  <div class="status-chip-names">${escapeHtml(compliance.off.join(", ") || "None")}</div>
+</div>
 </div>
 
           <div class="panel" style="padding:14px 16px; margin-bottom:16px;">
