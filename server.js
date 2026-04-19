@@ -1002,12 +1002,12 @@ function buildTopNavCss() {
     .top-nav-inner {
       max-width: 1600px;
       margin: 0 auto;
-      padding: 14px 18px;
-      display: flex;
+      padding: 12px 18px;
+      display: grid;
+      grid-template-columns: 180px minmax(0, 1fr) auto;
       align-items: center;
-      justify-content: space-between;
-      gap: 18px;
-      flex-wrap: wrap;
+      gap: 16px;
+      min-height: 72px;
     }
 
     .brand {
@@ -1015,13 +1015,23 @@ function buildTopNavCss() {
       font-weight: 800;
       letter-spacing: -0.03em;
       color: var(--text);
+      white-space: nowrap;
     }
 
     .nav-links {
       display: flex;
       align-items: center;
+      justify-content: center;
       gap: 10px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      min-width: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;
+    }
+
+    .nav-links::-webkit-scrollbar {
+      display: none;
     }
 
     .nav-links a,
@@ -1036,6 +1046,8 @@ function buildTopNavCss() {
       transition: all 0.15s ease;
       font: inherit;
       cursor: pointer;
+      white-space: nowrap;
+      flex: 0 0 auto;
     }
 
     .nav-links a:hover,
@@ -1063,6 +1075,35 @@ function buildTopNavCss() {
       background: var(--primary-soft) !important;
       border-color: color-mix(in srgb, var(--primary) 55%, transparent) !important;
       color: var(--text-strong) !important;
+    }
+
+    .top-nav-status {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: nowrap;
+      min-width: 220px;
+    }
+
+    .top-nav-pill {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.10);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+      line-height: 1;
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .top-nav-pill.loading,
+    .top-nav-pill.muted {
+      color: var(--muted);
     }
 
     .quick-action-overlay {
@@ -1115,29 +1156,6 @@ function buildTopNavCss() {
       cursor: pointer;
       font: inherit;
     }
-    
-    .top-nav-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.top-nav-pill {
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.10);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.top-nav-pill.loading,
-.top-nav-pill.muted {
-  color: var(--muted);
-}
 
     .quick-action-input {
       width: 100%;
@@ -1231,6 +1249,27 @@ function buildTopNavCss() {
     .quick-action-secondary {
       background: rgba(255,255,255,0.05);
       color: var(--text);
+    }
+
+    @media (max-width: 1100px) {
+      .top-nav-inner {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        min-height: auto;
+      }
+
+      .brand {
+        text-align: center;
+      }
+
+      .nav-links {
+        justify-content: flex-start;
+      }
+
+      .top-nav-status {
+        justify-content: flex-start;
+        min-width: 0;
+      }
     }
 
     @media (max-width: 820px) {
@@ -1498,7 +1537,8 @@ function renderTopNav(active = "") {
         </div>
 
         <div class="top-nav-status" id="topNavStatus">
-          <span class="top-nav-pill loading">Loading team…</span>
+          <span class="top-nav-pill loading">Off today: ...</span>
+          <span class="top-nav-pill loading">On break: ...</span>
         </div>
       </div>
     </div>
@@ -1512,11 +1552,14 @@ function renderTopNav(active = "") {
           .then((r) => r.json())
           .then((json) => {
             if (!json.ok || !json.data) {
-              mount.innerHTML = '<span class="top-nav-pill muted">Team status unavailable</span>';
+              mount.innerHTML =
+                '<span class="top-nav-pill muted">Off today: -</span>' +
+                '<span class="top-nav-pill muted">On break: -</span>';
               return;
             }
 
             const data = json.data;
+
             const offTitle = data.offNames && data.offNames.length
               ? data.offNames.join(", ")
               : "Nobody off today";
@@ -1526,25 +1569,27 @@ function renderTopNav(active = "") {
               : "Nobody on break";
 
             const offLabel =
-  (data.offCount || 0) === 0
-    ? 'Off today: 0'
-    : (data.offCount || 0) <= 2
-      ? 'Off today: ' + data.offNames.join(', ')
-      : 'Off today: ' + data.offCount;
+              (data.offCount || 0) === 0
+                ? "Off today: 0"
+                : (data.offCount || 0) <= 2
+                  ? "Off today: " + data.offNames.join(", ")
+                  : "Off today: " + data.offCount;
 
-const breakLabel =
-  (data.breakCount || 0) === 0
-    ? 'On break: 0'
-    : (data.breakCount || 0) <= 2
-      ? 'On break: ' + data.breakNames.join(', ')
-      : 'On break: ' + data.breakCount;
+            const breakLabel =
+              (data.breakCount || 0) === 0
+                ? "On break: 0"
+                : (data.breakCount || 0) <= 2
+                  ? "On break: " + data.breakNames.join(", ")
+                  : "On break: " + data.breakCount;
 
-mount.innerHTML = ''
-  + '<span class="top-nav-pill" title="' + escapeHtmlClient(offTitle) + '">' + escapeHtmlClient(offLabel) + '</span>'
-  + '<span class="top-nav-pill" title="' + escapeHtmlClient(breakTitle) + '">' + escapeHtmlClient(breakLabel) + '</span>';
-                      })
+            mount.innerHTML =
+              '<span class="top-nav-pill" title="' + escapeHtmlClient(offTitle) + '">' + escapeHtmlClient(offLabel) + '</span>' +
+              '<span class="top-nav-pill" title="' + escapeHtmlClient(breakTitle) + '">' + escapeHtmlClient(breakLabel) + '</span>';
+          })
           .catch(() => {
-            mount.innerHTML = '<span class="top-nav-pill muted">Team status unavailable</span>';
+            mount.innerHTML =
+              '<span class="top-nav-pill muted">Off today: -</span>' +
+              '<span class="top-nav-pill muted">On break: -</span>';
           });
       })();
 
