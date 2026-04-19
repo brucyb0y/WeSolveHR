@@ -10326,9 +10326,6 @@ datesEl.innerHTML =
     loadRedReports(${Number(employee.id) || 0});
   });
 </script>
-loadUsers().then(loadTasks);
-
-        </script>
       </body>
     </html>
   `;
@@ -11126,11 +11123,12 @@ app.get(
       });
     } catch (error) {
       console.error("Employee red reports API error:", error);
-      return sendApiError(
-        res,
-        500,
-        error?.message || "Failed to load red reports",
-      );
+
+      return res.status(500).json({
+        ok: false,
+        error: error?.message || String(error),
+        stack: process.env.NODE_ENV !== "production" ? error?.stack : undefined,
+      });
     }
   },
 );
