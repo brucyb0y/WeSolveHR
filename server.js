@@ -57,6 +57,30 @@ function normalizeText(text) {
     .toLowerCase();
 }
 
+function normalizePhoneForLogin(input) {
+  if (!input) return "";
+
+  let value = String(input).trim();
+
+  // Remove whatsapp: if someone pastes it
+  value = value.replace(/^whatsapp:/i, "");
+
+  // Remove spaces, dashes, brackets, dots etc, but keep digits and +
+  value = value.replace(/[^\d+]/g, "");
+
+  // Convert 00... to +...
+  if (value.startsWith("00")) {
+    value = `+${value.slice(2)}`;
+  }
+
+  // If user entered full country code but no plus, add it
+  if (value && !value.startsWith("+")) {
+    value = `+${value}`;
+  }
+
+  return value;
+}
+
 app.use(express.json());
 
 app.use(
@@ -390,13 +414,17 @@ function renderLoginPage(errorMessage = "") {
 
 <form method="POST" action="/login" id="loginForm">
   <div class="form-group">
-    <label class="label">Phone number</label>
-    <input
-      class="input"
-      name="phone_number"
-      placeholder="e.g. whatsapp:+12133081594"
-      autocomplete="username"
-    />
+<label>Phone number</label>
+<input
+  class="input"
+  type="text"
+  name="phone"
+  placeholder="e.g. +12133081594 or +919891517965"
+  autocomplete="tel"
+/>
+<p class="helper" style="margin-top:8px;">
+  Enter your full phone number with country code.
+</p>
   </div>
 
   <div class="form-group">
@@ -441,7 +469,7 @@ function renderLoginPage(errorMessage = "") {
 </script>
 
               <div class="helper">
-                First-time users can use the default password assigned by admin.
+                First-time users can use the default password assigned by admin. Use your full phone number with country code.
               </div>
             </div>
           </div>
@@ -13646,25 +13674,30 @@ app.get("/login", (req, res) => {
 
 app.post("/login", async (req, res) => {
   try {
-    const rawPhone = String(req.body.phone_number || "").trim();
+    const rawPhone = String(req.body.phone || "").trim();
     const password = String(req.body.password || "").trim();
 
-    const digitsOnly = rawPhone.replace(/\D/g, "");
+    const normalizedPhone = normalizePhoneForLogin(rawPhone);
+    const digitsOnly = normalizedPhone.replace(/\D/g, "");
+
+    if (!normalizedPhone || !password) {
+      return res
+        .status(400)
+        .send(renderLoginPage("Please enter phone number and password."));
+    }
 
     const phoneCandidates = [
-      rawPhone,
-      `+${digitsOnly}`,
-      digitsOnly,
-      `whatsapp:${rawPhone}`,
-      `whatsapp:+${digitsOnly}`,
-      digitsOnly.length === 10 ? `whatsapp:+1${digitsOnly}` : null,
-      digitsOnly.length === 10 ? `+1${digitsOnly}` : null,
+      normalizedPhone, // +12133081594
+      digitsOnly, // 12133081594
+      `whatsapp:${normalizedPhone}`, // whatsapp:+12133081594
+      rawPhone, // whatever user typed
+      rawPhone.replace(/^whatsapp:/i, "").trim(),
     ].filter(Boolean);
 
     const { data: users, error } = await supabase
       .from("users")
       .select("*")
-      .in("phone_number", phoneCandidates)
+      .in("phone_number", [...new Set(phoneCandidates)])
       .eq("is_active", true)
       .limit(1);
 
