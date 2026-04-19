@@ -8129,6 +8129,7 @@ function resolveWorkExpectation({ reportDate, isOnLeave, overrideMode }) {
 }
 
 function getReportCardStatus({
+  reportDate,
   isOnLeave,
   expectedToWork,
   workMode,
@@ -8136,10 +8137,17 @@ function getReportCardStatus({
   hasExtraWork,
 }) {
   if (!expectedToWork) {
+    const isSunday =
+      reportDate && new Date(`${reportDate}T12:00:00`).getDay() === 0;
+
     return {
       status: isOnLeave ? "leave" : "off",
       cardClass: isOnLeave ? "report-card-leave" : "report-card-off",
-      reason: isOnLeave ? "On leave" : "Not expected to work",
+      reason: isOnLeave
+        ? "On leave"
+        : isSunday
+          ? "Sunday Off"
+          : "Not expected to work",
     };
   }
 
