@@ -11785,50 +11785,314 @@ app.get("/account", requireUserLogin, async (req, res) => {
     .order("created_at", { ascending: false })
     .limit(20);
 
-  const ptoRemaining = user.pto_total - user.pto_used;
-  const sickRemaining = user.sick_total - user.sick_used;
+  const ptoRemaining = (user.pto_total || 12) - (user.pto_used || 0);
+  const sickRemaining = (user.sick_total || 12) - (user.sick_used || 0);
+
+  const feedbackHtml = feedbackItems?.length
+    ? feedbackItems
+        .map((item) => {
+          const labelMap = {
+            feedback: "Feedback",
+            appreciation: "Appreciation",
+            coaching: "Coaching",
+            one_on_one: "1:1 Note",
+          };
+
+          return `
+            <div class="timeline-item">
+              <div class="timeline-badge">${escapeHtml(labelMap[item.type] || item.type)}</div>
+              <div class="timeline-date">${formatDateTime(item.created_at)}</div>
+              <div class="timeline-note">${escapeHtml(item.note || item.manager_comment || "")}</div>
+            </div>
+          `;
+        })
+        .join("")
+    : `<div class="empty-state">No feedback yet</div>`;
 
   res.send(`
     <html>
-      <body style="font-family:sans-serif;padding:40px;">
-        <h1>${escapeHtml(user.name)}</h1>
-        <p>${escapeHtml(user.role || "")}</p>
+      <head>
+        <title>My Account</title>
+        <style>
+          body {
+            margin: 0;
+            font-family: Inter, Arial, sans-serif;
+            background:
+              radial-gradient(circle at top left, rgba(139,124,246,0.14), transparent 30%),
+              radial-gradient(circle at top right, rgba(86,199,217,0.14), transparent 22%),
+              linear-gradient(180deg, #1b2238 0%, #151a2e 100%);
+            color: #f3f6ff;
+          }
 
-        <h2>Leave Balance</h2>
-        <p>PTO Remaining: ${ptoRemaining}</p>
-        <p>Sick Remaining: ${sickRemaining}</p>
+          .wrap {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 28px 18px 40px;
+          }
 
-        <h2>Last Appraisal</h2>
-        ${
-          appraisal
-            ? `
-              <p>Rating: ${appraisal.rating || "-"}</p>
-              <p>Strengths: ${escapeHtml(appraisal.strengths || "-")}</p>
-              <p>Improvement Areas: ${escapeHtml(appraisal.improvement_areas || "-")}</p>
-              <p>Manager Comment: ${escapeHtml(appraisal.manager_comment || "-")}</p>
-            `
-            : "<p>No appraisal yet</p>"
-        }
+          .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 22px;
+          }
 
-        <h2>Feedback Timeline</h2>
-        ${
-          feedbackItems?.length
-            ? feedbackItems
-                .map(
-                  (item) => `
-                  <div style="border:1px solid #ddd;padding:12px;margin-bottom:12px;">
-                    <strong>${escapeHtml(item.type)}</strong><br/>
-                    <small>${formatDateTime(item.created_at)}</small><br/><br/>
-                    ${escapeHtml(item.note || item.manager_comment || "")}
+          .title-block h1 {
+            margin: 0;
+            font-size: 32px;
+            letter-spacing: -0.03em;
+          }
+
+          .title-block p {
+            margin: 8px 0 0;
+            color: #c4cce0;
+            font-size: 14px;
+          }
+
+          .logout-btn {
+            text-decoration: none;
+            color: #f3f6ff;
+            background: rgba(139,124,246,0.16);
+            border: 1px solid rgba(255,255,255,0.12);
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-weight: 600;
+          }
+
+          .grid {
+            display: grid;
+            grid-template-columns: 1.1fr 1fr;
+            gap: 18px;
+          }
+
+          .card {
+            background: linear-gradient(180deg, rgba(31,39,63,0.92), rgba(26,33,55,0.96));
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 18px;
+            padding: 18px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.22);
+          }
+
+          .card h2 {
+            margin: 0 0 14px;
+            font-size: 18px;
+          }
+
+          .profile-meta {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+          }
+
+          .meta-box {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 12px;
+          }
+
+          .meta-label {
+            font-size: 12px;
+            color: #c4cce0;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
+          }
+
+          .meta-value {
+            font-size: 18px;
+            font-weight: 700;
+          }
+
+          .stats-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+          }
+
+          .stat-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 14px;
+          }
+
+          .stat-label {
+            font-size: 12px;
+            color: #c4cce0;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
+          }
+
+          .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+          }
+
+          .appraisal-block {
+            display: grid;
+            gap: 12px;
+          }
+
+          .appraisal-row {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 12px;
+          }
+
+          .appraisal-label {
+            font-size: 12px;
+            color: #c4cce0;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 6px;
+          }
+
+          .appraisal-value {
+            font-size: 15px;
+            line-height: 1.5;
+          }
+
+          .timeline {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+          }
+
+          .timeline-item {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 14px;
+          }
+
+          .timeline-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            background: rgba(139,124,246,0.16);
+            border: 1px solid rgba(255,255,255,0.08);
+            margin-bottom: 8px;
+          }
+
+          .timeline-date {
+            font-size: 12px;
+            color: #c4cce0;
+            margin-bottom: 8px;
+          }
+
+          .timeline-note {
+            font-size: 15px;
+            line-height: 1.6;
+          }
+
+          .empty-state {
+            color: #c4cce0;
+            padding: 16px;
+            border: 1px dashed rgba(255,255,255,0.12);
+            border-radius: 14px;
+            text-align: center;
+          }
+
+          @media (max-width: 860px) {
+            .grid {
+              grid-template-columns: 1fr;
+            }
+
+            .profile-meta,
+            .stats-row {
+              grid-template-columns: 1fr;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="wrap">
+          <div class="topbar">
+            <div class="title-block">
+              <h1>${escapeHtml(user.name || "My Account")}</h1>
+              <p>${escapeHtml(user.role || "")}</p>
+            </div>
+            <a class="logout-btn" href="/logout">Logout</a>
+          </div>
+
+          <div class="grid">
+            <div style="display:grid; gap:18px;">
+              <div class="card">
+                <h2>Profile</h2>
+                <div class="profile-meta">
+                  <div class="meta-box">
+                    <div class="meta-label">Name</div>
+                    <div class="meta-value">${escapeHtml(user.name || "-")}</div>
                   </div>
-                `,
-                )
-                .join("")
-            : "<p>No feedback yet</p>"
-        }
+                  <div class="meta-box">
+                    <div class="meta-label">Role</div>
+                    <div class="meta-value">${escapeHtml(user.role || "-")}</div>
+                  </div>
+                </div>
+              </div>
 
-        <br/>
-        <a href="/logout">Logout</a>
+              <div class="card">
+                <h2>Leave Balance</h2>
+                <div class="stats-row">
+                  <div class="stat-card">
+                    <div class="stat-label">PTO Remaining</div>
+                    <div class="stat-value">${ptoRemaining}</div>
+                  </div>
+                  <div class="stat-card">
+                    <div class="stat-label">Sick Remaining</div>
+                    <div class="stat-value">${sickRemaining}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card">
+                <h2>Last Appraisal</h2>
+                ${
+                  appraisal
+                    ? `
+                      <div class="appraisal-block">
+                        <div class="appraisal-row">
+                          <div class="appraisal-label">Rating</div>
+                          <div class="appraisal-value">${appraisal.rating || "-"}</div>
+                        </div>
+                        <div class="appraisal-row">
+                          <div class="appraisal-label">Review Date</div>
+                          <div class="appraisal-value">${formatDateTime(appraisal.created_at)}</div>
+                        </div>
+                        <div class="appraisal-row">
+                          <div class="appraisal-label">Strengths</div>
+                          <div class="appraisal-value">${escapeHtml(appraisal.strengths || "-")}</div>
+                        </div>
+                        <div class="appraisal-row">
+                          <div class="appraisal-label">Improvement Areas</div>
+                          <div class="appraisal-value">${escapeHtml(appraisal.improvement_areas || "-")}</div>
+                        </div>
+                        <div class="appraisal-row">
+                          <div class="appraisal-label">Manager Comment</div>
+                          <div class="appraisal-value">${escapeHtml(appraisal.manager_comment || "-")}</div>
+                        </div>
+                      </div>
+                    `
+                    : `<div class="empty-state">No appraisal yet</div>`
+                }
+              </div>
+            </div>
+
+            <div class="card">
+              <h2>Feedback Timeline</h2>
+              <div class="timeline">
+                ${feedbackHtml}
+              </div>
+            </div>
+          </div>
+        </div>
       </body>
     </html>
   `);
