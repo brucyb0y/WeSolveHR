@@ -9863,6 +9863,12 @@ function renderEmployeeAttendancePage(data) {
   const recentAudit = data?.recent_audit || [];
   const selectedDays = Number(data?.selectedDays) === 7 ? 7 : 1;
 
+  const todayFlags = [
+    today.long_shift_flag ? "Long shift" : null,
+    today.long_break_flag ? "Long break" : null,
+    today.possible_half_day ? "Half day" : null,
+  ].filter(Boolean);
+
   const todayTimelineRows = (today.events || []).length
     ? today.events
         .map(
@@ -9913,6 +9919,67 @@ function renderEmployeeAttendancePage(data) {
       </tr>
     `;
 
+  const leaveHistoryRows = history.length
+    ? history
+        .filter(
+          (row) =>
+            row.leave_text && row.leave_text !== "No" && row.leave_text !== "-",
+        )
+        .map(
+          (row) => `
+            <tr>
+              <td>${escapeHtml(row.attendance_date)}</td>
+              <td>${escapeHtml(row.leave_text)}</td>
+              <td>${escapeHtml(row.status)}</td>
+              <td>${escapeHtml(row.flags || "-")}</td>
+            </tr>
+          `,
+        )
+        .join("") ||
+      `
+          <tr>
+            <td colspan="4" class="empty-cell">No leave entries found in this month view.</td>
+          </tr>
+        `
+    : `
+      <tr>
+        <td colspan="4" class="empty-cell">No leave entries found in this month view.</td>
+      </tr>
+    `;
+
+  const behaviorRows = history.length
+    ? history
+        .filter((row) => {
+          const flags = String(row.flags || "").trim();
+          return (
+            (flags && flags !== "-") ||
+            String(row.late_text || "") !== "No" ||
+            Number(row.corrections || 0) > 0
+          );
+        })
+        .map(
+          (row) => `
+            <tr>
+              <td>${escapeHtml(row.attendance_date)}</td>
+              <td>${escapeHtml(row.late_text || "No")}</td>
+              <td>${escapeHtml(row.late_approved || "-")}</td>
+              <td>${escapeHtml(row.flags || "-")}</td>
+              <td>${escapeHtml(String(row.corrections || 0))}</td>
+            </tr>
+          `,
+        )
+        .join("") ||
+      `
+          <tr>
+            <td colspan="5" class="empty-cell">No behavior flags found.</td>
+          </tr>
+        `
+    : `
+      <tr>
+        <td colspan="5" class="empty-cell">No behavior flags found.</td>
+      </tr>
+    `;
+
   const auditRows = recentAudit.length
     ? recentAudit
         .map(
@@ -9936,7 +10003,8 @@ function renderEmployeeAttendancePage(data) {
       <head>
         <title>Employee Attendance</title>
         <style>
-    ${buildThemeCss()}   ${buildBasePageCss()}
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
 
           .wrap {
             max-width: 1380px;
@@ -9944,12 +10012,12 @@ function renderEmployeeAttendancePage(data) {
             padding: 24px 18px 36px;
           }
 
-.topbar, .panel, .card {
-  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-box-shadow: var(--shadow-soft), 0 0 18px color-mix(in srgb, var(--primary) 18%, transparent);
-}
+          .topbar, .panel, .card, .tab-btn {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft), 0 0 18px color-mix(in srgb, var(--primary) 18%, transparent);
+          }
 
           .topbar {
             display: flex;
@@ -9961,15 +10029,15 @@ box-shadow: var(--shadow-soft), 0 0 18px color-mix(in srgb, var(--primary) 18%, 
             padding: 18px 20px;
           }
 
-.eyebrow {
-  font-size: 11px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--primary);
-  font-weight: 700;
-  margin-bottom: 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
+          .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--primary);
+            font-weight: 700;
+            margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
 
           h1 {
             margin: 0;
@@ -9989,52 +10057,127 @@ box-shadow: var(--shadow-soft), 0 0 18px color-mix(in srgb, var(--primary) 18%, 
             flex-wrap: wrap;
           }
 
-.links a {
-  color: var(--text);
-  text-decoration: none;
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
-  background: var(--secondary-soft);
-  font-weight: 600;
-}
+          .links a,
+          .mini-report-link {
+            color: var(--text);
+            text-decoration: none;
+            padding: 10px 14px;
+            border-radius: 12px;
+            border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
+            background: var(--secondary-soft);
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+          }
 
-.links a:hover {
-  color: var(--text-strong);
-  border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
-}
+          .report-date {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+          }
 
-          .cards {
+          .hero-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: 1.2fr 1fr;
             gap: 16px;
             margin-bottom: 18px;
           }
 
-          .card {
-            padding: 16px;
+          .hero-card {
+            padding: 18px;
           }
 
+          .hero-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: var(--primary-soft);
+            border: 1px solid var(--line);
+            font-weight: 700;
+            margin-top: 10px;
+          }
+
+          .hero-meta {
+            margin-top: 14px;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+          }
+
+          .hero-meta .meta-box {
+            padding: 12px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: rgba(255,255,255,0.03);
+          }
+
+          .meta-label,
           .card-label {
             color: var(--muted);
             font-size: 12px;
-            letter-spacing: 0.08em;
             text-transform: uppercase;
+            letter-spacing: 0.08em;
             font-weight: 700;
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
           }
 
-.card h2 {
-  margin: 10px 0 0;
-  font-size: 28px;
-  color: var(--accent-2);
-}
+          .meta-value {
+            margin-top: 8px;
+            font-size: 22px;
+            font-weight: 700;
+          }
+
+          .cards {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+          }
+
+          .card {
+            padding: 14px;
+          }
+
+          .card h2 {
+            margin: 10px 0 0;
+            font-size: 26px;
+            line-height: 1.1;
+          }
+
+          .tabbar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+          }
+
+          .tab-btn {
+            cursor: pointer;
+            padding: 12px 16px;
+            color: var(--text);
+            background: rgba(255,255,255,0.04);
+            font-weight: 700;
+          }
+
+          .tab-btn.active {
+            background: var(--primary-soft);
+            border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+          }
+
+          .tab-panel {
+            display: none;
+          }
+
+          .tab-panel.active {
+            display: block;
+          }
 
           .grid-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 18px;
-            margin-bottom: 18px;
+            gap: 16px;
           }
 
           .panel {
@@ -10042,69 +10185,88 @@ box-shadow: var(--shadow-soft), 0 0 18px color-mix(in srgb, var(--primary) 18%, 
             margin-bottom: 18px;
           }
 
-          h2 {
-            margin: 0 0 12px;
-            font-size: 19px;
+          .panel h2 {
+            margin: 0 0 14px;
+            font-size: 20px;
+            letter-spacing: -0.02em;
           }
-          
-          .mini-report-link {
-  margin-right: 10px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #7c8cff;
-  text-decoration: none;
-  opacity: 0.85;
-}
 
-.mini-report-link:hover {
-  opacity: 1;
-  text-decoration: underline;
-}
+          .panel h3 {
+            margin: 0 0 12px;
+            font-size: 16px;
+          }
 
           .kv {
             display: grid;
-            grid-template-columns: 220px 1fr;
-            gap: 10px;
-            row-gap: 12px;
+            grid-template-columns: 180px 1fr;
+            gap: 12px 16px;
           }
 
-          .kv .k {
+          .k {
             color: var(--muted);
+            font-weight: 700;
           }
 
-.table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: rgba(255,255,255,0.03);
-}
+          .subcards {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
+          }
 
-th, td {
-  padding: 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  text-align: left;
-  vertical-align: top;
-}
+          .subcard {
+            padding: 14px;
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: rgba(255,255,255,0.03);
+          }
 
-.task-link {
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
+          .subcard .v {
+            margin-top: 8px;
+            font-size: 20px;
+            font-weight: 700;
+          }
 
-.task-link:hover {
-  opacity: 0.85;
-}
+          .flag-list {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+          }
 
-th {
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  background: rgba(255,255,255,0.04);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
+          .flag-chip {
+            padding: 7px 10px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            border: 1px solid var(--line);
+            font-size: 12px;
+            font-weight: 700;
+          }
+
+          .table-wrap {
+            overflow-x: auto;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+
+          thead th {
+            text-align: left;
+            font-size: 12px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            border-bottom: 1px solid var(--line);
+            padding: 12px 10px;
+            white-space: nowrap;
+          }
+
+          tbody td {
+            padding: 12px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            vertical-align: top;
+          }
 
           .empty-cell {
             text-align: center;
@@ -10112,9 +10274,24 @@ th {
             padding: 18px;
           }
 
-          @media (max-width: 1000px) {
-            .cards, .grid-2 { grid-template-columns: 1fr; }
-            .kv { grid-template-columns: 1fr; }
+          .year-note {
+            color: var(--muted);
+            margin-top: 8px;
+            font-size: 13px;
+          }
+
+          @media (max-width: 1100px) {
+            .hero-grid,
+            .grid-2,
+            .cards,
+            .subcards {
+              grid-template-columns: 1fr;
+            }
+
+            .kv,
+            .hero-meta {
+              grid-template-columns: 1fr;
+            }
           }
         </style>
       </head>
@@ -10124,17 +10301,13 @@ th {
             <div>
               <div class="eyebrow">Employee Attendance Detail</div>
               <h1>${escapeHtml(employee.name || "Employee")}</h1>
-<div class="subtitle">
-  ${escapeHtml(employee.role || "-")} • ${escapeHtml(employee.phone_number || "-")}
-</div>
-<div class="report-date" style="margin-top: 8px;">
-  <a href="/reports?userId=${encodeURIComponent(employee.id)}" class="mini-report-link">
-    Today
-  </a>
-  <a href="/reports?userId=${encodeURIComponent(employee.id)}&days=7" class="mini-report-link">
-    Last 7 days
-  </a>
-</div>
+              <div class="subtitle">
+                ${escapeHtml(employee.role || "member")} • ${escapeHtml(employee.phone_number || "-")}
+              </div>
+              <div class="report-date" style="margin-top: 10px;">
+                <a href="/reports?userId=${encodeURIComponent(employee.id)}" class="mini-report-link">Today</a>
+                <a href="/reports?userId=${encodeURIComponent(employee.id)}&days=7" class="mini-report-link">Last 7 days</a>
+              </div>
             </div>
             <div class="links">
               <a href="/attendance">Attendance</a>
@@ -10146,123 +10319,254 @@ th {
             </div>
           </div>
 
-          <div class="cards">
-            <div class="card"><div class="card-label">Current Status</div><h2>${escapeHtml(today.current_status || "-")}</h2></div>
-            <div class="card"><div class="card-label">Worked Today</div><h2>${escapeHtml(today.worked_text || "-")}</h2></div>
-            <div class="card"><div class="card-label">Break Today</div><h2>${escapeHtml(today.break_text || "-")}</h2></div>
-            <div class="card"><div class="card-label">Late Today</div><h2>${escapeHtml(today.late_text || "No")}</h2></div>
-          </div>
+          <div class="hero-grid">
+            <div class="panel hero-card">
+              <div class="meta-label">Current status</div>
+              <div class="hero-status">${escapeHtml(today.current_status || "off")}</div>
 
-          <div class="grid-2">
-            <div class="panel">
-              <h2>Today details</h2>
+              <div class="hero-meta">
+                <div class="meta-box">
+                  <div class="meta-label">Attendance date</div>
+                  <div class="meta-value">${escapeHtml(today.attendance_date || "-")}</div>
+                </div>
+                <div class="meta-box">
+                  <div class="meta-label">Late status</div>
+                  <div class="meta-value">${escapeHtml(today.late_status || "-")}</div>
+                </div>
+                <div class="meta-box">
+                  <div class="meta-label">First login</div>
+                  <div class="meta-value">${escapeHtml(today.first_login_text || "-")}</div>
+                </div>
+                <div class="meta-box">
+                  <div class="meta-label">Last logout</div>
+                  <div class="meta-value">${escapeHtml(today.last_logout_text || "-")}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel hero-card">
+              <h2 style="margin-top:0;">Today focus</h2>
+              <div class="subcards">
+                <div class="subcard">
+                  <div class="meta-label">Worked today</div>
+                  <div class="v">${escapeHtml(today.worked_text || "-")}</div>
+                </div>
+                <div class="subcard">
+                  <div class="meta-label">Break today</div>
+                  <div class="v">${escapeHtml(today.break_text || "-")}</div>
+                </div>
+                <div class="subcard">
+                  <div class="meta-label">Break count</div>
+                  <div class="v">${escapeHtml(String(today.break_count || 0))}</div>
+                </div>
+              </div>
+
               <div class="kv">
-                <div class="k">Attendance date</div><div>${escapeHtml(today.attendance_date || "-")}</div>
-                <div class="k">First login</div><div>${escapeHtml(today.first_login_text || "-")}</div>
-                <div class="k">Last logout</div><div>${escapeHtml(today.last_logout_text || "-")}</div>
-                <div class="k">Break count</div><div>${escapeHtml(String(today.break_count || 0))}</div>
-                <div class="k">Late status</div><div>${escapeHtml(today.late_status || "-")}</div>
                 <div class="k">Leave today</div><div>${today.leave_today ? "Yes" : "No"}</div>
                 <div class="k">Flags</div>
                 <div>
                   ${
-                    [
-                      today.long_shift_flag ? "Long shift" : null,
-                      today.long_break_flag ? "Long break" : null,
-                      today.possible_half_day ? "Half day" : null,
-                    ]
-                      .filter(Boolean)
-                      .join(", ") || "None"
+                    todayFlags.length
+                      ? `<div class="flag-list">${todayFlags
+                          .map(
+                            (flag) =>
+                              `<span class="flag-chip">${escapeHtml(flag)}</span>`,
+                          )
+                          .join("")}</div>`
+                      : "None"
                   }
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="cards">
+            <div class="card"><div class="card-label">Present days</div><h2>${escapeHtml(String(monthly.presentDays || 0))}</h2></div>
+            <div class="card"><div class="card-label">Leave entries</div><h2>${escapeHtml(String(monthly.leaveDays || 0))}</h2></div>
+            <div class="card"><div class="card-label">Late joins</div><h2>${escapeHtml(String(monthly.lateJoins || 0))}</h2></div>
+            <div class="card"><div class="card-label">Avg login</div><h2>${escapeHtml(monthly.avgLoginTimeText || "-")}</h2></div>
+            <div class="card"><div class="card-label">Avg break</div><h2>${escapeHtml(formatDurationMinutes(monthly.avgBreakMin || 0))}</h2></div>
+            <div class="card"><div class="card-label">Corrections</div><h2>${escapeHtml(String(monthly.managerCorrectionCount || 0))}</h2></div>
+          </div>
+
+          <div class="tabbar">
+            <button class="tab-btn active" data-tab="overview">Overview</button>
+            <button class="tab-btn" data-tab="history">History</button>
+            <button class="tab-btn" data-tab="leave">Leave & Vacations</button>
+            <button class="tab-btn" data-tab="audit">Audit</button>
+          </div>
+
+          <div id="tab-overview" class="tab-panel active">
+            <div class="grid-2">
+              <div class="panel">
+                <h2>Today summary</h2>
+                <div class="kv">
+                  <div class="k">Attendance date</div><div>${escapeHtml(today.attendance_date || "-")}</div>
+                  <div class="k">First login</div><div>${escapeHtml(today.first_login_text || "-")}</div>
+                  <div class="k">Last logout</div><div>${escapeHtml(today.last_logout_text || "-")}</div>
+                  <div class="k">Worked</div><div>${escapeHtml(today.worked_text || "-")}</div>
+                  <div class="k">Break</div><div>${escapeHtml(today.break_text || "-")}</div>
+                  <div class="k">Break count</div><div>${escapeHtml(String(today.break_count || 0))}</div>
+                  <div class="k">Late today</div><div>${escapeHtml(today.late_text || "No")}</div>
+                  <div class="k">Late status</div><div>${escapeHtml(today.late_status || "-")}</div>
+                  <div class="k">Leave today</div><div>${today.leave_today ? "Yes" : "No"}</div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <h2>Month summary</h2>
+                <div class="kv">
+                  <div class="k">Present days</div><div>${escapeHtml(String(monthly.presentDays || 0))}</div>
+                  <div class="k">Total leave entries</div><div>${escapeHtml(String(monthly.leaveDays || 0))}</div>
+                  <div class="k">Past leave dates</div><div>${escapeHtml(formatDateListForHumans(monthly.pastLeaveDates || []))}</div>
+                  <div class="k">Upcoming leave dates</div><div>${escapeHtml(formatDateListForHumans(monthly.upcomingLeaveDates || []))}</div>
+                  <div class="k">Late joins</div><div>${escapeHtml(String(monthly.lateJoins || 0))}</div>
+                  <div class="k">Approved late</div><div>${escapeHtml(String(monthly.approvedLate || 0))}</div>
+                  <div class="k">Late not approved</div><div>${escapeHtml(String(monthly.unapprovedLate || 0))}</div>
+                  <div class="k">Late without prior info</div><div>${escapeHtml(String(monthly.uninformedLate || 0))}</div>
+                  <div class="k">Average login time</div><div>${escapeHtml(monthly.avgLoginTimeText || "-")}</div>
+                  <div class="k">Average break time</div><div>${escapeHtml(formatDurationMinutes(monthly.avgBreakMin || 0))}</div>
+                  <div class="k">Long shift flags</div><div>${escapeHtml(String(monthly.longShiftCount || 0))}</div>
+                  <div class="k">Long break flags</div><div>${escapeHtml(String(monthly.longBreakCount || 0))}</div>
+                  <div class="k">Possible half days</div><div>${escapeHtml(String(monthly.possibleHalfDays || 0))}</div>
+                  <div class="k">Manager corrections</div><div>${escapeHtml(String(monthly.managerCorrectionCount || 0))}</div>
+                  <div class="k">Red report days</div>
+                  <div id="redReportDaysValue"><span class="muted">Loading...</span></div>
+                  <div class="k">Red report dates</div>
+                  <div id="redReportDatesValue"><span class="muted">Loading...</span></div>
                 </div>
               </div>
             </div>
 
             <div class="panel">
-              <h2>Monthly summary</h2>
-              <div class="kv">
-                <div class="k">Present days</div><div>${escapeHtml(String(monthly.presentDays || 0))}</div>
-                <div class="k">Total leave entries</div><div>${escapeHtml(String(monthly.leaveDays || 0))}</div>
-                <div class="k">Past leave dates</div><div>${escapeHtml(formatDateListForHumans(monthly.pastLeaveDates || []))}</div>
-                <div class="k">Upcoming leave dates</div><div>${escapeHtml(formatDateListForHumans(monthly.upcomingLeaveDates || []))}</div>
-                <div class="k">Late joins</div><div>${escapeHtml(String(monthly.lateJoins || 0))}</div>
-                <div class="k">Approved late</div><div>${escapeHtml(String(monthly.approvedLate || 0))}</div>
-                <div class="k">Late not approved</div><div>${escapeHtml(String(monthly.unapprovedLate || 0))}</div>
-                <div class="k">Late without prior info</div><div>${escapeHtml(String(monthly.uninformedLate || 0))}</div>
-                <div class="k">Average login time</div><div>${escapeHtml(monthly.avgLoginTimeText || "-")}</div>
-                <div class="k">Average break time</div><div>${escapeHtml(formatDurationMinutes(monthly.avgBreakMin || 0))}</div>
-                <div class="k">Long shift flags</div><div>${escapeHtml(String(monthly.longShiftCount || 0))}</div>
-                <div class="k">Long break flags</div><div>${escapeHtml(String(monthly.longBreakCount || 0))}</div>
-                <div class="k">Possible half days</div><div>${escapeHtml(String(monthly.possibleHalfDays || 0))}</div>
-                <div class="k">Manager corrections</div><div>${escapeHtml(String(monthly.managerCorrectionCount || 0))}</div>
-<div class="k">Red report days</div>
-<div id="redReportDaysValue">
-  <span class="muted">Loading...</span>
-</div>
-
-<div class="k">Red report dates</div>
-<div id="redReportDatesValue">
-  <span class="muted">Loading...</span>
-</div>
+              <h2>Today timeline</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Action</th>
+                      <th>Expected Duration</th>
+                      <th>Reason</th>
+                      <th>Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>${todayTimelineRows}</tbody>
+                </table>
               </div>
             </div>
           </div>
 
-          <div class="panel">
-            <h2>Today timeline</h2>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>Action</th>
-                    <th>Expected Duration</th>
-                    <th>Reason</th>
-                    <th>Note</th>
-                  </tr>
-                </thead>
-                <tbody>${todayTimelineRows}</tbody>
-              </table>
+          <div id="tab-history" class="tab-panel">
+            <div class="panel">
+              <h2>Attendance history this month</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Status</th>
+                      <th>Login</th>
+                      <th>Logout</th>
+                      <th>Worked</th>
+                      <th>Break</th>
+                      <th>Late</th>
+                      <th>Late status</th>
+                      <th>Leave</th>
+                      <th>Flags</th>
+                      <th>Corrections</th>
+                    </tr>
+                  </thead>
+                  <tbody>${historyRows}</tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h2>Behavior signals this month</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Late</th>
+                      <th>Late status</th>
+                      <th>Flags</th>
+                      <th>Corrections</th>
+                    </tr>
+                  </thead>
+                  <tbody>${behaviorRows}</tbody>
+                </table>
+              </div>
             </div>
           </div>
 
-          <div class="panel">
-            <h2>Attendance history this month</h2>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Status</th>
-                    <th>Login</th>
-                    <th>Logout</th>
-                    <th>Worked</th>
-                    <th>Break</th>
-                    <th>Late</th>
-                    <th>Late status</th>
-                    <th>Leave</th>
-                    <th>Flags</th>
-                    <th>Corrections</th>
-                  </tr>
-                </thead>
-                <tbody>${historyRows}</tbody>
-              </table>
+          <div id="tab-leave" class="tab-panel">
+            <div class="grid-2">
+              <div class="panel">
+                <h2>Leave snapshot</h2>
+                <div class="kv">
+                  <div class="k">This month leave entries</div><div>${escapeHtml(String(monthly.leaveDays || 0))}</div>
+                  <div class="k">Past leave dates</div><div>${escapeHtml(formatDateListForHumans(monthly.pastLeaveDates || []))}</div>
+                  <div class="k">Upcoming leave dates</div><div>${escapeHtml(formatDateListForHumans(monthly.upcomingLeaveDates || []))}</div>
+                </div>
+                <div class="year-note">
+                  This tab is ready for yearly vacation balance later. Right now it uses your existing monthly data.
+                </div>
+              </div>
+
+              <div class="panel">
+                <h2>Vacation / leave summary</h2>
+                <div class="subcards">
+                  <div class="subcard">
+                    <div class="meta-label">This month leave</div>
+                    <div class="v">${escapeHtml(String(monthly.leaveDays || 0))}</div>
+                  </div>
+                  <div class="subcard">
+                    <div class="meta-label">Past leave dates</div>
+                    <div class="v" style="font-size:15px; line-height:1.4;">${escapeHtml(formatDateListForHumans(monthly.pastLeaveDates || []))}</div>
+                  </div>
+                  <div class="subcard">
+                    <div class="meta-label">Upcoming leave</div>
+                    <div class="v" style="font-size:15px; line-height:1.4;">${escapeHtml(formatDateListForHumans(monthly.upcomingLeaveDates || []))}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h2>Leave rows in this month view</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Leave</th>
+                      <th>Status</th>
+                      <th>Flags</th>
+                    </tr>
+                  </thead>
+                  <tbody>${leaveHistoryRows}</tbody>
+                </table>
+              </div>
             </div>
           </div>
 
-          <div class="panel">
-            <h2>Recent attendance audit</h2>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>Action Type</th>
-                    <th>Note</th>
-                  </tr>
-                </thead>
-                <tbody>${auditRows}</tbody>
-              </table>
+          <div id="tab-audit" class="tab-panel">
+            <div class="panel">
+              <h2>Recent attendance audit</h2>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Action Type</th>
+                      <th>Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>${auditRows}</tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -10275,9 +10579,9 @@ th {
     if (!daysEl || !datesEl || !userId) return;
 
     try {
-const res = await fetch('/api/attendance/' + userId + '/red-reports', {
-  headers: { Accept: "application/json" },
-});
+      const res = await fetch('/api/attendance/' + userId + '/red-reports', {
+        headers: { Accept: "application/json" },
+      });
 
       const json = await res.json();
 
@@ -10287,23 +10591,23 @@ const res = await fetch('/api/attendance/' + userId + '/red-reports', {
         return;
       }
 
-      const data = json.data || {};
-      const redReportDays = Number(data.redReportDays || 0);
-      const redReportDates = Array.isArray(data.redReportDates)
-        ? data.redReportDates
+      const payload = json.data || {};
+      const redReportDays = Number(payload.redReportDays || 0);
+      const redReportDates = Array.isArray(payload.redReportDates)
+        ? payload.redReportDates
         : [];
-      const redReportDatesText = data.redReportDatesText || "None";
+      const redReportDatesText = payload.redReportDatesText || "None";
 
       daysEl.textContent = String(redReportDays);
 
       if (redReportDates.length) {
-datesEl.innerHTML =
-  '<details>' +
-    '<summary>' + redReportDays + ' date(s)</summary>' +
-    '<div style="margin-top:8px;">' +
-      escapeHtmlClient(redReportDatesText) +
-    '</div>' +
-  '</details>';
+        datesEl.innerHTML =
+          '<details>' +
+            '<summary>' + redReportDays + ' date(s)</summary>' +
+            '<div style="margin-top:8px;">' +
+              escapeHtmlClient(redReportDatesText) +
+            '</div>' +
+          '</details>';
       } else {
         datesEl.textContent = "None";
       }
@@ -10322,9 +10626,26 @@ datesEl.innerHTML =
       .replace(/"/g, "&quot;");
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
-    loadRedReports(${Number(employee.id) || 0});
-  });
+  function initAttendanceDetailTabs() {
+    const buttons = Array.from(document.querySelectorAll(".tab-btn"));
+    const panels = Array.from(document.querySelectorAll(".tab-panel"));
+
+    buttons.forEach((btn) => {
+      btn.addEventListener("click", function () {
+        const tab = btn.getAttribute("data-tab");
+
+        buttons.forEach((b) => b.classList.remove("active"));
+        panels.forEach((p) => p.classList.remove("active"));
+
+        btn.classList.add("active");
+        const panel = document.getElementById("tab-" + tab);
+        if (panel) panel.classList.add("active");
+      });
+    });
+  }
+
+  initAttendanceDetailTabs();
+  loadRedReports(${JSON.stringify(employee.id || null)});
 </script>
       </body>
     </html>
