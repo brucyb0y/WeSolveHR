@@ -1115,6 +1115,29 @@ function buildTopNavCss() {
       cursor: pointer;
       font: inherit;
     }
+    
+    .top-nav-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.top-nav-pill {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.top-nav-pill.loading,
+.top-nav-pill.muted {
+  color: var(--muted);
+}
 
     .quick-action-input {
       width: 100%;
@@ -1458,6 +1481,7 @@ function renderTopNav(active = "") {
     <div class="top-nav">
       <div class="top-nav-inner">
         <div class="brand">WeSolveHR</div>
+
         <div class="nav-links">
           ${items
             .map(
@@ -1472,8 +1496,52 @@ function renderTopNav(active = "") {
             )
             .join("")}
         </div>
+
+        <div class="top-nav-status" id="topNavStatus">
+          <span class="top-nav-pill loading">Loading team…</span>
+        </div>
       </div>
     </div>
+
+    <script>
+      (function () {
+        const mount = document.getElementById("topNavStatus");
+        if (!mount) return;
+
+        fetch("/api/top-nav-summary")
+          .then((r) => r.json())
+          .then((json) => {
+            if (!json.ok || !json.data) {
+              mount.innerHTML = '<span class="top-nav-pill muted">Team status unavailable</span>';
+              return;
+            }
+
+            const data = json.data;
+            const offTitle = data.offNames && data.offNames.length
+              ? data.offNames.join(", ")
+              : "Nobody off today";
+
+            const breakTitle = data.breakNames && data.breakNames.length
+              ? data.breakNames.join(", ")
+              : "Nobody on break";
+
+            mount.innerHTML = ''
+              + '<span class="top-nav-pill" title="' + escapeHtmlClient(offTitle) + '">Off today: ' + (data.offCount || 0) + '</span>'
+              + '<span class="top-nav-pill" title="' + escapeHtmlClient(breakTitle) + '">On break: ' + (data.breakCount || 0) + '</span>';
+          })
+          .catch(() => {
+            mount.innerHTML = '<span class="top-nav-pill muted">Team status unavailable</span>';
+          });
+      })();
+
+      function escapeHtmlClient(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+    </script>
   `;
 }
 
@@ -12642,6 +12710,73 @@ function renderDashboardPage(data) {
 
 app.get("/health/live", (_req, res) => {
   return res.status(200).json({ ok: true, status: "live" });
+});
+
+app.get("/api/top-nav-summary", requireDashboardAuth, async (req, res) => {
+  try {
+    const actingUser = req.loggedInUser;
+
+    if (!actingUser || !isManagerOrAdmin(actingUser)) {
+      return sendApiSuccess(res, {
+        offCount: 0,
+        offNames: [],
+        breakCount: 0,
+        breakNames: [],
+      });
+    }
+
+    const today = getAttendanceDayDateStringFromDate(new Date());
+
+    const [plannedOffRows, usersResult, eventsResult] = await Promise.all([
+      getPlannedOffRowsForDate(today, actingUser.org_id),
+      supabase
+        .from("users")
+        .select("id, name")
+        .eq("org_id", actingUser.org_id)
+        .eq("is_active", true)
+        .order("name", { ascending: true }),
+      supabase
+        .from("attendance_events")
+        .select("user_id, action, created_at")
+        .eq("org_id", actingUser.org_id)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    if (usersResult.error) {
+      console.error("top nav users error:", usersResult.error);
+      return sendApiError(res, 500, "Failed to fetch users");
+    }
+
+    if (eventsResult.error) {
+      console.error("top nav events error:", eventsResult.error);
+      return sendApiError(res, 500, "Failed to fetch events");
+    }
+
+    const offNames = (plannedOffRows || []).map(
+      (x) => x.users?.name || "Unknown",
+    );
+
+    const latestByUser = new Map();
+    for (const event of eventsResult.data || []) {
+      if (!latestByUser.has(event.user_id)) {
+        latestByUser.set(event.user_id, event);
+      }
+    }
+
+    const breakNames = (usersResult.data || [])
+      .filter((u) => latestByUser.get(u.id)?.action === "break")
+      .map((u) => u.name);
+
+    return sendApiSuccess(res, {
+      offCount: offNames.length,
+      offNames,
+      breakCount: breakNames.length,
+      breakNames,
+    });
+  } catch (error) {
+    console.error("top nav summary error:", error);
+    return sendApiError(res, 500, "Failed to load top nav summary");
+  }
 });
 
 app.get("/account", requireUserLogin, async (req, res) => {
