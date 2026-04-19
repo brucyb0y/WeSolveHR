@@ -267,8 +267,9 @@ function renderStage0BugBoardPage(data) {
       <head>
         <title>Stage 0 Bug Board</title>
         <style>
-          ${buildThemeCss()}
-          ${buildBasePageCss()}
+  ${buildThemeCss()}
+  ${buildBasePageCss()}
+  ${buildTopNavCss()}
 
           .wrap { max-width: 1600px; margin: 0 auto; padding: 24px 18px 36px; }
           .topbar, .panel, .stat-card, .board-col, .bug-card {
@@ -288,12 +289,6 @@ function renderStage0BugBoardPage(data) {
           }
           h1 { margin: 0; font-size: 30px; letter-spacing: -0.04em; }
           .subtitle { color: var(--muted); margin-top: 8px; font-size: 14px; }
-          .links { display: flex; gap: 10px; flex-wrap: wrap; }
-          .links a {
-            color: var(--text); text-decoration: none; padding: 10px 14px;
-            border-radius: 12px; border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
-            background: var(--secondary-soft); font-weight: 600;
-          }
           .stats {
             display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
             gap: 12px; margin-bottom: 20px;
@@ -354,20 +349,14 @@ function renderStage0BugBoardPage(data) {
         </style>
       </head>
       <body>
+        ${renderTopNav("bugs")}
+
         <div class="wrap">
           <div class="topbar">
             <div>
               <div class="eyebrow">Stage 0 Stability</div>
               <h1>Bug Board</h1>
               <div class="subtitle">Parsing, idempotency, Twilio, DB failures, dashboard/logs, infra, unknown issues.</div>
-            </div>
-            <div class="links">
-              <a href="/dashboard">Dashboard</a>
-              <a href="/tasks">Tasks</a>
-              <a href="/attendance">Attendance</a>
-              <a href="/logs">Logs</a>
-              <a href="/bugs">Bug Board</a>
-              <a href="/reports">Reports</a>
             </div>
           </div>
 
@@ -695,6 +684,110 @@ function buildThemeCss(theme = UI_THEME) {
       --radius-lg: ${theme.radiusLg};
       --radius-md: ${theme.radiusMd};
     }
+  `;
+}
+
+function buildTopNavCss() {
+  return `
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(18px);
+      background: rgba(13, 18, 33, 0.82);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .top-nav-inner {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .nav-links a {
+      color: var(--text);
+      text-decoration: none;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
+      background: var(--secondary-soft);
+      font-weight: 600;
+      transition: all 0.15s ease;
+    }
+
+    .nav-links a:hover {
+      color: var(--text-strong);
+      border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
+    }
+
+    .nav-links a.active {
+      background: var(--primary-soft);
+      border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+      color: var(--text-strong);
+    }
+
+    .nav-links a.logout-link {
+      background: rgba(255,255,255,0.05);
+      border-color: rgba(255,255,255,0.12);
+    }
+
+    .nav-links a.logout-link:hover {
+      background: rgba(255,255,255,0.10);
+    }
+  `;
+}
+
+function renderTopNav(active = "") {
+  const items = [
+    { href: "/dashboard", label: "Dashboard", key: "dashboard" },
+    { href: "/tasks", label: "Tasks", key: "tasks" },
+    { href: "/attendance", label: "Attendance", key: "attendance" },
+    { href: "/logs", label: "Logs", key: "logs" },
+    { href: "/bugs", label: "Bug Board", key: "bugs" },
+    { href: "/reports", label: "Reports", key: "reports" },
+    { href: "/account", label: "My Account", key: "account" },
+    { href: "/logout", label: "Logout", key: "logout" },
+  ];
+
+  return `
+    <div class="top-nav">
+      <div class="top-nav-inner">
+        <div class="brand">WeSolveHR</div>
+        <div class="nav-links">
+          ${items
+            .map(
+              (item) => `
+                <a
+                  href="${item.href}"
+                  class="${active === item.key ? "active" : ""} ${item.key === "logout" ? "logout-link" : ""}"
+                >
+                  ${item.label}
+                </a>
+              `,
+            )
+            .join("")}
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -8096,8 +8189,9 @@ function renderReportsPage(data) {
       <head>
         <title>Reports</title>
         <style>
-          ${buildThemeCss()}
-          ${buildBasePageCss()}
+  ${buildThemeCss()}
+  ${buildBasePageCss()}
+  ${buildTopNavCss()}
 
           .wrap { max-width: 1400px; margin: 0 auto; padding: 24px 18px 36px; }
           .topbar, .panel, .report-card, .status-chip-box, .modal-card {
@@ -8133,16 +8227,6 @@ function renderReportsPage(data) {
           }
           h1 { margin:0; font-size:30px; letter-spacing:-0.04em; }
           .subtitle { color:var(--muted); margin-top:8px; font-size:14px; }
-          .links { display:flex; gap:10px; flex-wrap:wrap; }
-          .links a {
-            color: var(--text);
-            text-decoration: none;
-            padding: 10px 14px;
-            border-radius: 12px;
-            border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
-            background: var(--secondary-soft);
-            font-weight: 600;
-          }
 
           .reports-grid {
             display:grid;
@@ -8422,20 +8506,13 @@ function renderReportsPage(data) {
         </style>
       </head>
       <body>
+      ${renderTopNav("reports")}
         <div class="wrap">
           <div class="topbar">
             <div>
               <div class="eyebrow">Daily Reporting</div>
               <h1>WeSolveHR // Reports</h1>
               <div class="subtitle">Attendance-day so far. Task narratives + extra work + open/blocked snapshot.</div>
-            </div>
-            <div class="links">
-              <a href="/dashboard">Dashboard</a>
-              <a href="/tasks">Tasks</a>
-              <a href="/attendance">Attendance</a>
-              <a href="/logs">Logs</a>
-              <a href="/bugs">Bug Board</a>
-              <a href="/reports">Reports</a>
             </div>
           </div>
 
@@ -8814,8 +8891,9 @@ function renderMultiDayUserReportsPage(data) {
       <head>
         <title>${escapeHtml(pageTitle)}</title>
         <style>
-          ${buildThemeCss()}
-          ${buildBasePageCss()}
+  ${buildThemeCss()}
+  ${buildBasePageCss()}
+  ${buildTopNavCss()}
 
           .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 18px 36px; }
           .topbar, .panel, .report-card, .modal-card {
@@ -8835,16 +8913,6 @@ function renderMultiDayUserReportsPage(data) {
           }
           h1 { margin:0; font-size:30px; letter-spacing:-0.04em; }
           .subtitle { color:var(--muted); margin-top:8px; font-size:14px; }
-          .links { display:flex; gap:10px; flex-wrap:wrap; }
-          .links a {
-            color: var(--text);
-            text-decoration: none;
-            padding: 10px 14px;
-            border-radius: 12px;
-            border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
-            background: var(--secondary-soft);
-            font-weight: 600;
-          }
 
           .reports-stack {
             display:flex;
@@ -9033,14 +9101,6 @@ function renderMultiDayUserReportsPage(data) {
   }
 </div>
 </div>
-            <div class="links">
-              <a href="/dashboard">Dashboard</a>
-              <a href="/tasks">Tasks</a>
-              <a href="/attendance">Attendance</a>
-              <a href="/logs">Logs</a>
-              <a href="/bugs">Bug Board</a>
-              <a href="/reports">Reports</a>
-            </div>
           </div>
           
           <div class="panel" style="padding:14px 16px; margin-bottom:16px;">
@@ -10160,8 +10220,9 @@ function renderEmployeeAttendancePage(data) {
       <head>
         <title>Employee Attendance</title>
         <style>
-          ${buildThemeCss()}
-          ${buildBasePageCss()}
+  ${buildThemeCss()}
+  ${buildBasePageCss()}
+  ${buildTopNavCss()}
 
           .wrap {
             max-width: 1380px;
@@ -10453,6 +10514,7 @@ function renderEmployeeAttendancePage(data) {
         </style>
       </head>
       <body>
+      ${renderTopNav("reports")}
         <div class="wrap">
           <div class="topbar">
             <div>
@@ -10465,14 +10527,6 @@ function renderEmployeeAttendancePage(data) {
                 <a href="/reports?userId=${encodeURIComponent(employee.id)}" class="mini-report-link">Today</a>
                 <a href="/reports?userId=${encodeURIComponent(employee.id)}&days=7" class="mini-report-link">Last 7 days</a>
               </div>
-            </div>
-            <div class="links">
-              <a href="/attendance">Attendance</a>
-              <a href="/dashboard">Dashboard</a>
-              <a href="/tasks">Tasks</a>
-              <a href="/logs">Logs</a>
-              <a href="/bugs">Bug Board</a>
-              <a href="/reports">Reports</a>
             </div>
           </div>
 
@@ -11207,8 +11261,9 @@ function renderDashboardPage(data) {
       <head>
         <title>Dashboard</title>
         <style>
-          ${buildThemeCss()}
-          ${buildBasePageCss()}
+  ${buildThemeCss()}
+  ${buildBasePageCss()}
+  ${buildTopNavCss()}
 
           .wrap { max-width: 1700px; margin: 0 auto; padding: 24px 18px 36px; }
           .topbar, .panel, .stat-card {
@@ -11240,22 +11295,6 @@ function renderDashboardPage(data) {
 
           h1 { margin: 0; font-size: 30px; letter-spacing: -0.04em; }
           .subtitle { color: var(--muted); margin-top: 8px; font-size: 14px; }
-
-          .links {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-          }
-
-          .links a {
-            color: var(--text);
-            text-decoration: none;
-            padding: 10px 14px;
-            border-radius: 12px;
-            border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
-            background: var(--secondary-soft);
-            font-weight: 600;
-          }
 
           .stats {
             display: grid;
@@ -11452,14 +11491,6 @@ function renderDashboardPage(data) {
               <div class="eyebrow">WeSolveHR</div>
               <h1>Dashboard</h1>
               <div class="subtitle">Company-wide overview dashboard</div>
-            </div>
-            <div class="links">
-              <a href="/dashboard">Dashboard</a>
-              <a href="/tasks">Tasks</a>
-              <a href="/attendance">Attendance</a>
-              <a href="/logs">Logs</a>
-              <a href="/reports">Reports</a>
-              <a href="/bugs">Bug Board</a>
             </div>
           </div>
 
@@ -12013,13 +12044,13 @@ app.get("/account", requireUserLogin, async (req, res) => {
         </style>
       </head>
       <body>
+      ${renderTopNav("account")}
         <div class="wrap">
           <div class="topbar">
             <div class="title-block">
               <h1>${escapeHtml(user.name || "My Account")}</h1>
               <p>${escapeHtml(user.role || "")}</p>
             </div>
-            <a class="logout-btn" href="/logout">Logout</a>
           </div>
 
           <div class="grid">
@@ -12391,6 +12422,7 @@ app.get("/attendance/:userId", requireDashboardAuth, async (req, res) => {
           </style>
         </head>
         <body>
+        ${renderTopNav("attendance")}
           <div class="box">
             <h1>Employee attendance failed to load</h1>
             <pre>${escapeHtml(error?.message || String(error))}</pre>
@@ -13064,6 +13096,7 @@ app.get("/", (_req, res) => {
         </style>
       </head>
       <body>
+        ${renderTopNav("dashboard")}
         <div class="box">
           <h1>WeSolveHR Server</h1>
           <p>Webhook + Dashboard is running.</p>
@@ -13108,6 +13141,7 @@ app.get("/dashboard", requireDashboardAuth, async (_req, res) => {
           </style>
         </head>
         <body>
+        ${renderTopNav("dashboard")}
           <div class="box">
             <h1>Dashboard failed to load</h1>
             <p>Check server logs and the details below.</p>
@@ -13349,9 +13383,9 @@ app.get("/tasks", requireDashboardAuth, async (_req, res) => {
       <head>
         <title>Tasks</title>
         <style>
-        
-        ${buildThemeCss()}
-${buildBasePageCss()}
+  ${buildThemeCss()}
+  ${buildBasePageCss()}
+  ${buildTopNavCss()}
 
           .wrap {
             max-width: 1380px;
@@ -13733,6 +13767,7 @@ tbody tr:hover {
         </style>
       </head>
       <body>
+      ${renderTopNav("tasks")}
         <div class="wrap">
           <div class="topbar">
             <div>
@@ -14318,8 +14353,9 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
       <head>
         <title>Attendance</title>
         <style>
-          ${buildThemeCss()}
-          ${buildBasePageCss()}
+  ${buildThemeCss()}
+  ${buildBasePageCss()}
+  ${buildTopNavCss()}
 
           .wrap {
             max-width: 1600px;
@@ -14366,22 +14402,6 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
             color: var(--muted);
             margin-top: 8px;
             font-size: 14px;
-          }
-
-          .links {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-          }
-
-          .links a {
-            color: var(--text);
-            text-decoration: none;
-            padding: 10px 14px;
-            border-radius: 12px;
-            border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
-            background: var(--secondary-soft);
-            font-weight: 600;
           }
 
           .stats {
@@ -14568,20 +14588,13 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
         </style>
       </head>
       <body>
+      ${renderTopNav("attendance")}
         <div class="wrap">
           <div class="topbar">
             <div>
               <div class="eyebrow">WeSolveHR</div>
               <h1>Attendance</h1>
               <div class="subtitle">Team attendance overview and exceptions</div>
-            </div>
-            <div class="links">
-              <a href="/dashboard">Dashboard</a>
-              <a href="/tasks">Tasks</a>
-              <a href="/attendance">Attendance</a>
-              <a href="/logs">Logs</a>
-              <a href="/reports">Reports</a>
-              <a href="/bugs">Bug Board</a>
             </div>
           </div>
 
@@ -14945,7 +14958,9 @@ app.get("/logs", requireDashboardAuth, async (_req, res) => {
       <head>
         <title>Logs</title>
         <style>
-          ${buildThemeCss()}   ${buildBasePageCss()}
+  ${buildThemeCss()}
+  ${buildBasePageCss()}
+  ${buildTopNavCss()}
 
           .wrap {
             max-width: 1320px;
@@ -14993,21 +15008,6 @@ app.get("/logs", requireDashboardAuth, async (_req, res) => {
             margin-top: 8px;
             font-size: 14px;
           }
-
-          .links {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-          }
-.links a {
-  color: var(--text);
-  text-decoration: none;
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
-  background: var(--secondary-soft);
-  font-weight: 600;
-}
 
 .links a:hover {
   color: var(--text-strong);
@@ -15062,19 +15062,13 @@ th {
         </style>
       </head>
       <body>
+      ${renderTopNav("logs")}
         <div class="wrap">
           <div class="topbar">
             <div>
               <div class="eyebrow">Message Logging</div>
               <h1>WeSolveHR // Logs Console</h1>
               <div class="subtitle">Inbound command visibility for tracing, debugging, and audit review</div>
-            </div>
-            <div class="links">
-              <a href="/dashboard">Dashboard</a>
-              <a href="/tasks">Tasks</a>
-              <a href="/attendance">Attendance</a>
-              <a href="/bugs">Bug Board</a>
-              <a href="/reports">Reports</a>
             </div>
           </div>
 
