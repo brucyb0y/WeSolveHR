@@ -15474,21 +15474,22 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
                 <table>
                   <thead>
                     <tr>
-                      <th>Name</th>
-                      <th>Role</th>
-                      <th>Current Status</th>
-                      <th>Since</th>
-                      <th>Worked Today</th>
-                      <th>Break Today</th>
-                      <th>First Login</th>
-                      <th>Late</th>
-                      <th>Leave</th>
-                      <th>Flags</th>
+<th>Name</th>
+<th>Role</th>
+<th>Expected Login</th>
+<th>Current Status</th>
+<th>Since</th>
+<th>Worked Today</th>
+<th>Break Today</th>
+<th>First Login</th>
+<th>Late</th>
+<th>Leave</th>
+<th>Flags</th>
                     </tr>
                   </thead>
                   <tbody id="attendanceTableBody">
-                    <tr><td colspan="10" class="loading-state">Loading attendance...</td></tr>
-                  </tbody>
+<tr><td colspan="11" class="loading-state">Loading attendance...</td></tr>
+</tbody>
                 </table>
               </div>
             </div>
@@ -15501,13 +15502,15 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
                 <table>
                   <thead>
                     <tr>
-                      <th>Name</th>
-                      <th>Status</th>
-                      <th>Late</th>
-                      <th>Expected Login</th>
-                      <th>Worked</th>
-                      <th>Break</th>
-                      <th>Flags</th>
+<th>Name</th>
+<th>Role</th>
+<th>Expected Login</th>
+<th>Status</th>
+<th>Worked</th>
+<th>Break</th>
+<th>First Login</th>
+<th>Late</th>
+<th>Flags</th>
                     </tr>
                   </thead>
                   <tbody id="exceptionsTableBody">
@@ -15664,21 +15667,21 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
                 return bRisk - aRisk;
               });
 
-              tableBody.innerHTML = sortedRows.map((row) => {
-                return '<tr>' +
-                  '<td>' + employeeLink(row.user_id, row.name) + '</td>' +
-                  '<td>' + escapeHtmlClient(row.role || '-') + '</td>' +
-                  '<td>' + statusPill(row.status) + '</td>' +
-                  '<td>' + escapeHtmlClient(row.since_text || '-') + '</td>' +
-                  '<td>' + escapeHtmlClient(row.worked_today_text || '-') + '</td>' +
-                  '<td>' + escapeHtmlClient(row.break_today_text || '-') + '</td>' +
-                  '<td>' + escapeHtmlClient(row.first_login_text || '-') + '</td>' +
-                  '<td>' + escapeHtmlClient(row.late_status || '-') + '</td>' +
-                  '<td>' + (row.is_on_leave ? 'Yes' : 'No') + '</td>' +
-                  '<td>' + flagPills(row.flags || []) + '</td>' +
-                '</tr>';
-              }).join('') || '<tr><td colspan="10" class="empty-cell">No attendance data found</td></tr>';
-
+tableBody.innerHTML = sortedRows.map((row) => {
+  return '<tr>' +
+    '<td>' + employeeLink(row.user_id, row.name) + '</td>' +
+    '<td>' + escapeHtmlClient(row.role || '-') + '</td>' +
+    '<td>' + escapeHtmlClient(row.expected_shift_start_text || '-') + '</td>' +
+    '<td>' + statusPill(row.status) + '</td>' +
+    '<td>' + escapeHtmlClient(row.since_text || '-') + '</td>' +
+    '<td>' + escapeHtmlClient(row.worked_today_text || '-') + '</td>' +
+    '<td>' + escapeHtmlClient(row.break_today_text || '-') + '</td>' +
+    '<td>' + escapeHtmlClient(row.first_login_text || '-') + '</td>' +
+    '<td>' + escapeHtmlClient(row.late_status || '-') + '</td>' +
+    '<td>' + (row.is_on_leave ? 'Yes' : 'No') + '</td>' +
+    '<td>' + flagPills(row.flags || []) + '</td>' +
+  '</tr>';
+}).join('') || '<tr><td colspan="11" class="empty-cell">No attendance data found</td></tr>';
               const exceptionRows = rows.filter((row) =>
                 (row.flags && row.flags.length) ||
                 row.late_status === 'Not approved' ||
@@ -15690,7 +15693,7 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
                   '<td>' + employeeLink(row.user_id, row.name) + '</td>' +
                   '<td>' + statusPill(row.status) + '</td>' +
                   '<td>' + escapeHtmlClient(row.late_status || '-') + '</td>' +
-                  '<td>' + escapeHtmlClient(row.late_expected_login_text || '-') + '</td>' +
+                  '<td>' + escapeHtmlClient(row.expected_shift_start_text || '-') + '</td>' +
                   '<td>' + escapeHtmlClient(row.worked_today_text || '-') + '</td>' +
                   '<td>' + escapeHtmlClient(row.break_today_text || '-') + '</td>' +
                   '<td>' + flagPills(row.flags || []) + '</td>' +
