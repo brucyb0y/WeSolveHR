@@ -150,6 +150,224 @@ function parseChangePasswordCommand(text) {
   };
 }
 
+function renderLoginPage(errorMessage = "") {
+  return `
+    <html>
+      <head>
+        <title>Login | WeSolveHR</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+          ${buildTopNavCss()}
+
+          .login-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+          }
+
+          .login-wrap {
+            flex: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1.1fr 0.95fr;
+            gap: 28px;
+            align-items: center;
+            padding: 32px 18px 48px;
+          }
+
+          .hero-card,
+          .login-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-soft);
+          }
+
+          .hero-card { padding: 34px; }
+          .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--primary);
+            font-weight: 700;
+            margin-bottom: 12px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          .hero-card h1 {
+            margin: 0 0 14px;
+            font-size: 42px;
+            line-height: 1.05;
+            letter-spacing: -0.05em;
+          }
+
+          .hero-card p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 16px;
+            line-height: 1.7;
+          }
+
+          .login-card {
+            padding: 28px;
+            max-width: 460px;
+            width: 100%;
+            margin-left: auto;
+          }
+
+          .login-card h2 {
+            margin: 0 0 8px;
+            font-size: 28px;
+            letter-spacing: -0.04em;
+          }
+
+          .login-subtitle {
+            color: var(--muted);
+            margin-bottom: 22px;
+            font-size: 14px;
+          }
+
+          .form-group { margin-bottom: 16px; }
+          .label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text);
+          }
+
+          .input {
+            width: 100%;
+            padding: 14px 14px;
+            border-radius: 14px;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.04);
+            color: var(--text);
+            font-size: 15px;
+            outline: none;
+          }
+
+          .input:focus {
+            border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+            box-shadow: 0 0 0 3px rgba(139,124,246,0.14);
+          }
+
+          .login-btn {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            background: var(--primary-soft);
+            color: var(--text-strong);
+            font-size: 15px;
+            font-weight: 800;
+            cursor: pointer;
+          }
+
+          .login-error {
+            margin-bottom: 16px;
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(239,107,115,0.28);
+            background: rgba(239,107,115,0.12);
+            color: #ffd7da;
+            font-size: 14px;
+            line-height: 1.5;
+          }
+
+          .helper {
+            margin-top: 14px;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.6;
+          }
+
+          .minimal-top {
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(18px);
+            background: rgba(13, 18, 33, 0.82);
+          }
+
+          .minimal-top-inner {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+          }
+
+          .brand {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            color: var(--text);
+          }
+
+          .brand-sub {
+            color: var(--muted);
+            font-size: 13px;
+          }
+
+          @media (max-width: 980px) {
+            .login-wrap { grid-template-columns: 1fr; }
+            .login-card { margin-left: 0; max-width: 100%; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="login-shell">
+          <div class="minimal-top">
+            <div class="minimal-top-inner">
+              <div class="brand">WeSolveHR</div>
+              <div class="brand-sub">Personal workspace login</div>
+            </div>
+          </div>
+
+          <div class="login-wrap">
+            <div class="hero-card">
+              <div class="eyebrow">Team Operations</div>
+              <h1>Welcome back</h1>
+              <p>
+                Log in to access your personal workspace, attendance details,
+                leave balance, recent feedback, and appraisal history.
+              </p>
+            </div>
+
+            <div class="login-card">
+              <h2>Sign in</h2>
+              <div class="login-subtitle">Use your phone number and password to continue.</div>
+
+              ${errorMessage ? `<div class="login-error">${escapeHtml(errorMessage)}</div>` : ""}
+
+              <form method="POST" action="/login">
+                <div class="form-group">
+                  <label class="label">Phone number</label>
+                  <input class="input" name="phone_number" placeholder="e.g. whatsapp:+12133081594" />
+                </div>
+
+                <div class="form-group">
+                  <label class="label">Password</label>
+                  <input class="input" type="password" name="password" placeholder="Enter password" />
+                </div>
+
+                <button class="login-btn" type="submit">Login</button>
+              </form>
+
+              <div class="helper">
+                First-time users can use the default password assigned by admin.
+              </div>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
 function renderStage0BugBoardPage(data) {
   const summary = data?.summary || {};
   const columns = data?.columns || [];
@@ -12122,72 +12340,72 @@ app.get("/account", requireUserLogin, async (req, res) => {
 });
 
 app.get("/login", (req, res) => {
-  res.send(`
-    <html>
-      <body style="font-family:sans-serif;padding:40px;">
-        <h2>Login</h2>
-        <form method="POST" action="/login">
-          <div style="margin-bottom:12px;">
-            <input name="phone_number" placeholder="Phone number" />
-          </div>
-          <div style="margin-bottom:12px;">
-            <input type="password" name="password" placeholder="Password" />
-          </div>
-          <button type="submit">Login</button>
-        </form>
-      </body>
-    </html>
-  `);
+  res.send(renderLoginPage());
 });
 
 app.post("/login", async (req, res) => {
-  const rawPhone = String(req.body.phone_number || "").trim();
-  const password = String(req.body.password || "").trim();
+  try {
+    const rawPhone = String(req.body.phone_number || "").trim();
+    const password = String(req.body.password || "").trim();
 
-  const digitsOnly = rawPhone.replace(/\D/g, "");
+    const digitsOnly = rawPhone.replace(/\D/g, "");
 
-  const phoneCandidates = [
-    rawPhone,
-    `+${digitsOnly}`,
-    digitsOnly,
-    `whatsapp:${rawPhone}`,
-    `whatsapp:+${digitsOnly}`,
-    digitsOnly.length === 10 ? `whatsapp:+1${digitsOnly}` : null,
-    digitsOnly.length === 10 ? `+1${digitsOnly}` : null,
-  ].filter(Boolean);
+    const phoneCandidates = [
+      rawPhone,
+      `+${digitsOnly}`,
+      digitsOnly,
+      `whatsapp:${rawPhone}`,
+      `whatsapp:+${digitsOnly}`,
+      digitsOnly.length === 10 ? `whatsapp:+1${digitsOnly}` : null,
+      digitsOnly.length === 10 ? `+1${digitsOnly}` : null,
+    ].filter(Boolean);
 
-  const { data: users, error } = await supabase
-    .from("users")
-    .select("*")
-    .in("phone_number", phoneCandidates)
-    .eq("is_active", true)
-    .limit(1);
+    const { data: users, error } = await supabase
+      .from("users")
+      .select("*")
+      .in("phone_number", phoneCandidates)
+      .eq("is_active", true)
+      .limit(1);
 
-  if (error) {
-    console.error("Login lookup error:", error);
-    return res.status(500).send("Login failed");
+    if (error) {
+      console.error("Login lookup error:", error);
+      return res
+        .status(500)
+        .send(renderLoginPage("Unable to log in right now. Please try again."));
+    }
+
+    const user = users?.[0];
+
+    if (!user || !user.password_hash) {
+      return res
+        .status(401)
+        .send(renderLoginPage("Invalid phone number or password."));
+    }
+
+    const matches = await bcrypt.compare(password, user.password_hash);
+
+    if (!matches) {
+      return res
+        .status(401)
+        .send(renderLoginPage("Invalid phone number or password."));
+    }
+
+    req.session.userId = user.id;
+
+    await supabase
+      .from("users")
+      .update({
+        last_login_at: new Date().toISOString(),
+      })
+      .eq("id", user.id);
+
+    return res.redirect("/account");
+  } catch (err) {
+    console.error("Login route error:", err);
+    return res
+      .status(500)
+      .send(renderLoginPage("Something went wrong while logging in."));
   }
-
-  const user = users?.[0];
-
-  if (!user || !user.password_hash) {
-    return res.status(401).send("Invalid credentials");
-  }
-
-  const matches = await bcrypt.compare(password, user.password_hash);
-
-  if (!matches) {
-    return res.status(401).send("Invalid credentials");
-  }
-
-  req.session.userId = user.id;
-
-  await supabase
-    .from("users")
-    .update({ last_login_at: new Date().toISOString() })
-    .eq("id", user.id);
-
-  return res.redirect("/account");
 });
 
 app.get("/logout", (req, res) => {
