@@ -8503,6 +8503,52 @@ async function getUserOpenBlockedCounts(orgId, userId) {
   return { open, blocked };
 }
 
+async function getOpenBlockedCountsForUsers(orgId, userIds = []) {
+  const safeUserIds = Array.from(
+    new Set((userIds || []).map((x) => Number(x)).filter(Boolean)),
+  );
+
+  if (!safeUserIds.length) {
+    return new Map();
+  }
+
+  const { data, error } = await supabase
+    .from("task_owners")
+    .select(
+      `
+      user_id,
+      task_id,
+      tasks!inner(id, org_id, status)
+    `,
+    )
+    .eq("org_id", orgId)
+    .in("user_id", safeUserIds);
+
+  if (error) {
+    console.error("getOpenBlockedCountsForUsers error:", error);
+    return new Map();
+  }
+
+  const counts = new Map();
+
+  for (const userId of safeUserIds) {
+    counts.set(userId, { open: 0, blocked: 0 });
+  }
+
+  for (const row of data || []) {
+    const task = row.tasks;
+    if (!task || task.org_id !== orgId) continue;
+    if (["done", "archived", "cancelled"].includes(task.status)) continue;
+
+    const current = counts.get(row.user_id) || { open: 0, blocked: 0 };
+    current.open += 1;
+    if (task.status === "blocked") current.blocked += 1;
+    counts.set(row.user_id, current);
+  }
+
+  return counts;
+}
+
 function formatShortDate(dateString) {
   if (!dateString) return "-";
 
@@ -8878,21 +8924,32 @@ function emptyUserDailyReport(user) {
   };
 }
 
-async function getDailyNarrativeReport({ orgId, reportDate, userId = null }) {
-  let usersQuery = supabase
-    .from("users")
-    .select("id, name, role")
-    .eq("org_id", orgId)
-    .eq("is_active", true)
-    .order("name", { ascending: true });
+async function getDailyNarrativeReport({
+  orgId,
+  reportDate,
+  userId = null,
+  includeUsers = true,
+}) {
+  let users = [];
 
-  if (userId) {
-    usersQuery = usersQuery.eq("id", userId);
-  }
+  if (includeUsers) {
+    let usersQuery = supabase
+      .from("users")
+      .select("id, name, role")
+      .eq("org_id", orgId)
+      .eq("is_active", true)
+      .order("name", { ascending: true });
 
-  const { data: users, error: usersError } = await usersQuery;
-  if (usersError) {
-    throw usersError;
+    if (userId) {
+      usersQuery = usersQuery.eq("id", userId);
+    }
+
+    const { data: userRows, error: usersError } = await usersQuery;
+    if (usersError) {
+      throw usersError;
+    }
+
+    users = userRows || [];
   }
 
   const [taskNarratives, extraNotes, plannedOffRows, overrideRows] =
@@ -8903,18 +8960,30 @@ async function getDailyNarrativeReport({ orgId, reportDate, userId = null }) {
       getWorkDayOverrideRowsForDate({ orgId, reportDate, userId }),
     ]);
 
+  if (!includeUsers) {
+    const emptyUsers = [];
+    return {
+      reportDate,
+      users: emptyUsers,
+      compliance: classifyReportUsers(emptyUsers),
+    };
+  }
+
   const leaveSet = new Set((plannedOffRows || []).map((x) => x.user_id));
 
   const narrativesByUser = new Map();
   for (const item of taskNarratives) {
-    if (!narrativesByUser.has(item.userId))
+    if (!narrativesByUser.has(item.userId)) {
       narrativesByUser.set(item.userId, []);
+    }
     narrativesByUser.get(item.userId).push(item);
   }
 
   const notesByUser = new Map();
   for (const note of extraNotes) {
-    if (!notesByUser.has(note.user_id)) notesByUser.set(note.user_id, []);
+    if (!notesByUser.has(note.user_id)) {
+      notesByUser.set(note.user_id, []);
+    }
     notesByUser.get(note.user_id).push(note.note);
   }
 
@@ -8923,6 +8992,11 @@ async function getDailyNarrativeReport({ orgId, reportDate, userId = null }) {
     overridesByUser.set(row.user_id, row);
   }
 
+  const countsByUser = await getOpenBlockedCountsForUsers(
+    orgId,
+    (users || []).map((u) => u.id),
+  );
+
   const resultUsers = [];
 
   for (const user of users || []) {
@@ -8930,7 +9004,7 @@ async function getDailyNarrativeReport({ orgId, reportDate, userId = null }) {
 
     row.taskNarratives = narrativesByUser.get(user.id) || [];
     row.extraWork = notesByUser.get(user.id) || [];
-    row.summary = await getUserOpenBlockedCounts(orgId, user.id);
+    row.summary = countsByUser.get(user.id) || { open: 0, blocked: 0 };
     row.isOnLeave = leaveSet.has(user.id);
 
     const overrideMode = overridesByUser.get(user.id)?.mode || null;
@@ -9006,18 +9080,52 @@ async function getMultiDayNarrativeReport({
   };
 }
 
-function renderReportsPage(data) {
-  const reportDate = data?.reportDate || getReportDateString();
-  const users = data?.users || [];
-  const compliance = data?.compliance || {
-    full: [],
-    partial: [],
-    missing: [],
-    onLeave: [],
-    off: [],
+function renderReportsSummaryHtml(compliance = {}, reportDate) {
+  const safeCompliance = {
+    full: compliance?.full || [],
+    partial: compliance?.partial || [],
+    missing: compliance?.missing || [],
+    onLeave: compliance?.onLeave || [],
+    off: compliance?.off || [],
   };
 
-  const cardsHtml = users.length
+  return `
+<div class="status-grid">
+  <div class="status-chip-box">
+    <div class="status-chip-title">Fully updated</div>
+    <div class="status-chip-count">${escapeHtml(safeCompliance.full.length)}</div>
+    <div class="status-chip-names">${escapeHtml(safeCompliance.full.join(", ") || "None")}</div>
+  </div>
+  <div class="status-chip-box">
+    <div class="status-chip-title">Partially updated</div>
+    <div class="status-chip-count">${escapeHtml(safeCompliance.partial.length)}</div>
+    <div class="status-chip-names">${escapeHtml(safeCompliance.partial.join(", ") || "None")}</div>
+  </div>
+  <div class="status-chip-box">
+    <div class="status-chip-title">Missing</div>
+    <div class="status-chip-count">${escapeHtml(safeCompliance.missing.length)}</div>
+    <div class="status-chip-names">${escapeHtml(safeCompliance.missing.join(", ") || "None")}</div>
+  </div>
+  <div class="status-chip-box">
+    <div class="status-chip-title">On leave</div>
+    <div class="status-chip-count">${escapeHtml(safeCompliance.onLeave.length)}</div>
+    <div class="status-chip-names">${escapeHtml(safeCompliance.onLeave.join(", ") || "None")}</div>
+  </div>
+  <div class="status-chip-box">
+    <div class="status-chip-title">${
+      new Date(`${reportDate}T12:00:00`).getDay() === 0
+        ? "Sunday Off"
+        : "Off / not expected"
+    }</div>
+    <div class="status-chip-count">${escapeHtml(safeCompliance.off.length)}</div>
+    <div class="status-chip-names">${escapeHtml(safeCompliance.off.join(", ") || "None")}</div>
+  </div>
+</div>
+  `;
+}
+
+function renderReportCardsHtml(users = [], reportDate) {
+  return users.length
     ? users
         .map((user) => {
           const taskHtml = (user.taskNarratives || []).length
@@ -9062,35 +9170,35 @@ function renderReportsPage(data) {
 
           return `
 <div class="report-card ${escapeHtml(user.reportCardClass || "")}" data-user-name="${escapeHtml(String(user.userName || "").toLowerCase())}">
-<div class="report-card-head">
-                <div>
-<div class="report-name">
-  <a href="/attendance/${escapeHtml(user.userId)}">${escapeHtml(user.userName)}</a>
-</div>
-<div class="report-date">
-  ${escapeHtml(formatDateOnly(reportDate))}
-  <a href="/reports?userId=${encodeURIComponent(user.userId)}&days=7" class="mini-report-link">
-    Last 7 days
-  </a>
-</div>
-<div class="micro-meta">${escapeHtml(user.compactMeta || "0 touched")}</div>
-<div class="report-reason">${escapeHtml(user.reportReason || "")}</div>
-</div>
-                <div class="summary-pill">
-                  Open: ${escapeHtml(user.summary?.open ?? 0)} | Blocked: ${escapeHtml(user.summary?.blocked ?? 0)}
-                </div>
-              </div>
+  <div class="report-card-head">
+    <div>
+      <div class="report-name">
+        <a href="/attendance/${escapeHtml(user.userId)}">${escapeHtml(user.userName)}</a>
+      </div>
+      <div class="report-date">
+        ${escapeHtml(formatDateOnly(reportDate))}
+        <a href="/reports?userId=${encodeURIComponent(user.userId)}&days=7" class="mini-report-link">
+          Last 7 days
+        </a>
+      </div>
+      <div class="micro-meta">${escapeHtml(user.compactMeta || "0 touched")}</div>
+      <div class="report-reason">${escapeHtml(user.reportReason || "")}</div>
+    </div>
+    <div class="summary-pill">
+      Open: ${escapeHtml(user.summary?.open ?? 0)} | Blocked: ${escapeHtml(user.summary?.blocked ?? 0)}
+    </div>
+  </div>
 
-              <div class="report-section">
-                <div class="section-title">Task updates</div>
-                <ul class="report-list">${taskHtml}</ul>
-              </div>
+  <div class="report-section">
+    <div class="section-title">Task updates</div>
+    <ul class="report-list">${taskHtml}</ul>
+  </div>
 
-              <div class="report-section">
-                <div class="section-title">Extra work</div>
-                <ul class="report-list">${extraHtml}</ul>
-              </div>
-            </div>
+  <div class="report-section">
+    <div class="section-title">Extra work</div>
+    <ul class="report-list">${extraHtml}</ul>
+  </div>
+</div>
           `;
         })
         .join("")
@@ -9099,7 +9207,18 @@ function renderReportsPage(data) {
         <div class="muted">No users found.</div>
       </div>
     `;
+}
 
+function renderReportsPage(data) {
+  const reportDate = data?.reportDate || getReportDateString();
+  const users = data?.users || [];
+  const compliance = data?.compliance || {
+    full: [],
+    partial: [],
+    missing: [],
+    onLeave: [],
+    off: [],
+  };
   return `
     <html>
       <head>
@@ -9437,36 +9556,10 @@ function renderReportsPage(data) {
 <span class="muted">(6:00 AM → next day 6:00 AM IST)</span>
 </div>
 
-<div class="status-grid">
-  <div class="status-chip-box">
-    <div class="status-chip-title">Fully updated</div>
-    <div class="status-chip-count">${escapeHtml(compliance.full.length)}</div>
-    <div class="status-chip-names">${escapeHtml(compliance.full.join(", ") || "None")}</div>
+<div id="reportsSummary">
+  <div class="panel" style="padding:18px; margin-bottom:16px;">
+    <div class="muted">Loading summary...</div>
   </div>
-  <div class="status-chip-box">
-    <div class="status-chip-title">Partially updated</div>
-    <div class="status-chip-count">${escapeHtml(compliance.partial.length)}</div>
-    <div class="status-chip-names">${escapeHtml(compliance.partial.join(", ") || "None")}</div>
-  </div>
-  <div class="status-chip-box">
-    <div class="status-chip-title">Missing</div>
-    <div class="status-chip-count">${escapeHtml(compliance.missing.length)}</div>
-    <div class="status-chip-names">${escapeHtml(compliance.missing.join(", ") || "None")}</div>
-  </div>
-  <div class="status-chip-box">
-    <div class="status-chip-title">On leave</div>
-    <div class="status-chip-count">${escapeHtml(compliance.onLeave.length)}</div>
-    <div class="status-chip-names">${escapeHtml(compliance.onLeave.join(", ") || "None")}</div>
-  </div>
-<div class="status-chip-box">
-  <div class="status-chip-title">${
-    new Date(`${reportDate}T12:00:00`).getDay() === 0
-      ? "Sunday Off"
-      : "Off / not expected"
-  }</div>
-  <div class="status-chip-count">${escapeHtml(compliance.off.length)}</div>
-  <div class="status-chip-names">${escapeHtml(compliance.off.join(", ") || "None")}</div>
-</div>
 </div>
 
           <div class="panel" style="padding:14px 16px; margin-bottom:16px;">
@@ -9479,8 +9572,10 @@ function renderReportsPage(data) {
             />
           </div>
 
-          <div class="reports-grid">
-            ${cardsHtml}
+          <div id="reportsGrid" class="reports-grid">
+            <div class="panel" style="padding:18px;">
+              <div class="muted">Loading reports...</div>
+            </div>
           </div>
         </div>
 
@@ -9501,6 +9596,93 @@ function renderReportsPage(data) {
         </div>
 
         <script>
+
+async function loadReportSummary() {
+  const mount = document.getElementById("reportsSummary");
+  if (!mount) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const date = params.get("date") || "";
+  const userId = params.get("userId") || "";
+
+  const qs = new URLSearchParams();
+  if (date) qs.set("date", date);
+  if (userId) qs.set("userId", userId);
+
+  const url = "/api/reports/summary" + (qs.toString() ? "?" + qs.toString() : "");
+
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+    });
+
+    const json = await res.json();
+
+    if (!json.ok) {
+      mount.innerHTML =
+        '<div class="panel" style="padding:18px; margin-bottom:16px;">' +
+          '<div class="muted">Failed to load summary.</div>' +
+        '</div>';
+      return;
+    }
+
+    mount.innerHTML =
+      json.data.summaryHtml ||
+      '<div class="panel" style="padding:18px; margin-bottom:16px;">' +
+        '<div class="muted">No summary available.</div>' +
+      '</div>';
+  } catch (error) {
+    mount.innerHTML =
+      '<div class="panel" style="padding:18px; margin-bottom:16px;">' +
+        '<div class="muted">Failed to load summary.</div>' +
+      '</div>';
+  }
+}
+
+async function loadReportCards() {
+  const grid = document.getElementById("reportsGrid");
+  if (!grid) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const date = params.get("date") || "";
+  const userId = params.get("userId") || "";
+
+  const qs = new URLSearchParams();
+  if (date) qs.set("date", date);
+  if (userId) qs.set("userId", userId);
+
+  const url = "/api/reports/cards" + (qs.toString() ? "?" + qs.toString() : "");
+
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+    });
+
+    const json = await res.json();
+
+    if (!json.ok) {
+      grid.innerHTML =
+        '<div class="panel" style="padding:18px;">' +
+          '<div class="muted">Failed to load reports.</div>' +
+        '</div>';
+      return;
+    }
+
+    grid.innerHTML =
+      json.data.cardsHtml ||
+      '<div class="panel" style="padding:18px;">' +
+        '<div class="muted">No users found.</div>' +
+      '</div>';
+
+    filterReports();
+  } catch (error) {
+    grid.innerHTML =
+      '<div class="panel" style="padding:18px;">' +
+        '<div class="muted">Failed to load reports.</div>' +
+      '</div>';
+  }
+}
+
           function filterReports() {
             const input = document.getElementById("reportSearch");
             const query = String(input?.value || "").trim().toLowerCase();
@@ -9661,6 +9843,12 @@ async function openTaskDetail(taskNo) {
     body.innerHTML = '<div class="muted">Failed to load task detail</div>';
   }
 }
+
+document.addEventListener("DOMContentLoaded", function () {
+  loadReportSummary();
+  loadReportCards();
+});
+
         </script>
       </body>
     </html>
@@ -13236,12 +13424,58 @@ app.get("/reports", requireDashboardAuth, async (req, res) => {
       orgId: DASHBOARD_ORG_ID,
       reportDate,
       userId: null,
+      includeUsers: false,
     });
 
     return res.status(200).send(renderReportsPage(data));
   } catch (error) {
     console.error("Reports page error:", error);
     return res.status(500).send("Failed to load reports page");
+  }
+});
+
+app.get("/api/reports/summary", requireDashboardAuth, async (req, res) => {
+  try {
+    const reportDate = String(req.query.date || getReportDateString());
+    const userId = req.query.userId ? Number(req.query.userId) : null;
+
+    const data = await getDailyNarrativeReport({
+      orgId: DASHBOARD_ORG_ID,
+      reportDate,
+      userId: userId || null,
+      includeUsers: true,
+    });
+
+    return sendApiSuccess(res, {
+      summaryHtml: renderReportsSummaryHtml(
+        data.compliance || {},
+        data.reportDate,
+      ),
+    });
+  } catch (error) {
+    console.error("Reports summary API error:", error);
+    return sendApiError(res, 500, "Failed to load reports summary");
+  }
+});
+
+app.get("/api/reports/cards", requireDashboardAuth, async (req, res) => {
+  try {
+    const reportDate = String(req.query.date || getReportDateString());
+    const userId = req.query.userId ? Number(req.query.userId) : null;
+
+    const data = await getDailyNarrativeReport({
+      orgId: DASHBOARD_ORG_ID,
+      reportDate,
+      userId: userId || null,
+      includeUsers: true,
+    });
+
+    return sendApiSuccess(res, {
+      cardsHtml: renderReportCardsHtml(data.users || [], data.reportDate),
+    });
+  } catch (error) {
+    console.error("Reports cards API error:", error);
+    return sendApiError(res, 500, "Failed to load reports");
   }
 });
 
