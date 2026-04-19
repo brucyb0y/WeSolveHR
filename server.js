@@ -9723,13 +9723,13 @@ if (item.changeType === "status_change") {
   const newStatus = newValue.status || "-";
   const oldProgress = oldValue.progress ?? "-";
   const newProgress = newValue.progress ?? "-";
-  const note = newValue.note ? "\nNote: " + newValue.note : "";
+  const note = newValue.note ? "\\nNote: " + newValue.note : "";
 
-  return (
-    "Status: " + oldStatus + " → " + newStatus +
-    "\nProgress: " + oldProgress + "% → " + newProgress + "%" +
-    note
-  );
+return (
+  "Status: " + oldStatus + " → " + newStatus +
+  "\\nProgress: " + oldProgress + "% → " + newProgress + "%" +
+  note
+);
 }
 
   if (item.changeType === "progress_change") {
