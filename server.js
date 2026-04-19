@@ -13436,6 +13436,7 @@ app.get("/reports", requireDashboardAuth, async (req, res) => {
 
 app.get("/api/reports/summary", requireDashboardAuth, async (req, res) => {
   try {
+    console.log("HIT /api/reports/summary");
     const reportDate = String(req.query.date || getReportDateString());
     const userId = req.query.userId ? Number(req.query.userId) : null;
 
@@ -13444,6 +13445,12 @@ app.get("/api/reports/summary", requireDashboardAuth, async (req, res) => {
       reportDate,
       userId: userId || null,
       includeUsers: true,
+    });
+
+    console.log("summary data ready", {
+      reportDate: data?.reportDate,
+      usersCount: data?.users?.length,
+      complianceKeys: Object.keys(data?.compliance || {}),
     });
 
     return sendApiSuccess(res, {
@@ -13460,6 +13467,7 @@ app.get("/api/reports/summary", requireDashboardAuth, async (req, res) => {
 
 app.get("/api/reports/cards", requireDashboardAuth, async (req, res) => {
   try {
+    console.log("HIT /api/reports/cards");
     const reportDate = String(req.query.date || getReportDateString());
     const userId = req.query.userId ? Number(req.query.userId) : null;
 
@@ -13468,6 +13476,11 @@ app.get("/api/reports/cards", requireDashboardAuth, async (req, res) => {
       reportDate,
       userId: userId || null,
       includeUsers: true,
+    });
+
+    console.log("cards data ready", {
+      reportDate: data?.reportDate,
+      usersCount: data?.users?.length,
     });
 
     return sendApiSuccess(res, {
