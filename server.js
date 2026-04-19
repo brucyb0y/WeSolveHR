@@ -1525,10 +1525,24 @@ function renderTopNav(active = "") {
               ? data.breakNames.join(", ")
               : "Nobody on break";
 
-            mount.innerHTML = ''
-              + '<span class="top-nav-pill" title="' + escapeHtmlClient(offTitle) + '">Off today: ' + (data.offCount || 0) + '</span>'
-              + '<span class="top-nav-pill" title="' + escapeHtmlClient(breakTitle) + '">On break: ' + (data.breakCount || 0) + '</span>';
-          })
+            const offLabel =
+  (data.offCount || 0) === 0
+    ? 'Off today: 0'
+    : (data.offCount || 0) <= 2
+      ? 'Off today: ' + data.offNames.join(', ')
+      : 'Off today: ' + data.offCount;
+
+const breakLabel =
+  (data.breakCount || 0) === 0
+    ? 'On break: 0'
+    : (data.breakCount || 0) <= 2
+      ? 'On break: ' + data.breakNames.join(', ')
+      : 'On break: ' + data.breakCount;
+
+mount.innerHTML = ''
+  + '<span class="top-nav-pill" title="' + escapeHtmlClient(offTitle) + '">' + escapeHtmlClient(offLabel) + '</span>'
+  + '<span class="top-nav-pill" title="' + escapeHtmlClient(breakTitle) + '">' + escapeHtmlClient(breakLabel) + '</span>';
+                      })
           .catch(() => {
             mount.innerHTML = '<span class="top-nav-pill muted">Team status unavailable</span>';
           });
