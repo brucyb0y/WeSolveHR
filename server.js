@@ -1287,6 +1287,16 @@ function renderUserTaskWorkspacePage(data) {
           </div>
         </div>
         <script>
+        
+                  function escapeHtmlClient(value) {
+            return String(value ?? "")
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;");
+          }
+
+
           function renderUserWorkspaceTaskHistoryDetail(item) {
             const oldValue = item.oldValue || {};
             const newValue = item.newValue || {};
@@ -1363,22 +1373,22 @@ function renderUserTaskWorkspacePage(data) {
 
               if (!json.ok) {
                 body.innerHTML =
-                  '<div class="muted">' + escapeHtml(json.error || "Failed to load task") + '</div>';
+                  '<div class="muted">' + escapeHtmlClient(json.error || "Failed to load task") + '</div>';
                 return;
               }
 
               const task = json.data || {};
-              title.textContent = "#" + (task.taskNo || task.id) + " — " + escapeHtml(task.title || "Untitled");
+              title.textContent = "#" + (task.taskNo || task.id) + " — " + escapeHtmlClient(task.title || "Untitled");
 
               const historyHtml = (task.history || []).length
                 ? task.history.map(function(item) {
                     return (
                       '<div class="history-item">' +
                         '<div class="history-top">' +
-                          '<strong>' + escapeHtml(item.changeType || "-") + '</strong>' +
-                          '<span>' + escapeHtml(item.at || "-") + ' • ' + escapeHtml(item.by || "-") + '</span>' +
+                          '<strong>' + escapeHtmlClient(item.changeType || "-") + '</strong>' +
+                          '<span>' + escapeHtmlClient(item.at || "-") + ' • ' + escapeHtmlClient(item.by || "-") + '</span>' +
                         '</div>' +
-                        '<div class="history-detail">' + escapeHtml(renderUserWorkspaceTaskHistoryDetail(item)) + '</div>' +
+                        '<div class="history-detail">' + escapeHtmlClient(renderUserWorkspaceTaskHistoryDetail(item)) + '</div>' +
                       '</div>'
                     );
                   }).join("")
@@ -1386,12 +1396,12 @@ function renderUserTaskWorkspacePage(data) {
 
               body.innerHTML =
                 '<div class="modal-meta-grid">' +
-                  '<div class="modal-meta-box"><div class="modal-meta-label">Owners</div><div>' + escapeHtml(((task.owners || []).join(", ") || "-")) + '</div></div>' +
-                  '<div class="modal-meta-box"><div class="modal-meta-label">Status</div><div>' + escapeHtml(task.status || "-") + '</div></div>' +
-                  '<div class="modal-meta-box"><div class="modal-meta-label">Priority</div><div>' + escapeHtml(task.priority || "-") + '</div></div>' +
-                  '<div class="modal-meta-box"><div class="modal-meta-label">Progress</div><div>' + escapeHtml(String(task.progress ?? 0)) + '%</div></div>' +
-                  '<div class="modal-meta-box"><div class="modal-meta-label">Deadline</div><div>' + escapeHtml(task.deadline || "-") + '</div></div>' +
-                  '<div class="modal-meta-box"><div class="modal-meta-label">Business / Area</div><div>' + escapeHtml((task.business || "-") + " / " + (task.area || "-")) + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Owners</div><div>' + escapeHtmlClient(((task.owners || []).join(", ") || "-")) + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Status</div><div>' + escapeHtmlClient(task.status || "-") + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Priority</div><div>' + escapeHtmlClient(task.priority || "-") + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Progress</div><div>' + escapeHtmlClient(String(task.progress ?? 0)) + '%</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Deadline</div><div>' + escapeHtmlClient(task.deadline || "-") + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Business / Area</div><div>' + escapeHtmlClient((task.business || "-") + " / " + (task.area || "-")) + '</div></div>' +
                 '</div>' +
 
                 ((task.detail || task.blockerNote) ? (
@@ -1414,7 +1424,7 @@ function renderUserTaskWorkspacePage(data) {
                 '</div>';
             } catch (error) {
               body.innerHTML =
-                '<div class="muted">' + escapeHtml(error?.message || "Failed to load task") + '</div>';
+                '<div class="muted">' + escapeHtmlClient(error?.message || "Failed to load task") + '</div>';
             }
           }
 
