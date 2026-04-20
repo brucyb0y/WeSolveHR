@@ -1527,6 +1527,14 @@ function parseFlexibleDate(input) {
   return null;
 }
 
+function getPostLoginRedirectPath(user) {
+  if (isManagerOrAdmin(user)) {
+    return "/dashboard";
+  }
+
+  return "/my-dashboard";
+}
+
 function isManagerOrAdmin(user) {
   return user?.role === "admin" || user?.role === "manager";
 }
@@ -3585,7 +3593,6 @@ async function requireDashboardAuth(req, res, next) {
         .from("users")
         .select("*")
         .eq("id", sessionUserId)
-        .eq("org_id", DASHBOARD_ORG_ID)
         .eq("is_active", true)
         .maybeSingle();
 
@@ -14421,12 +14428,64 @@ app.post("/login", async (req, res) => {
       })
       .eq("id", user.id);
 
-    return res.redirect("/dashboard");
+    return res.redirect(getPostLoginRedirectPath(user));
   } catch (err) {
     console.error("Login route error:", err);
     return res
       .status(500)
       .send(renderLoginPage("Something went wrong while logging in."));
+  }
+});
+
+app.get("/my-dashboard", requireUserLogin, async (req, res) => {
+  try {
+    const user = req.loggedInUser;
+
+    if (isManagerOrAdmin(user)) {
+      return res.redirect("/dashboard");
+    }
+
+    const [taskData, attendanceData, reportData] = await Promise.all([
+      getUserTaskWorkspaceData({
+        userId: user.id,
+        orgId: user.org_id,
+        tab: "pending",
+      }),
+      getAttendancePageData(user.org_id),
+      getDailyNarrativeReport({
+        orgId: user.org_id,
+        reportDate: getReportDateString(),
+        userId: user.id,
+      }),
+    ]);
+
+    const myAttendanceRows = Array.isArray(attendanceData?.rows)
+      ? attendanceData.rows.filter(
+          (row) => Number(row.user_id) === Number(user.id),
+        )
+      : [];
+
+    const myAttendance = myAttendanceRows[0] || null;
+
+    return res.status(200).type("html").send(
+      renderMyDashboardPage({
+        user,
+        taskData,
+        myAttendance,
+        reportData,
+      }),
+    );
+  } catch (error) {
+    console.error("My dashboard error:", error);
+    return res.status(500).type("html").send(`
+      <html>
+        <head><title>My Dashboard Error</title></head>
+        <body>
+          ${renderTopNav("dashboard")}
+          <pre>${escapeHtml(error?.stack || error?.message || String(error))}</pre>
+        </body>
+      </html>
+    `);
   }
 });
 
@@ -15561,6 +15620,247 @@ async function getUserTaskWorkspaceData({ userId, orgId, tab = "pending" }) {
   };
 }
 
+function renderMyDashboardPage(data) {
+  const user = data?.user || {};
+  const taskData = data?.taskData || {};
+  const myAttendance = data?.myAttendance || null;
+  const reportData = data?.reportData || {};
+
+  const counts = taskData?.counts || {};
+  const pendingTasks = taskData?.tabs?.pending || [];
+  const blockedTasks = taskData?.tabs?.blocked || [];
+  const doneTodayTasks = taskData?.tabs?.done_today || [];
+
+  const reportSummary =
+    reportData?.summary_text ||
+    reportData?.narrative ||
+    "No report summary available for today.";
+
+  return `
+    <html>
+      <head>
+        <title>My Dashboard</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+          ${buildTopNavCss()}
+
+          .wrap {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px 18px 36px;
+          }
+
+          .topbar, .panel, .stat-card, .task-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+
+          .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 18px 20px;
+          }
+
+          .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--primary);
+            font-weight: 700;
+            margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 30px;
+            letter-spacing: -0.04em;
+          }
+
+          .subtitle {
+            color: var(--muted);
+            margin-top: 8px;
+            font-size: 14px;
+          }
+
+          .stats {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+          }
+
+          .stat-card {
+            padding: 14px;
+          }
+
+          .stat-label {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 700;
+          }
+
+          .stat-value {
+            margin-top: 10px;
+            font-size: 28px;
+            font-weight: 700;
+          }
+
+          .grid {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 16px;
+          }
+
+          .panel {
+            padding: 16px;
+          }
+
+          .panel h2 {
+            margin: 0 0 12px;
+            font-size: 18px;
+          }
+
+          .task-list {
+            display: grid;
+            gap: 10px;
+          }
+
+          .task-card {
+            padding: 12px;
+          }
+
+          .task-title {
+            font-weight: 700;
+            margin-bottom: 6px;
+          }
+
+          .task-meta {
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.6;
+          }
+
+          .attendance-line,
+          .report-box {
+            color: var(--text);
+            line-height: 1.7;
+            white-space: pre-wrap;
+          }
+
+          @media (max-width: 980px) {
+            .stats {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .grid {
+              grid-template-columns: 1fr;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        ${renderTopNav("dashboard")}
+
+        <div class="wrap">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Personal Workspace</div>
+              <h1>Welcome, ${escapeHtml(user.name || "User")}</h1>
+              <div class="subtitle">
+                Your tasks, attendance, and report summary in one place
+              </div>
+            </div>
+          </div>
+
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-label">Pending Tasks</div>
+              <div class="stat-value">${escapeHtml(counts.pending || 0)}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Blocked Tasks</div>
+              <div class="stat-value">${escapeHtml(counts.blocked || 0)}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Done Today</div>
+              <div class="stat-value">${escapeHtml(counts.done_today || 0)}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Attendance Status</div>
+              <div class="stat-value">${escapeHtml(myAttendance?.status || "-")}</div>
+            </div>
+          </div>
+
+          <div class="grid">
+            <div class="panel">
+              <h2>My Tasks</h2>
+              <div class="task-list">
+                ${
+                  pendingTasks.length
+                    ? pendingTasks
+                        .slice(0, 8)
+                        .map(
+                          (task) => `
+                      <div class="task-card">
+                        <div class="task-title">#${escapeHtml(task.task_no || task.id)} — ${escapeHtml(task.title || "")}</div>
+                        <div class="task-meta">
+                          Status: ${escapeHtml(task.status || "-")}<br />
+                          Priority: ${escapeHtml(task.priority || "-")}<br />
+                          Progress: ${escapeHtml(task.progress ?? 0)}%<br />
+                          Deadline: ${escapeHtml(task.deadline || "-")}
+                        </div>
+                      </div>
+                    `,
+                        )
+                        .join("")
+                    : `<div class="muted">No pending tasks.</div>`
+                }
+              </div>
+            </div>
+
+            <div style="display:grid; gap:16px;">
+              <div class="panel">
+                <h2>My Attendance</h2>
+                <div class="attendance-line">
+Status: ${escapeHtml(myAttendance?.status || "-")}
+Login: ${escapeHtml(myAttendance?.login_time || "-")}
+Break: ${escapeHtml(myAttendance?.break_time || "-")}
+Logout: ${escapeHtml(myAttendance?.logout_time || "-")}
+Worked: ${escapeHtml(myAttendance?.worked_duration || "-")}
+                </div>
+              </div>
+
+              <div class="panel">
+                <h2>Today’s Report</h2>
+                <div class="report-box">${escapeHtml(reportSummary)}</div>
+              </div>
+
+              <div class="panel">
+                <h2>Quick Links</h2>
+                <div class="attendance-line">
+<a href="/tasks/user/${escapeHtml(user.id)}" style="color: var(--primary);">Open my full task workspace</a><br />
+<a href="/attendance" style="color: var(--primary);">Open attendance page</a><br />
+<a href="/reports?userId=${escapeHtml(user.id)}" style="color: var(--primary);">Open my reports</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
 function renderUserWorkspaceHistoryLine(item) {
   const oldValue = item.old_value || {};
   const newValue = item.new_value || {};
@@ -15864,8 +16164,14 @@ app.get("/", (_req, res) => {
   `);
 });
 
-app.get("/dashboard", requireDashboardAuth, async (_req, res) => {
+app.get("/dashboard", requireDashboardAuth, async (req, res) => {
   try {
+    const user = req.loggedInUser;
+
+    if (user && !isManagerOrAdmin(user)) {
+      return res.redirect("/my-dashboard");
+    }
+
     const data = await getDashboardData(DASHBOARD_ORG_ID);
     res.type("html").send(renderDashboardPage(data));
   } catch (error) {
