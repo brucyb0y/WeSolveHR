@@ -15328,29 +15328,6 @@ async function getUserTaskWorkspaceData({ userId, orgId, tab = "pending" }) {
   tomorrowStart.setDate(tomorrowStart.getDate() + 1);
   const tomorrowIso = tomorrowStart.toISOString();
 
-  const { data: historyRows, error: historyError } = await supabase
-    .from("task_history")
-    .select(
-      `
-      id,
-      task_id,
-      changed_by_user_id,
-      change_type,
-      field_name,
-      old_value,
-      new_value,
-      created_at
-    `,
-    )
-    .eq("org_id", orgId)
-    .in("task_id", taskIds.length ? taskIds : [-1])
-    .order("created_at", { ascending: false });
-
-  if (historyError) {
-    console.error("getUserTaskWorkspaceData history error:", historyError);
-    throw historyError;
-  }
-
   const pendingTasks = enrichedTasks.filter(
     (task) =>
       !["done", "cancelled", "archived", "blocked"].includes(
