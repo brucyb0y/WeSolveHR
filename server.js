@@ -1275,7 +1275,7 @@ function renderUserTaskWorkspacePage(data) {
             ${selectedTab === "progress_updates" ? historyCardsHtml : taskCardsHtml}
           </div>
 
-          <div id="taskModal" class="task-modal" onclick="closeUserWorkspaceTaskDetail(event)">
+                    <div id="taskModal" class="task-modal" onclick="closeUserWorkspaceTaskDetail(event)">
             <div class="task-modal-card" onclick="event.stopPropagation()">
               <div class="task-modal-head">
                 <div id="taskModalTitle" style="font-size:22px; font-weight:800;">Task detail</div>
@@ -1284,8 +1284,6 @@ function renderUserTaskWorkspacePage(data) {
               <div id="taskModalBody" class="muted">Loading...</div>
             </div>
           </div>
-        </div>
-        <script>
         </div>
         <script>
           function renderUserWorkspaceTaskHistoryDetail(item) {
