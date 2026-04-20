@@ -1266,6 +1266,7 @@ function renderUserTaskWorkspacePage(data) {
           <div class="workspace-chip-row">
             ${chip("pending", "Pending", counts.pending)}
             ${chip("blocked", "Blocked", counts.blocked)}
+            ${chip("blocked_on_me", "Blocked on me", counts.blocked_on_me)}
             ${chip("done_today", "Done today", counts.done_today)}
             ${chip("deleted", "Deleted", counts.deleted)}
             ${chip("progress_updates", "Progress updates", counts.progress_updates)}
@@ -15318,6 +15319,146 @@ async function getUserTaskWorkspaceData({ userId, orgId, tab = "pending" }) {
     };
   });
 
+  const { data: blockedOnMeRows, error: blockedOnMeError } = await supabase
+    .from("tasks")
+    .select(
+      `
+      id,
+      org_id,
+      task_no,
+      title,
+      detail,
+      priority,
+      status,
+      progress,
+      deadline,
+      blocker_note,
+      blocked_reason,
+      business,
+      area,
+      assigned_to_user_id,
+      waiting_on_user_id,
+      waiting_since,
+      created_by_user_id,
+      last_updated_by_user_id
+    `,
+    )
+    .eq("org_id", orgId)
+    .eq("waiting_on_user_id", userId)
+    .eq("status", "blocked")
+    .order("updated_at", { ascending: false });
+
+  if (blockedOnMeError) {
+    console.error(
+      "getUserTaskWorkspaceData blockedOnMe error:",
+      blockedOnMeError,
+    );
+    throw blockedOnMeError;
+  }
+
+  const blockedOnMeTaskIds = [
+    ...new Set((blockedOnMeRows || []).map((task) => task.id).filter(Boolean)),
+  ];
+
+  const { data: blockedOnMeOwnerRows, error: blockedOnMeOwnerError } =
+    blockedOnMeTaskIds.length
+      ? await supabase
+          .from("task_owners")
+          .select(
+            `
+          task_id,
+          user_id,
+          users!task_owners_user_id_fkey(id, name)
+        `,
+          )
+          .eq("org_id", orgId)
+          .in("task_id", blockedOnMeTaskIds)
+      : { data: [], error: null };
+
+  if (blockedOnMeOwnerError) {
+    console.error(
+      "getUserTaskWorkspaceData blockedOnMe owners error:",
+      blockedOnMeOwnerError,
+    );
+    throw blockedOnMeOwnerError;
+  }
+
+  const blockedOnMeOwnersByTaskId = new Map();
+
+  for (const row of blockedOnMeOwnerRows || []) {
+    const taskId = row.task_id;
+    if (!blockedOnMeOwnersByTaskId.has(taskId)) {
+      blockedOnMeOwnersByTaskId.set(taskId, []);
+    }
+    blockedOnMeOwnersByTaskId.get(taskId).push({
+      user_id: row.user_id,
+      name: row.users?.name || "",
+    });
+  }
+
+  const { data: blockedOnMeHistoryRows, error: blockedOnMeHistoryError } =
+    blockedOnMeTaskIds.length
+      ? await supabase
+          .from("task_history")
+          .select(
+            `
+          id,
+          task_id,
+          changed_by_user_id,
+          change_type,
+          field_name,
+          old_value,
+          new_value,
+          created_at,
+          changer:users!task_history_changed_by_user_id_fkey(name)
+        `,
+          )
+          .eq("org_id", orgId)
+          .in("task_id", blockedOnMeTaskIds)
+          .order("created_at", { ascending: false })
+      : { data: [], error: null };
+
+  if (blockedOnMeHistoryError) {
+    console.error(
+      "getUserTaskWorkspaceData blockedOnMe history error:",
+      blockedOnMeHistoryError,
+    );
+    throw blockedOnMeHistoryError;
+  }
+
+  const blockedOnMeHistoryByTaskId = new Map();
+
+  for (const row of blockedOnMeHistoryRows || []) {
+    if (!blockedOnMeHistoryByTaskId.has(row.task_id)) {
+      blockedOnMeHistoryByTaskId.set(row.task_id, []);
+    }
+    blockedOnMeHistoryByTaskId.get(row.task_id).push({
+      ...row,
+      changed_by_name: row.changer?.name || "",
+    });
+  }
+
+  const blockedOnMeTasks = (blockedOnMeRows || []).map((task) => {
+    const owners = blockedOnMeOwnersByTaskId.get(task.id) || [];
+    const taskHistory = blockedOnMeHistoryByTaskId.get(task.id) || [];
+    const latestHistory = taskHistory[0] || null;
+
+    return {
+      ...task,
+      owner_names: owners.map((owner) => owner.name).filter(Boolean),
+      latest_update_text: latestHistory
+        ? renderUserWorkspaceHistoryLine(latestHistory)
+        : "No updates yet",
+      latest_updated_by: latestHistory?.changed_by_name || "",
+      latest_update_at: latestHistory?.created_at || null,
+      mini_history: taskHistory.slice(0, 3),
+    };
+  });
+
+  const blockedOnMeUniqueTasks = blockedOnMeTasks.filter(
+    (task, index, arr) => arr.findIndex((x) => x.id === task.id) === index,
+  );
+
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayIso = todayStart.toISOString();
@@ -15389,6 +15530,7 @@ async function getUserTaskWorkspaceData({ userId, orgId, tab = "pending" }) {
   const tabs = {
     pending: pendingTasks,
     blocked: blockedTasks,
+    blocked_on_me: blockedOnMeUniqueTasks,
     done_today: doneTodayTasks,
     deleted: deletedTasks,
     progress_updates: progressUpdates,
@@ -15400,6 +15542,7 @@ async function getUserTaskWorkspaceData({ userId, orgId, tab = "pending" }) {
     counts: {
       pending: pendingTasks.length,
       blocked: blockedTasks.length,
+      blocked_on_me: blockedOnMeUniqueTasks.length,
       done_today: doneTodayTasks.length,
       deleted: deletedTasks.length,
       progress_updates: progressUpdates.length,
