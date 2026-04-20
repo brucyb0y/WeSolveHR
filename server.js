@@ -810,10 +810,20 @@ function renderUserTaskWorkspacePage(data) {
           (task) => `
         <div class="workspace-task-card">
           <div class="workspace-task-top">
-            <div class="workspace-task-id">#${escapeHtml(task.task_no || task.id)}</div>
+            <div>
+<a
+  href="#"
+  class="workspace-task-id-link"
+  onclick="event.preventDefault(); event.stopPropagation(); openUserWorkspaceTaskDetail(${Number(task.task_no || task.id)})"
+>
+                #${escapeHtml(task.task_no || task.id)}
+              </a>
+            </div>
             <div class="${badgeClass(task.status)}">${escapeHtml(task.status || "")}</div>
           </div>
+
           <div class="workspace-task-title">${escapeHtml(task.title || "")}</div>
+
           <div class="workspace-task-meta">
             <div><strong>Business:</strong> ${escapeHtml(task.business || "-")}</div>
             <div><strong>Area:</strong> ${escapeHtml(task.area || "-")}</div>
@@ -822,7 +832,35 @@ function renderUserTaskWorkspacePage(data) {
             <div><strong>Progress:</strong> ${escapeHtml(task.progress ?? 0)}%</div>
             <div><strong>Deadline:</strong> ${escapeHtml(task.deadline || "-")}</div>
             <div><strong>Blocker:</strong> ${escapeHtml(task.blocker_note || "-")}</div>
+            <div><strong>Latest update:</strong> ${escapeHtml(task.latest_update_text || "No updates yet")}</div>
+            <div><strong>Updated by:</strong> ${escapeHtml(task.latest_updated_by || "-")}</div>
+            <div><strong>Updated at:</strong> ${escapeHtml(task.latest_update_at ? formatDateTime(task.latest_update_at) : "-")}</div>
           </div>
+
+          ${
+            Array.isArray(task.mini_history) && task.mini_history.length
+              ? `
+                <div class="workspace-mini-timeline">
+                  <div class="workspace-mini-timeline-title">Recent flow</div>
+                  ${task.mini_history
+                    .map(
+                      (item) => `
+                    <div class="workspace-mini-timeline-item">
+                      <div class="workspace-mini-timeline-time">
+                        ${escapeHtml(formatDateTime(item.created_at))}
+                      </div>
+                      <div class="workspace-mini-timeline-text">
+                        ${escapeHtml(renderUserWorkspaceHistoryLine(item))}
+                        ${item.changed_by_name ? `<span class="workspace-mini-timeline-by">by ${escapeHtml(item.changed_by_name)}</span>` : ""}
+                      </div>
+                    </div>
+                  `,
+                    )
+                    .join("")}
+                </div>
+              `
+              : ""
+          }
         </div>
       `,
         )
@@ -835,14 +873,25 @@ function renderUserTaskWorkspacePage(data) {
           (item) => `
         <div class="workspace-task-card">
           <div class="workspace-task-top">
-            <div class="workspace-task-id">Task #${escapeHtml(item.task_id)}</div>
+            <div>
+              <a
+                href="#"
+                class="workspace-task-id-link"
+                onclick="event.preventDefault(); event.stopPropagation(); openUserWorkspaceTaskDetail(${Number(item.task_no || item.task_id)})"
+              >
+                Task #${escapeHtml(item.task_no || item.task_id)}
+              </a>
+            </div>
             <div class="muted">${escapeHtml(formatDateTime(item.created_at))}</div>
           </div>
+
           <div class="workspace-task-title">${escapeHtml(renderUserWorkspaceHistoryLine(item))}</div>
-          <div class="workspace-task-meta">
-            <div><strong>Type:</strong> ${escapeHtml(item.change_type || "-")}</div>
-            <div><strong>Field:</strong> ${escapeHtml(item.field_name || "-")}</div>
-          </div>
+
+<div class="workspace-task-meta">
+  <div><strong>Updated by:</strong> ${escapeHtml(item.changed_by_name || "-")}</div>
+  <div><strong>Type:</strong> ${escapeHtml(item.change_type || "-")}</div>
+  <div><strong>Field:</strong> ${escapeHtml(item.field_name || "-")}</div>
+</div>
         </div>
       `,
         )
@@ -986,10 +1035,80 @@ function renderUserTaskWorkspacePage(data) {
 
           .workspace-task-meta {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 8px 16px;
             color: var(--muted);
             font-size: 14px;
+          }
+          
+                    @media (max-width: 1100px) {
+            .workspace-task-meta {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .workspace-mini-timeline-item {
+              grid-template-columns: 1fr;
+              gap: 4px;
+            }
+          }
+
+          @media (max-width: 720px) {
+            .workspace-task-meta {
+              grid-template-columns: 1fr;
+            }
+          }
+          
+                    .workspace-task-id-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 800;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          .workspace-task-id-link:hover {
+            text-decoration: underline;
+            color: var(--text-strong);
+          }
+
+          .workspace-mini-timeline {
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+          }
+
+          .workspace-mini-timeline-title {
+            font-size: 12px;
+            font-weight: 800;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 10px;
+          }
+
+          .workspace-mini-timeline-item {
+            display: grid;
+            grid-template-columns: 180px 1fr;
+            gap: 12px;
+            margin-bottom: 8px;
+            align-items: start;
+          }
+
+          .workspace-mini-timeline-time {
+            font-size: 12px;
+            color: var(--muted);
+          }
+
+          .workspace-mini-timeline-text {
+            font-size: 13px;
+            color: var(--text);
+            line-height: 1.5;
+          }
+
+          .workspace-mini-timeline-by {
+            margin-left: 8px;
+            color: var(--muted);
+            font-size: 12px;
           }
 
           .back-link {
@@ -1003,6 +1122,113 @@ function renderUserTaskWorkspacePage(data) {
             border: 1px solid rgba(255,255,255,0.10);
             font-weight: 700;
           }
+          
+                    .task-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(3, 8, 20, 0.68);
+            backdrop-filter: blur(8px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+            z-index: 9999;
+          }
+
+          .task-modal.open {
+            display: flex;
+          }
+
+          .task-modal-card {
+            width: min(980px, 100%);
+            max-height: 88vh;
+            overflow: auto;
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: 22px;
+            box-shadow: var(--shadow-soft);
+            padding: 18px;
+          }
+
+          .task-modal-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+          }
+
+          .task-modal-close {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 12px;
+            color: var(--text);
+            padding: 10px 12px;
+            cursor: pointer;
+            font: inherit;
+          }
+
+          .modal-meta-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+          }
+
+          .modal-meta-box {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 12px;
+          }
+
+          .modal-meta-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+            margin-bottom: 6px;
+            font-weight: 700;
+          }
+
+          .modal-section {
+            margin-top: 16px;
+          }
+
+          .modal-section h3 {
+            margin: 0 0 10px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+          }
+
+          .history-item {
+            padding: 12px 0;
+            border-top: 1px solid rgba(255,255,255,0.08);
+          }
+
+          .history-top {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 6px;
+            font-size: 13px;
+          }
+
+          .history-detail {
+            white-space: pre-wrap;
+            color: var(--text);
+            font-size: 13px;
+            line-height: 1.5;
+          }
+
+          @media (max-width: 900px) {
+            .modal-meta-grid {
+              grid-template-columns: 1fr;
+            }
+          }
+          
         </style>
       </head>
       <body>
@@ -1048,18 +1274,173 @@ function renderUserTaskWorkspacePage(data) {
           <div class="workspace-list">
             ${selectedTab === "progress_updates" ? historyCardsHtml : taskCardsHtml}
           </div>
+
+          <div id="taskModal" class="task-modal" onclick="closeUserWorkspaceTaskDetail(event)">
+            <div class="task-modal-card" onclick="event.stopPropagation()">
+              <div class="task-modal-head">
+                <div id="taskModalTitle" style="font-size:22px; font-weight:800;">Task detail</div>
+                <button type="button" class="task-modal-close" onclick="closeUserWorkspaceTaskDetail()">Close</button>
+              </div>
+              <div id="taskModalBody" class="muted">Loading...</div>
+            </div>
+          </div>
         </div>
         <script>
-  setInterval(() => {
-    window.location.reload();
-  }, 60000);
+        </div>
+        <script>
+          function renderUserWorkspaceTaskHistoryDetail(item) {
+            const oldValue = item.oldValue || {};
+            const newValue = item.newValue || {};
 
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
-      window.location.reload();
-    }
-  });
-</script>
+            if (item.changeType === "progress_change") {
+              return "Progress: " + (oldValue.progress ?? 0) + "% → " + (newValue.progress ?? 0) + "%" +
+                (newValue.note ? "\\nNote: " + newValue.note : "");
+            }
+
+            if (item.changeType === "status_change") {
+              return "Status: " + (oldValue.status || "-") + " → " + (newValue.status || "-") +
+                (newValue.note ? "\\nNote: " + newValue.note : "");
+            }
+
+            if (item.changeType === "owner_change") {
+              const oldOwners = Array.isArray(oldValue.owners) ? oldValue.owners.join(", ") : "-";
+              const newOwners = Array.isArray(newValue.owners) ? newValue.owners.join(", ") : "-";
+              return "Owners: " + oldOwners + " → " + newOwners;
+            }
+
+            if (item.changeType === "deadline_change") {
+              return "Deadline: " + (oldValue.deadline || "-") + " → " + (newValue.deadline || "-");
+            }
+
+            if (item.fieldName === "title") {
+              return "Title: " + (oldValue.title || "-") + " → " + (newValue.title || "-");
+            }
+
+            if (item.fieldName === "detail") {
+              return "Detail updated";
+            }
+
+            if (item.fieldName === "priority") {
+              return "Priority: " + (oldValue.priority || "-") + " → " + (newValue.priority || "-");
+            }
+
+            if (item.fieldName === "business") {
+              return "Business: " + (oldValue.business || "-") + " → " + (newValue.business || "-");
+            }
+
+            if (item.fieldName === "area") {
+              return "Area: " + (oldValue.area || "-") + " → " + (newValue.area || "-");
+            }
+
+            if (item.fieldName === "blocker_note") {
+              return [
+                "Blocker: " + (newValue.blocker_note || "-"),
+                newValue.note ? "Note: " + newValue.note : null
+              ].filter(Boolean).join("\\n");
+            }
+
+            if (item.fieldName) {
+              return (item.fieldName || "Field") + ": " +
+                JSON.stringify(oldValue) + " → " + JSON.stringify(newValue);
+            }
+
+            return JSON.stringify(newValue || {});
+          }
+
+          async function openUserWorkspaceTaskDetail(taskNo) {
+            const modal = document.getElementById("taskModal");
+            const title = document.getElementById("taskModalTitle");
+            const body = document.getElementById("taskModalBody");
+
+            if (!modal || !title || !body) return;
+
+            title.textContent = "Task #" + taskNo;
+            body.innerHTML = '<div class="muted">Loading task details...</div>';
+            modal.classList.add("open");
+
+            try {
+              const res = await fetch("/api/reports/task/" + taskNo);
+              const json = await res.json();
+
+              if (!json.ok) {
+                body.innerHTML =
+                  '<div class="muted">' + escapeHtml(json.error || "Failed to load task") + '</div>';
+                return;
+              }
+
+              const task = json.data || {};
+              title.textContent = "#" + (task.taskNo || task.id) + " — " + escapeHtml(task.title || "Untitled");
+
+              const historyHtml = (task.history || []).length
+                ? task.history.map(function(item) {
+                    return (
+                      '<div class="history-item">' +
+                        '<div class="history-top">' +
+                          '<strong>' + escapeHtml(item.changeType || "-") + '</strong>' +
+                          '<span>' + escapeHtml(item.at || "-") + ' • ' + escapeHtml(item.by || "-") + '</span>' +
+                        '</div>' +
+                        '<div class="history-detail">' + escapeHtml(renderUserWorkspaceTaskHistoryDetail(item)) + '</div>' +
+                      '</div>'
+                    );
+                  }).join("")
+                : '<div class="muted">No recent history</div>';
+
+              body.innerHTML =
+                '<div class="modal-meta-grid">' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Owners</div><div>' + escapeHtml(((task.owners || []).join(", ") || "-")) + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Status</div><div>' + escapeHtml(task.status || "-") + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Priority</div><div>' + escapeHtml(task.priority || "-") + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Progress</div><div>' + escapeHtml(String(task.progress ?? 0)) + '%</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Deadline</div><div>' + escapeHtml(task.deadline || "-") + '</div></div>' +
+                  '<div class="modal-meta-box"><div class="modal-meta-label">Business / Area</div><div>' + escapeHtml((task.business || "-") + " / " + (task.area || "-")) + '</div></div>' +
+                '</div>' +
+
+                ((task.detail || task.blockerNote) ? (
+                  '<div class="modal-section">' +
+                    '<h3>Details</h3>' +
+                    (task.detail
+                      ? '<div class="modal-meta-box" style="margin-bottom:10px;"><div class="modal-meta-label">Detail</div><div>' + escapeHtml(task.detail) + '</div></div>'
+                      : ''
+                    ) +
+                    (task.blockerNote
+                      ? '<div class="modal-meta-box"><div class="modal-meta-label">Blocker</div><div>' + escapeHtml(task.blockerNote) + '</div></div>'
+                      : ''
+                    ) +
+                  '</div>'
+                ) : '') +
+
+                '<div class="modal-section">' +
+                  '<h3>History</h3>' +
+                  historyHtml +
+                '</div>';
+            } catch (error) {
+              body.innerHTML =
+                '<div class="muted">' + escapeHtml(error?.message || "Failed to load task") + '</div>';
+            }
+          }
+
+          function closeUserWorkspaceTaskDetail(event) {
+            if (event && event.target && event.target.id !== "taskModal") return;
+            const modal = document.getElementById("taskModal");
+            if (modal) modal.classList.remove("open");
+          }
+
+          setInterval(() => {
+            window.location.reload();
+          }, 60000);
+
+          document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") {
+              window.location.reload();
+            }
+          });
+
+          document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") {
+              closeUserWorkspaceTaskDetail();
+            }
+          });
+        </script>
       </body>
     </html>
   `;
@@ -14876,8 +15257,52 @@ async function getUserTaskWorkspaceData({ userId, orgId, tab = "pending" }) {
     });
   }
 
+  const { data: historyRows, error: historyError } = taskIds.length
+    ? await supabase
+        .from("task_history")
+        .select(
+          `
+          id,
+          task_id,
+          changed_by_user_id,
+          change_type,
+          field_name,
+          old_value,
+          new_value,
+          created_at,
+          changer:users!task_history_changed_by_user_id_fkey(name)
+        `,
+        )
+        .eq("org_id", orgId)
+        .in("task_id", taskIds)
+        .order("created_at", { ascending: false })
+    : { data: [], error: null };
+
+  if (historyError) {
+    console.error("getUserTaskWorkspaceData history error:", historyError);
+    throw historyError;
+  }
+
+  const historyByTaskId = {};
+  for (const row of historyRows || []) {
+    if (!historyByTaskId[row.task_id]) historyByTaskId[row.task_id] = [];
+    historyByTaskId[row.task_id].push({
+      id: row.id,
+      task_id: row.task_id,
+      change_type: row.change_type,
+      field_name: row.field_name,
+      old_value: row.old_value || {},
+      new_value: row.new_value || {},
+      created_at: row.created_at,
+      changed_by_name: row.changer?.name || "",
+    });
+  }
+
   const enrichedTasks = tasks.map((task) => {
     const owners = ownersByTaskId[task.id] || [];
+    const history = historyByTaskId[task.id] || [];
+    const latestHistory = history[0] || null;
+
     return {
       ...task,
       owners,
@@ -14886,6 +15311,12 @@ async function getUserTaskWorkspaceData({ userId, orgId, tab = "pending" }) {
         .map((x) => x.name)
         .filter(Boolean)
         .join(", "),
+      latest_update_text: latestHistory
+        ? renderUserWorkspaceHistoryLine(latestHistory)
+        : "No updates yet",
+      latest_update_at: latestHistory?.created_at || null,
+      latest_updated_by: latestHistory?.changed_by_name || "",
+      mini_history: history.slice(0, 3),
     };
   });
 
@@ -14953,9 +15384,32 @@ async function getUserTaskWorkspaceData({ userId, orgId, tab = "pending" }) {
     doneTodayTaskIds.has(task.id),
   );
 
-  const progressUpdates = (historyRows || []).filter((row) =>
-    ["progress_change", "status_change", "edit"].includes(row.change_type),
-  );
+  const taskMap = new Map(enrichedTasks.map((task) => [task.id, task]));
+
+  const progressUpdates = (historyRows || [])
+    .filter((row) =>
+      ["progress_change", "status_change", "edit"].includes(row.change_type),
+    )
+    .filter((row) => {
+      const task = taskMap.get(row.task_id);
+      return !!task;
+    })
+    .map((row) => {
+      const task = taskMap.get(row.task_id);
+
+      return {
+        id: row.id,
+        task_id: row.task_id,
+        task_no: task?.task_no || row.task_id,
+        title: task?.title || "",
+        change_type: row.change_type,
+        field_name: row.field_name,
+        old_value: row.old_value || {},
+        new_value: row.new_value || {},
+        created_at: row.created_at,
+        changed_by_name: row.changer?.name || "",
+      };
+    });
 
   const tabs = {
     pending: pendingTasks,
@@ -14984,14 +15438,66 @@ function renderUserWorkspaceHistoryLine(item) {
   const newValue = item.new_value || {};
 
   if (item.change_type === "progress_change") {
-    return `Progress: ${oldValue.progress ?? 0}% → ${newValue.progress ?? 0}%`;
+    const note = newValue.note || oldValue.note || "";
+    return note
+      ? `Progress: ${oldValue.progress ?? 0}% → ${newValue.progress ?? 0}% • ${note}`
+      : `Progress: ${oldValue.progress ?? 0}% → ${newValue.progress ?? 0}%`;
   }
 
   if (item.change_type === "status_change") {
-    return `Status: ${oldValue.status || "-"} → ${newValue.status || "-"}`;
+    const note = newValue.note || oldValue.note || "";
+    return note
+      ? `Status: ${oldValue.status || "-"} → ${newValue.status || "-"} • ${note}`
+      : `Status: ${oldValue.status || "-"} → ${newValue.status || "-"}`;
+  }
+
+  if (item.change_type === "owner_change") {
+    const oldOwners = Array.isArray(oldValue.owners)
+      ? oldValue.owners.join(", ")
+      : "-";
+    const newOwners = Array.isArray(newValue.owners)
+      ? newValue.owners.join(", ")
+      : "-";
+    return `Owners: ${oldOwners} → ${newOwners}`;
+  }
+
+  if (item.change_type === "deadline_change") {
+    return `Deadline: ${oldValue.deadline || "-"} → ${newValue.deadline || "-"}`;
   }
 
   if (item.change_type === "edit") {
+    if (item.field_name === "blocker_note") {
+      return `Blocker updated: ${newValue.blocker_note || newValue.note || "-"}`;
+    }
+
+    if (item.field_name === "title") {
+      return `Title: ${oldValue.title || "-"} → ${newValue.title || "-"}`;
+    }
+
+    if (item.field_name === "detail") {
+      return `Detail updated`;
+    }
+
+    if (item.field_name === "priority") {
+      return `Priority: ${oldValue.priority || "-"} → ${newValue.priority || "-"}`;
+    }
+
+    if (item.field_name === "business") {
+      return `Business: ${oldValue.business || "-"} → ${newValue.business || "-"}`;
+    }
+
+    if (item.field_name === "area") {
+      return `Area: ${oldValue.area || "-"} → ${newValue.area || "-"}`;
+    }
+
+    if (item.field_name === "deadline") {
+      return `Deadline: ${oldValue.deadline || "-"} → ${newValue.deadline || "-"}`;
+    }
+
+    if (String(item.field_name || "").startsWith("clear_")) {
+      return `${item.field_name.replace(/^clear_/, "").replace(/_/g, " ")} cleared`;
+    }
+
     return `${item.field_name || "field"} updated`;
   }
 
