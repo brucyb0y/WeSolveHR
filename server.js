@@ -1408,11 +1408,11 @@ function renderUserTaskWorkspacePage(data) {
                   '<div class="modal-section">' +
                     '<h3>Details</h3>' +
                     (task.detail
-                      ? '<div class="modal-meta-box" style="margin-bottom:10px;"><div class="modal-meta-label">Detail</div><div>' + escapeHtml(task.detail) + '</div></div>'
+                      ? '<div class="modal-meta-box" style="margin-bottom:10px;"><div class="modal-meta-label">Detail</div><div>' + escapeHtmlClient(task.detail) + '</div></div>'
                       : ''
                     ) +
                     (task.blockerNote
-                      ? '<div class="modal-meta-box"><div class="modal-meta-label">Blocker</div><div>' + escapeHtml(task.blockerNote) + '</div></div>'
+                      ? '<div class="modal-meta-box"><div class="modal-meta-label">Blocker</div><div>' + escapeHtmlClient(task.blockerNote) + '</div></div>'
                       : ''
                     ) +
                   '</div>'
