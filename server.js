@@ -1191,28 +1191,6 @@ const UI_THEME = {
   radiusMd: "14px",
 };
 
-function renderTaskOwnerLinks(task) {
-  const owners = Array.isArray(task?.owners) ? task.owners : [];
-
-  if (!owners.length) {
-    return '<span class="muted">-</span>';
-  }
-
-  return owners
-    .map((owner) => {
-      return `
-        <a
-          class="owner-chip-link"
-          href="/tasks/user/${owner.user_id}"
-          onclick="event.stopPropagation();"
-        >
-          ${escapeHtml(owner.name || "")}
-        </a>
-      `;
-    })
-    .join(" ");
-}
-
 function buildBasePageCss() {
   return `
     * { box-sizing: border-box; }
@@ -16233,6 +16211,29 @@ document.addEventListener("keydown", function(event) {
     closeTaskModal();
   }
 });
+
+function renderTaskOwnerLinks(task) {
+  const owners = Array.isArray(task.owners) ? task.owners : [];
+
+  if (!owners.length) {
+    return '<span class="muted">Unassigned</span>';
+  }
+
+  return owners
+    .map(function (owner) {
+      const id = owner.user_id || owner.id;
+      const name = escapeHtml(owner.name || "Unknown");
+
+      return (
+        '<a class="owner-chip-link" ' +
+        'href="/tasks/user/' + id + '" ' +
+        'onclick="event.stopPropagation()">' +
+        name +
+        '</a>'
+      );
+    })
+    .join(' ');
+}
 
 async function loadUsers() {
   try {
