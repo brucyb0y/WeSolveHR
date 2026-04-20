@@ -6808,6 +6808,34 @@ async function upsertLateArrival(
   return { error, approved };
 }
 
+function parseOwnerNames(ownerText) {
+  if (!ownerText) return [];
+  return ownerText
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+async function findUsersByNames(names, orgId) {
+  const uniqueNames = [
+    ...new Set((names || []).map((x) => String(x).trim()).filter(Boolean)),
+  ];
+
+  const matchedUsers = [];
+  const missingNames = [];
+
+  for (const name of uniqueNames) {
+    const user = await findUniqueUserByName(name, orgId);
+    if (!user) {
+      missingNames.push(name);
+    } else {
+      matchedUsers.push(user);
+    }
+  }
+
+  return { matchedUsers, missingNames };
+}
+
 async function handleCreateTaskAdvanced(res, user, taskCommand) {
   if (taskCommand.error) {
     return sendTwiml(res, `❌ ${taskCommand.error}`);
@@ -8012,14 +8040,6 @@ function parseEmployeeSummaryCommand(text) {
   return {
     target_name: match[1].trim(),
   };
-}
-
-function parseOwnerNames(ownerText) {
-  if (!ownerText) return [];
-  return ownerText
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
 }
 
 function parseProgressPercentToken(token) {
