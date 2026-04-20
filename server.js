@@ -787,6 +787,284 @@ function renderStage0BugBoardPage(data) {
   `;
 }
 
+function renderUserTaskWorkspacePage(data) {
+  const user = data?.user;
+  const counts = data?.counts || {};
+  const selectedTab = data?.selectedTab || "pending";
+  const tabs = data?.tabs || {};
+
+  const selectedItems = tabs[selectedTab] || [];
+
+  const chip = (key, label, count) => `
+    <a
+      href="/tasks/user/${user.id}?tab=${key}"
+      class="workspace-chip ${selectedTab === key ? "active" : ""}"
+    >
+      ${label} (${count || 0})
+    </a>
+  `;
+
+  const taskCardsHtml = selectedItems.length
+    ? selectedItems
+        .map(
+          (task) => `
+        <div class="workspace-task-card">
+          <div class="workspace-task-top">
+            <div class="workspace-task-id">#${escapeHtml(task.task_no || task.id)}</div>
+            <div class="${badgeClass(task.status)}">${escapeHtml(task.status || "")}</div>
+          </div>
+          <div class="workspace-task-title">${escapeHtml(task.title || "")}</div>
+          <div class="workspace-task-meta">
+            <div><strong>Business:</strong> ${escapeHtml(task.business || "-")}</div>
+            <div><strong>Area:</strong> ${escapeHtml(task.area || "-")}</div>
+            <div><strong>Owners:</strong> ${escapeHtml((task.owner_names || []).join(", ") || "-")}</div>
+            <div><strong>Priority:</strong> ${escapeHtml(task.priority || "-")}</div>
+            <div><strong>Progress:</strong> ${escapeHtml(task.progress ?? 0)}%</div>
+            <div><strong>Deadline:</strong> ${escapeHtml(task.deadline || "-")}</div>
+            <div><strong>Blocker:</strong> ${escapeHtml(task.blocker_note || "-")}</div>
+          </div>
+        </div>
+      `,
+        )
+        .join("")
+    : `<div class="panel" style="padding:16px;">No items found in this tab.</div>`;
+
+  const historyCardsHtml = selectedItems.length
+    ? selectedItems
+        .map(
+          (item) => `
+        <div class="workspace-task-card">
+          <div class="workspace-task-top">
+            <div class="workspace-task-id">Task #${escapeHtml(item.task_id)}</div>
+            <div class="muted">${escapeHtml(formatDateTime(item.created_at))}</div>
+          </div>
+          <div class="workspace-task-title">${escapeHtml(renderUserWorkspaceHistoryLine(item))}</div>
+          <div class="workspace-task-meta">
+            <div><strong>Type:</strong> ${escapeHtml(item.change_type || "-")}</div>
+            <div><strong>Field:</strong> ${escapeHtml(item.field_name || "-")}</div>
+          </div>
+        </div>
+      `,
+        )
+        .join("")
+    : `<div class="panel" style="padding:16px;">No progress updates found.</div>`;
+
+  return `
+    <html>
+      <head>
+        <title>${escapeHtml(user?.name || "User")} Tasks</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+          ${buildTopNavCss()}
+
+          .wrap {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px 18px 36px;
+            position: relative;
+            z-index: 1;
+          }
+
+          .topbar, .panel, .stat-card, .workspace-task-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+
+          .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 18px 20px;
+          }
+
+          .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--primary);
+            font-weight: 700;
+            margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 30px;
+            letter-spacing: -0.04em;
+          }
+
+          .subtitle {
+            color: var(--muted);
+            margin-top: 8px;
+            font-size: 14px;
+          }
+
+          .stats {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+          }
+
+          .stat-card {
+            padding: 14px;
+          }
+
+          .stat-label {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 700;
+          }
+
+          .stat-value {
+            margin-top: 10px;
+            font-size: 28px;
+            font-weight: 700;
+          }
+
+          .workspace-chip-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+          }
+
+          .workspace-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 10px 14px;
+            border-radius: 999px;
+            text-decoration: none;
+            color: var(--text);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.10);
+            font-weight: 700;
+          }
+
+          .workspace-chip.active {
+            background: var(--primary-soft);
+            border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+            color: var(--text-strong);
+          }
+
+          .workspace-list {
+            display: grid;
+            gap: 12px;
+          }
+
+          .workspace-task-card {
+            padding: 14px;
+          }
+
+          .workspace-task-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+          }
+
+          .workspace-task-id {
+            color: var(--muted);
+            font-size: 12px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          .workspace-task-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 10px;
+          }
+
+          .workspace-task-meta {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px 16px;
+            color: var(--muted);
+            font-size: 14px;
+          }
+
+          .back-link {
+            display: inline-flex;
+            align-items: center;
+            text-decoration: none;
+            color: var(--text);
+            padding: 10px 14px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.10);
+            font-weight: 700;
+          }
+        </style>
+      </head>
+      <body>
+        ${renderTopNav("tasks")}
+
+        <div class="wrap">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">User Task Workspace</div>
+              <h1>${escapeHtml(user?.name || "Unknown user")}</h1>
+              <div class="subtitle">Focused task workspace for one user</div>
+            </div>
+            <a class="back-link" href="/tasks">← Back to Tasks</a>
+          </div>
+
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-label">Pending</div>
+              <div class="stat-value">${counts.pending || 0}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Blocked</div>
+              <div class="stat-value">${counts.blocked || 0}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Done today</div>
+              <div class="stat-value">${counts.done_today || 0}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Deleted</div>
+              <div class="stat-value">${counts.deleted || 0}</div>
+            </div>
+          </div>
+
+          <div class="workspace-chip-row">
+            ${chip("pending", "Pending", counts.pending)}
+            ${chip("blocked", "Blocked", counts.blocked)}
+            ${chip("done_today", "Done today", counts.done_today)}
+            ${chip("deleted", "Deleted", counts.deleted)}
+            ${chip("progress_updates", "Progress updates", counts.progress_updates)}
+          </div>
+
+          <div class="workspace-list">
+            ${selectedTab === "progress_updates" ? historyCardsHtml : taskCardsHtml}
+          </div>
+        </div>
+        <script>
+  setInterval(() => {
+    window.location.reload();
+  }, 60000);
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      window.location.reload();
+    }
+  });
+</script>
+      </body>
+    </html>
+  `;
+}
+
 function parseFlexibleDate(input) {
   const raw = String(input || "")
     .toLowerCase()
@@ -912,6 +1190,28 @@ const UI_THEME = {
   radiusLg: "18px",
   radiusMd: "14px",
 };
+
+function renderTaskOwnerLinks(task) {
+  const owners = Array.isArray(task?.owners) ? task.owners : [];
+
+  if (!owners.length) {
+    return '<span class="muted">-</span>';
+  }
+
+  return owners
+    .map((owner) => {
+      return `
+        <a
+          class="owner-chip-link"
+          href="/tasks/user/${owner.user_id}"
+          onclick="event.stopPropagation();"
+        >
+          ${escapeHtml(owner.name || "")}
+        </a>
+      `;
+    })
+    .join(" ");
+}
 
 function buildBasePageCss() {
   return `
@@ -14451,6 +14751,7 @@ async function getTasksPageData(filters = {}, orgId) {
     const owners = ownersByTaskId[task.id] || [];
     return {
       ...task,
+      owners,
       owner_names: owners.map((x) => x.name).filter(Boolean),
       assignee_name: owners
         .map((x) => x.name)
@@ -14504,6 +14805,219 @@ async function getTasksPageData(filters = {}, orgId) {
   }
 
   return rows;
+}
+
+async function getUserTaskWorkspaceData({ userId, orgId, tab = "pending" }) {
+  const { data: user, error: userError } = await supabase
+    .from("users")
+    .select("id, name, role, is_active")
+    .eq("org_id", orgId)
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (userError) {
+    console.error("getUserTaskWorkspaceData user error:", userError);
+    throw userError;
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  const { data: ownerRows, error: ownerError } = await supabase
+    .from("task_owners")
+    .select("task_id")
+    .eq("org_id", orgId)
+    .eq("user_id", userId);
+
+  if (ownerError) {
+    console.error("getUserTaskWorkspaceData owner rows error:", ownerError);
+    throw ownerError;
+  }
+
+  const taskIds = (ownerRows || []).map((x) => x.task_id);
+
+  let tasks = [];
+  if (taskIds.length) {
+    const { data: taskRows, error: taskError } = await supabase
+      .from("tasks")
+      .select(
+        `
+        id,
+        org_id,
+        task_no,
+        title,
+        business,
+        area,
+        status,
+        progress,
+        priority,
+        deadline,
+        blocker_note,
+        waiting_on_user_id,
+        updated_at
+      `,
+      )
+      .eq("org_id", orgId)
+      .in("id", taskIds)
+      .order("deadline", { ascending: true, nullsFirst: false });
+
+    if (taskError) {
+      console.error("getUserTaskWorkspaceData tasks error:", taskError);
+      throw taskError;
+    }
+
+    tasks = taskRows || [];
+  }
+
+  const { data: allOwnerRows, error: allOwnerError } = taskIds.length
+    ? await supabase
+        .from("task_owners")
+        .select(
+          `
+          task_id,
+          user_id,
+          users!task_owners_user_id_fkey(id, name)
+        `,
+        )
+        .eq("org_id", orgId)
+        .in("task_id", taskIds)
+    : { data: [], error: null };
+
+  if (allOwnerError) {
+    console.error("getUserTaskWorkspaceData all owners error:", allOwnerError);
+    throw allOwnerError;
+  }
+
+  const ownersByTaskId = {};
+  for (const row of allOwnerRows || []) {
+    if (!ownersByTaskId[row.task_id]) ownersByTaskId[row.task_id] = [];
+    ownersByTaskId[row.task_id].push({
+      user_id: row.user_id,
+      name: row.users?.name || "",
+    });
+  }
+
+  const enrichedTasks = tasks.map((task) => {
+    const owners = ownersByTaskId[task.id] || [];
+    return {
+      ...task,
+      owners,
+      owner_names: owners.map((x) => x.name).filter(Boolean),
+      assignee_name: owners
+        .map((x) => x.name)
+        .filter(Boolean)
+        .join(", "),
+    };
+  });
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayIso = todayStart.toISOString();
+
+  const tomorrowStart = new Date(todayStart);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  const tomorrowIso = tomorrowStart.toISOString();
+
+  const { data: historyRows, error: historyError } = await supabase
+    .from("task_history")
+    .select(
+      `
+      id,
+      task_id,
+      changed_by_user_id,
+      change_type,
+      field_name,
+      old_value,
+      new_value,
+      created_at
+    `,
+    )
+    .eq("org_id", orgId)
+    .in("task_id", taskIds.length ? taskIds : [-1])
+    .order("created_at", { ascending: false });
+
+  if (historyError) {
+    console.error("getUserTaskWorkspaceData history error:", historyError);
+    throw historyError;
+  }
+
+  const pendingTasks = enrichedTasks.filter(
+    (task) =>
+      !["done", "cancelled", "archived", "blocked"].includes(
+        String(task.status || "").toLowerCase(),
+      ),
+  );
+
+  const blockedTasks = enrichedTasks.filter(
+    (task) => String(task.status || "").toLowerCase() === "blocked",
+  );
+
+  const deletedTasks = enrichedTasks.filter(
+    (task) => String(task.status || "").toLowerCase() === "cancelled",
+  );
+
+  const doneTodayTaskIds = new Set(
+    (historyRows || [])
+      .filter((row) => {
+        const newStatus = row?.new_value?.status || row?.new_value?.["status"];
+        return (
+          row.change_type === "status_change" &&
+          String(newStatus || "").toLowerCase() === "done" &&
+          row.created_at >= todayIso &&
+          row.created_at < tomorrowIso
+        );
+      })
+      .map((row) => row.task_id),
+  );
+
+  const doneTodayTasks = enrichedTasks.filter((task) =>
+    doneTodayTaskIds.has(task.id),
+  );
+
+  const progressUpdates = (historyRows || []).filter((row) =>
+    ["progress_change", "status_change", "edit"].includes(row.change_type),
+  );
+
+  const tabs = {
+    pending: pendingTasks,
+    blocked: blockedTasks,
+    done_today: doneTodayTasks,
+    deleted: deletedTasks,
+    progress_updates: progressUpdates,
+  };
+
+  return {
+    user,
+    selectedTab: tab,
+    counts: {
+      pending: pendingTasks.length,
+      blocked: blockedTasks.length,
+      done_today: doneTodayTasks.length,
+      deleted: deletedTasks.length,
+      progress_updates: progressUpdates.length,
+    },
+    tabs,
+  };
+}
+
+function renderUserWorkspaceHistoryLine(item) {
+  const oldValue = item.old_value || {};
+  const newValue = item.new_value || {};
+
+  if (item.change_type === "progress_change") {
+    return `Progress: ${oldValue.progress ?? 0}% → ${newValue.progress ?? 0}%`;
+  }
+
+  if (item.change_type === "status_change") {
+    return `Status: ${oldValue.status || "-"} → ${newValue.status || "-"}`;
+  }
+
+  if (item.change_type === "edit") {
+    return `${item.field_name || "field"} updated`;
+  }
+
+  return item.change_type || "Updated";
 }
 
 async function getTaskDetailData(taskId, orgId) {
@@ -15096,6 +15610,27 @@ tbody tr.task-row-overdue:hover,
 tbody tr.task-row-blocked:hover,
 tbody tr.task-row-blocked.task-row-overdue:hover {
   background: color-mix(in srgb, var(--danger) 24%, var(--primary) 6%);
+}
+
+.owner-chip-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--text);
+  background: var(--secondary-soft);
+  border: 1px solid rgba(255,255,255,0.10);
+  font-size: 12px;
+  font-weight: 700;
+  margin-right: 6px;
+  margin-bottom: 4px;
+}
+
+.owner-chip-link:hover {
+  border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
+  color: var(--text-strong);
 }
 
 tbody tr {
@@ -15909,11 +16444,7 @@ document.getElementById('taskRows').innerHTML = rows.map(function(task) {
       '<td>' + escapeHtml(task.title || '') + '</td>' +
       '<td>' + escapeHtml(task.business || '-') + '</td>' +
       '<td>' + escapeHtml(task.area || '-') + '</td>' +
-      '<td>' + escapeHtml(
-  task.assignee_name ||
-  (Array.isArray(task.owner_names) ? task.owner_names.join(', ') : task.owner_names) ||
-  '-'
-) + '</td>' +
+'<td>' + renderTaskOwnerLinks(task) + '</td>' +
       '<td>' + escapeHtml(task.status || '') + '</td>' +
       '<td>' + (task.progress ?? 0) + '%</td>' +
       '<td>' + escapeHtml(task.priority || '') + '</td>' +
@@ -15969,6 +16500,40 @@ document.addEventListener("visibilitychange", () => {
       </body>
     </html>
   `);
+});
+
+app.get("/tasks/user/:userId", requireDashboardAuth, async (req, res) => {
+  try {
+    const userId = Number(req.params.userId);
+    const tab = String(req.query.tab || "pending").trim();
+
+    if (!Number.isFinite(userId)) {
+      return res.status(400).type("html").send("Invalid user id");
+    }
+
+    const data = await getUserTaskWorkspaceData({
+      userId,
+      orgId: DASHBOARD_ORG_ID,
+      tab,
+    });
+
+    if (!data) {
+      return res.status(404).type("html").send("User not found");
+    }
+
+    res.status(200).type("html").send(renderUserTaskWorkspacePage(data));
+  } catch (error) {
+    console.error("User task workspace page error:", error);
+    res.status(500).type("html").send(`
+      <html>
+        <head><title>User Task Workspace Error</title></head>
+        <body>
+          ${renderTopNav("tasks")}
+          <pre>${escapeHtml(error?.stack || error?.message || String(error))}</pre>
+        </body>
+      </html>
+    `);
+  }
 });
 
 app.get("/attendance", requireDashboardAuth, async (_req, res) => {
