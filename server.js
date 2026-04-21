@@ -15361,28 +15361,11 @@ async function getAttendancePageData(orgId) {
         x.late_status === "No prior info",
     ),
   };
-
-  const { startDate: weekStartDate, endDateExclusive: weekEndDateExclusive } =
-    getWeekDateRangeForAttendance(APP_TIMEZONE);
-
-  const monthStartDate = attendanceDate.slice(0, 8) + "01";
-  const monthEndDateExclusive = addDaysToDateString(attendanceDate, 1);
-
-  const [weeklyAgg, monthlyAgg] = await Promise.all([
-    getAttendanceInsightsForRange(orgId, weekStartDate, weekEndDateExclusive),
-    getAttendanceInsightsForRange(orgId, monthStartDate, monthEndDateExclusive),
-  ]);
-
-  const weekly = buildWeeklyInsightsFromAgg(weeklyAgg);
-  const monthly = buildMonthlyInsightsFromAgg(monthlyAgg);
-
   return {
     attendance_date: attendanceDate,
     summary,
     rows,
     groups,
-    weekly,
-    monthly,
   };
 }
 
@@ -18203,7 +18186,7 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
                     </tr>
                   </thead>
                   <tbody id="exceptionsTableBody">
-                    <tr><td colspan="7" class="loading-state">Loading exceptions...</td></tr>
+                    <tr><td colspan="9" class="loading-state">Loading exceptions...</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -18352,8 +18335,8 @@ const monthlyInsightsGrid = document.getElementById('monthlyInsightsGrid');
               const summary = data.summary || {};
               const rows = data.rows || [];
               const groups = data.groups || {};
-              const weekly = data.weekly || {};
-const monthly = data.monthly || {};
+const weekly = {};
+const monthly = {};
 
               const cards = [
                 ['Logged in now', summary.logged_in_now ?? 0, 'Working currently'],
@@ -18464,6 +18447,54 @@ tableBody.innerHTML = sortedRows.map((row) => {
                 ? (groups.no_update_yet || []).map((x) => '<div class="alert-item">' + employeeLink(x.user_id, x.name) + '</div>').join('')
                 : '<div class="alert-item">Everyone has updated attendance</div>';
 
+const weeklyCards = [
+  {
+    title: 'Most late this week',
+    main: 'Coming soon',
+    lines: ['Temporarily disabled to keep attendance fast'],
+  },
+  {
+    title: 'Best attendance streak',
+    main: 'Coming soon',
+    lines: ['Temporarily disabled to keep attendance fast'],
+  },
+  {
+    title: 'Most break time this week',
+    main: 'Coming soon',
+    lines: ['Temporarily disabled to keep attendance fast'],
+  },
+  {
+    title: 'Highest work hours this week',
+    main: 'Coming soon',
+    lines: ['Temporarily disabled to keep attendance fast'],
+  },
+];
+
+const monthlyCards = [
+  {
+    title: 'Attendance leaders',
+    main: 'Coming soon',
+    lines: ['Temporarily disabled to keep attendance fast'],
+  },
+  {
+    title: 'Needs attention',
+    main: 'Coming soon',
+    lines: ['Temporarily disabled to keep attendance fast'],
+  },
+  {
+    title: 'Most late this month',
+    main: 'Coming soon',
+    lines: ['Temporarily disabled to keep attendance fast'],
+  },
+  {
+    title: 'Most leave this month',
+    main: 'Coming soon',
+    lines: ['Temporarily disabled to keep attendance fast'],
+  },
+];
+
+renderInsightsGrid(weeklyInsightsGrid, weeklyCards);
+renderInsightsGrid(monthlyInsightsGrid, monthlyCards);
             } catch (error) {
               console.error('Attendance page load failed:', error);
               statsGrid.innerHTML = '<div class="stat-card"><div class="stat-label">Error</div><div class="stat-value">!</div><div class="stat-note">' + escapeHtmlClient(error.message || 'Failed to load') + '</div></div>';
