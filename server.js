@@ -14957,6 +14957,263 @@ async function getDashboardSummaryData(orgId) {
   };
 }
 
+function formatTopPeople(items, formatter) {
+  return (items || []).slice(0, 3).map(formatter);
+}
+
+function rankRowsByNumber(rows, valueKey) {
+  return [...(rows || [])].sort(
+    (a, b) => Number(b[valueKey] || 0) - Number(a[valueKey] || 0),
+  );
+}
+
+function getWeekDateRangeForAttendance(timeZone = APP_TIMEZONE) {
+  const nowAttendanceDate = getAttendanceDayDateStringFromDate(new Date());
+  const current = new Date(
+    `${nowAttendanceDate}T00:00:00${APP_TIMEZONE_OFFSET}`,
+  );
+  const day = current.getUTCDay(); // 0=Sun
+  const diffToMonday = day === 0 ? 6 : day - 1;
+
+  const start = new Date(current);
+  start.setUTCDate(start.getUTCDate() - diffToMonday);
+
+  const startDate = start.toISOString().slice(0, 10);
+  const endDateExclusive = addDaysToDateString(nowAttendanceDate, 1);
+
+  return { startDate, endDateExclusive };
+}
+
+async function getAttendanceInsightsForRange(
+  orgId,
+  startDate,
+  endDateExclusive,
+) {
+  const { data: users, error: usersError } = await supabase
+    .from("users")
+    .select("id, name, role")
+    .eq("org_id", orgId)
+    .eq("is_active", true);
+
+  if (usersError) throw usersError;
+
+  const attendanceDates = [];
+  let cursor = startDate;
+  while (cursor < endDateExclusive) {
+    attendanceDates.push(cursor);
+    cursor = addDaysToDateString(cursor, 1);
+  }
+
+  const perUser = new Map();
+
+  for (const user of users || []) {
+    perUser.set(user.id, {
+      user_id: user.id,
+      name: user.name,
+      role: user.role,
+      late_count: 0,
+      no_prior_info_count: 0,
+      approved_late_count: 0,
+      leave_count: 0,
+      no_update_count: 0,
+      total_break_min: 0,
+      total_worked_min: 0,
+      present_days: 0,
+      on_time_days: 0,
+      streak_on_time: 0,
+      best_on_time_streak: 0,
+    });
+  }
+
+  for (const date of attendanceDates) {
+    const events = await getAttendanceEventsForAttendanceDay(date, orgId);
+    const lateRows = await getLateArrivalRowsForDate(date, orgId);
+    const plannedOffRows = await getPlannedOffRowsForDate(date, orgId);
+
+    const plannedOffUserIds = new Set(
+      (plannedOffRows || []).map((x) => x.user_id),
+    );
+    const lateByUser = new Map((lateRows || []).map((x) => [x.user_id, x]));
+    const eventsByUser = new Map();
+
+    for (const ev of events || []) {
+      if (!eventsByUser.has(ev.user_id)) eventsByUser.set(ev.user_id, []);
+      eventsByUser.get(ev.user_id).push(ev);
+    }
+
+    for (const user of users || []) {
+      const agg = perUser.get(user.id);
+      const userEvents = eventsByUser.get(user.id) || [];
+      const shiftStartIso = await getShiftStartIsoForUserToday(user.id, orgId);
+      const daySummary = getAttendanceSummaryFromEvents(userEvents, {
+        shiftStartIso,
+      });
+      const firstLogin = daySummary.firstLogin;
+      const lateInfo = lateByUser.get(user.id) || null;
+      const isLeave = plannedOffUserIds.has(user.id);
+
+      const lateStatus = lateInfo
+        ? lateInfo.is_approved
+          ? "Approved"
+          : "Not approved"
+        : firstLogin
+          ? daySummary.lateMinutes > 10
+            ? "No prior info"
+            : "No"
+          : "-";
+
+      if (isLeave) {
+        agg.leave_count += 1;
+        agg.streak_on_time = 0;
+        continue;
+      }
+
+      if (!firstLogin && userEvents.length === 0) {
+        agg.no_update_count += 1;
+        agg.streak_on_time = 0;
+        continue;
+      }
+
+      agg.present_days += 1;
+      agg.total_break_min += daySummary.breakMinutes || 0;
+      agg.total_worked_min += daySummary.workedMinutes || 0;
+
+      if (lateStatus === "Approved") agg.approved_late_count += 1;
+      if (lateStatus === "Not approved") agg.late_count += 1;
+      if (lateStatus === "No prior info") {
+        agg.late_count += 1;
+        agg.no_prior_info_count += 1;
+      }
+
+      if (lateStatus === "No") {
+        agg.on_time_days += 1;
+        agg.streak_on_time += 1;
+        if (agg.streak_on_time > agg.best_on_time_streak) {
+          agg.best_on_time_streak = agg.streak_on_time;
+        }
+      } else {
+        agg.streak_on_time = 0;
+      }
+    }
+  }
+
+  return Array.from(perUser.values());
+}
+
+function buildWeeklyInsightsFromAgg(aggRows) {
+  const mostLate = [...aggRows]
+    .filter((x) => x.late_count > 0)
+    .sort((a, b) => b.late_count - a.late_count);
+
+  const bestStreak = [...aggRows]
+    .filter((x) => x.best_on_time_streak > 0)
+    .sort((a, b) => b.best_on_time_streak - a.best_on_time_streak);
+
+  const mostBreak = [...aggRows]
+    .filter((x) => x.total_break_min > 0)
+    .sort((a, b) => b.total_break_min - a.total_break_min);
+
+  const highestWork = [...aggRows]
+    .filter((x) => x.total_worked_min > 0)
+    .sort((a, b) => b.total_worked_min - a.total_worked_min);
+
+  return {
+    most_late_count_text: mostLate[0] ? String(mostLate[0].late_count) : "-",
+    most_late_lines: formatTopPeople(
+      mostLate,
+      (x) => `${x.name} — ${x.late_count} late login(s)`,
+    ),
+
+    best_streak_text: bestStreak[0]
+      ? `${bestStreak[0].best_on_time_streak} days`
+      : "-",
+    best_streak_lines: formatTopPeople(
+      bestStreak,
+      (x) => `${x.name} — ${x.best_on_time_streak} on-time day streak`,
+    ),
+
+    most_break_time_text: mostBreak[0]
+      ? formatDurationMinutes(mostBreak[0].total_break_min)
+      : "-",
+    most_break_time_lines: formatTopPeople(
+      mostBreak,
+      (x) => `${x.name} — ${formatDurationMinutes(x.total_break_min)} break`,
+    ),
+
+    highest_work_hours_text: highestWork[0]
+      ? formatDurationMinutes(highestWork[0].total_worked_min)
+      : "-",
+    highest_work_hours_lines: formatTopPeople(
+      highestWork,
+      (x) => `${x.name} — ${formatDurationMinutes(x.total_worked_min)} worked`,
+    ),
+  };
+}
+
+function buildMonthlyInsightsFromAgg(aggRows) {
+  const leaders = [...aggRows]
+    .filter((x) => x.present_days > 0)
+    .map((x) => {
+      const score =
+        x.on_time_days * 3 +
+        x.present_days * 1 -
+        x.late_count * 2 -
+        x.no_update_count * 3;
+      return { ...x, attendance_score: score };
+    })
+    .sort((a, b) => b.attendance_score - a.attendance_score);
+
+  const needsAttention = [...aggRows]
+    .map((x) => {
+      const risk =
+        x.late_count * 2 +
+        x.no_prior_info_count * 3 +
+        x.no_update_count * 3 +
+        x.leave_count * 1;
+      return { ...x, attendance_risk: risk };
+    })
+    .filter((x) => x.attendance_risk > 0)
+    .sort((a, b) => b.attendance_risk - a.attendance_risk);
+
+  const mostLate = [...aggRows]
+    .filter((x) => x.late_count > 0)
+    .sort((a, b) => b.late_count - a.late_count);
+
+  const mostLeave = [...aggRows]
+    .filter((x) => x.leave_count > 0)
+    .sort((a, b) => b.leave_count - a.leave_count);
+
+  return {
+    attendance_leaders_text: leaders[0]
+      ? String(leaders[0].attendance_score)
+      : "-",
+    attendance_leader_lines: formatTopPeople(
+      leaders,
+      (x) => `${x.name} — score ${x.attendance_score}`,
+    ),
+
+    needs_attention_text: needsAttention[0]
+      ? String(needsAttention[0].attendance_risk)
+      : "-",
+    needs_attention_lines: formatTopPeople(
+      needsAttention,
+      (x) => `${x.name} — risk ${x.attendance_risk}`,
+    ),
+
+    most_late_text: mostLate[0] ? String(mostLate[0].late_count) : "-",
+    most_late_lines: formatTopPeople(
+      mostLate,
+      (x) => `${x.name} — ${x.late_count} late login(s)`,
+    ),
+
+    most_leave_text: mostLeave[0] ? String(mostLeave[0].leave_count) : "-",
+    most_leave_lines: formatTopPeople(
+      mostLeave,
+      (x) => `${x.name} — ${x.leave_count} leave day(s)`,
+    ),
+  };
+}
+
 async function getAttendancePageData(orgId) {
   const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
   const { startUtc, endUtc } = getCurrentAttendanceDayRange();
@@ -15105,11 +15362,27 @@ async function getAttendancePageData(orgId) {
     ),
   };
 
+  const { startDate: weekStartDate, endDateExclusive: weekEndDateExclusive } =
+    getWeekDateRangeForAttendance(APP_TIMEZONE);
+
+  const monthStartDate = attendanceDate.slice(0, 8) + "01";
+  const monthEndDateExclusive = addDaysToDateString(attendanceDate, 1);
+
+  const [weeklyAgg, monthlyAgg] = await Promise.all([
+    getAttendanceInsightsForRange(orgId, weekStartDate, weekEndDateExclusive),
+    getAttendanceInsightsForRange(orgId, monthStartDate, monthEndDateExclusive),
+  ]);
+
+  const weekly = buildWeeklyInsightsFromAgg(weeklyAgg);
+  const monthly = buildMonthlyInsightsFromAgg(monthlyAgg);
+
   return {
     attendance_date: attendanceDate,
     summary,
     rows,
     groups,
+    weekly,
+    monthly,
   };
 }
 
@@ -17743,6 +18016,69 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
             min-width: 260px;
             text-align: center;
           }
+          
+          .insight-section-title {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.insight-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.insight-card-title {
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.insight-card-main {
+  font-size: 24px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.insight-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.insight-line {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.insight-subtle {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 1100px) {
+  .insight-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .insight-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
           .loading-spinner {
             width: 30px;
@@ -17802,6 +18138,24 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
                 </div>
               </div>
             </div>
+            
+            <div class="panel">
+  <h2 style="margin-top:0;">Weekly & Monthly Insights</h2>
+
+  <div class="insight-section">
+    <div class="insight-section-title">This week</div>
+    <div id="weeklyInsightsGrid" class="insight-grid">
+      <div class="loading-state">Loading weekly insights...</div>
+    </div>
+  </div>
+
+  <div class="insight-section" style="margin-top:18px;">
+    <div class="insight-section-title">This month</div>
+    <div id="monthlyInsightsGrid" class="insight-grid">
+      <div class="loading-state">Loading monthly insights...</div>
+    </div>
+  </div>
+</div>
 
             <div class="panel">
               <h2 style="margin-top:0;">Live employee table</h2>
@@ -17951,6 +18305,28 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
               window.location.href = '/attendance/' + userId;
             }, 80);
           }
+          
+          function renderInsightLines(items, emptyText = '-') {
+  if (!items || !items.length) {
+    return '<div class="insight-subtle">' + escapeHtmlClient(emptyText) + '</div>';
+  }
+
+  return '<div class="insight-list">' + items.map((item) => {
+    return '<div class="insight-line">' + escapeHtmlClient(item) + '</div>';
+  }).join('') + '</div>';
+}
+
+function renderInsightsGrid(target, cards) {
+  if (!target) return;
+
+  target.innerHTML = cards.map((card) => {
+    return '<div class="insight-card">' +
+      '<div class="insight-card-title">' + escapeHtmlClient(card.title) + '</div>' +
+      '<div class="insight-card-main">' + escapeHtmlClient(card.main ?? '-') + '</div>' +
+      renderInsightLines(card.lines || [], 'No data yet') +
+    '</div>';
+  }).join('');
+}
 
           async function loadAttendancePage() {
             const statsGrid = document.getElementById('statsGrid');
@@ -17961,6 +18337,8 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
             const liveGroups = document.getElementById('liveGroups');
             const leaveList = document.getElementById('leaveList');
             const noUpdateList = document.getElementById('noUpdateList');
+            const weeklyInsightsGrid = document.getElementById('weeklyInsightsGrid');
+const monthlyInsightsGrid = document.getElementById('monthlyInsightsGrid');
 
             try {
               const res = await fetch('/api/attendance');
@@ -17974,6 +18352,8 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
               const summary = data.summary || {};
               const rows = data.rows || [];
               const groups = data.groups || {};
+              const weekly = data.weekly || {};
+const monthly = data.monthly || {};
 
               const cards = [
                 ['Logged in now', summary.logged_in_now ?? 0, 'Working currently'],
