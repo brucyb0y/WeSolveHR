@@ -2707,6 +2707,26 @@ function parseTimeValueToTodayIso(timeValue) {
   return parseLocalDateTimeForToday(raw);
 }
 
+async function getAttendanceInsightsData(orgId) {
+  const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
+
+  const { startDate: weekStartDate, endDateExclusive: weekEndDateExclusive } =
+    getWeekDateRangeForAttendance(APP_TIMEZONE);
+
+  const monthStartDate = attendanceDate.slice(0, 8) + "01";
+  const monthEndDateExclusive = addDaysToDateString(attendanceDate, 1);
+
+  const [weeklyAgg, monthlyAgg] = await Promise.all([
+    getAttendanceInsightsForRange(orgId, weekStartDate, weekEndDateExclusive),
+    getAttendanceInsightsForRange(orgId, monthStartDate, monthEndDateExclusive),
+  ]);
+
+  return {
+    weekly: buildWeeklyInsightsFromAgg(weeklyAgg),
+    monthly: buildMonthlyInsightsFromAgg(monthlyAgg),
+  };
+}
+
 async function getShiftStartIsoForUserToday(userId, orgId) {
   const workProfile = await getUserWorkProfile(userId, orgId);
 
@@ -18508,6 +18528,107 @@ renderInsightsGrid(monthlyInsightsGrid, monthlyCards);
             }
           }
 
+async function loadAttendanceInsights() {
+  const weeklyInsightsGrid = document.getElementById('weeklyInsightsGrid');
+  const monthlyInsightsGrid = document.getElementById('monthlyInsightsGrid');
+
+  if (!weeklyInsightsGrid || !monthlyInsightsGrid) return;
+
+  function renderInsightLines(items, emptyText = '-') {
+    if (!items || !items.length) {
+      return '<div class="insight-subtle">' + escapeHtmlClient(emptyText) + '</div>';
+    }
+
+    return '<div class="insight-list">' + items.map((item) => {
+      return '<div class="insight-line">' + escapeHtmlClient(item) + '</div>';
+    }).join('') + '</div>';
+  }
+
+  function renderInsightsGrid(target, cards) {
+    target.innerHTML = cards.map((card) => {
+      return '<div class="insight-card">' +
+        '<div class="insight-card-title">' + escapeHtmlClient(card.title) + '</div>' +
+        '<div class="insight-card-main">' + escapeHtmlClient(card.main ?? '-') + '</div>' +
+        renderInsightLines(card.lines || [], 'No data yet') +
+      '</div>';
+    }).join('');
+  }
+
+  try {
+    const res = await fetch('/api/attendance/insights');
+    const json = await res.json();
+
+    if (!json.ok) {
+      throw new Error(json.error || 'Failed to load attendance insights');
+    }
+
+    const data = json.data || {};
+    const weekly = data.weekly || {};
+    const monthly = data.monthly || {};
+
+    const weeklyCards = [
+      {
+        title: 'Most late this week',
+        main: weekly.most_late_count_text ?? '-',
+        lines: weekly.most_late_lines || [],
+      },
+      {
+        title: 'Best attendance streak',
+        main: weekly.best_streak_text ?? '-',
+        lines: weekly.best_streak_lines || [],
+      },
+      {
+        title: 'Most break time this week',
+        main: weekly.most_break_time_text ?? '-',
+        lines: weekly.most_break_time_lines || [],
+      },
+      {
+        title: 'Highest work hours this week',
+        main: weekly.highest_work_hours_text ?? '-',
+        lines: weekly.highest_work_hours_lines || [],
+      },
+    ];
+
+    const monthlyCards = [
+      {
+        title: 'Attendance leaders',
+        main: monthly.attendance_leaders_text ?? '-',
+        lines: monthly.attendance_leader_lines || [],
+      },
+      {
+        title: 'Needs attention',
+        main: monthly.needs_attention_text ?? '-',
+        lines: monthly.needs_attention_lines || [],
+      },
+      {
+        title: 'Most late this month',
+        main: monthly.most_late_text ?? '-',
+        lines: monthly.most_late_lines || [],
+      },
+      {
+        title: 'Most leave this month',
+        main: monthly.most_leave_text ?? '-',
+        lines: monthly.most_leave_lines || [],
+      },
+    ];
+
+    renderInsightsGrid(weeklyInsightsGrid, weeklyCards);
+    renderInsightsGrid(monthlyInsightsGrid, monthlyCards);
+  } catch (error) {
+    console.error('Attendance insights load failed:', error);
+
+    weeklyInsightsGrid.innerHTML =
+      '<div class="insight-card"><div class="insight-card-title">This week</div><div class="insight-card-main">Failed</div><div class="insight-subtle">' +
+      escapeHtmlClient(error.message || 'Failed to load') +
+      '</div></div>';
+
+    monthlyInsightsGrid.innerHTML =
+      '<div class="insight-card"><div class="insight-card-title">This month</div><div class="insight-card-main">Failed</div><div class="insight-subtle">' +
+      escapeHtmlClient(error.message || 'Failed to load') +
+      '</div></div>';
+  }
+}
+
           const tabButtons = document.querySelectorAll('.tab-btn');
           const tabPanels = document.querySelectorAll('.tab-panel');
 
@@ -18523,6 +18644,9 @@ renderInsightsGrid(monthlyInsightsGrid, monthlyCards);
           });
 
           loadAttendancePage();
+loadAttendanceInsights();
+setInterval(loadAttendancePage, 60000);
+setInterval(loadAttendanceInsights, 5 * 60000);
 
           setInterval(() => {
             loadAttendancePage().catch((error) => {
@@ -18541,6 +18665,17 @@ renderInsightsGrid(monthlyInsightsGrid, monthlyCards);
       </body>
     </html>
   `);
+});
+
+app.get("/api/attendance/insights", requireDashboardAuth, async (req, res) => {
+  try {
+    const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+    const data = await getAttendanceInsightsData(orgId);
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("attendance insights api error:", error);
+    return sendApiError(res, 500, "Failed to load attendance insights");
+  }
 });
 
 app.get("/logs", requireDashboardAuth, async (_req, res) => {
