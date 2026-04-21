@@ -7274,7 +7274,7 @@ async function handleSelfAttendance(res, user, attendanceCommand) {
 }
 
 async function getLogsPageData(orgId) {
-  let query = supabase
+  let logsQuery = supabase
     .from("message_logs")
     .select(
       `
@@ -7293,23 +7293,70 @@ async function getLogsPageData(orgId) {
     .limit(100);
 
   if (orgId != null) {
-    query = query.eq("org_id", orgId);
+    logsQuery = logsQuery.eq("org_id", orgId);
   }
 
-  const { data, error } = await query;
+  const { data: logs, error: logsError } = await logsQuery;
+  if (logsError) throw logsError;
 
-  if (error) throw error;
+  const messageSids = [
+    ...new Set(
+      (logs || []).map((row) => row.twilio_message_sid).filter(Boolean),
+    ),
+  ];
 
-  return (data || []).map((row) => ({
-    id: row.id,
-    sender: row.profile_name || row.phone_number || "Unknown",
-    body: row.message_text,
-    message_sid: row.twilio_message_sid,
-    created_at: row.created_at,
-    created_at_text: row.created_at ? formatDateTime(row.created_at) : "-",
-    direction: row.direction || "-",
-    org_id: row.org_id,
-  }));
+  let processingMap = new Map();
+
+  if (messageSids.length) {
+    let processingQuery = supabase
+      .from("inbound_message_processing")
+      .select(
+        `
+        message_sid,
+        org_id,
+        status,
+        result_type,
+        result_ref_id,
+        error_message,
+        updated_at
+      `,
+      )
+      .in("message_sid", messageSids);
+
+    if (orgId != null) {
+      processingQuery = processingQuery.eq("org_id", orgId);
+    }
+
+    const { data: processingRows, error: processingError } =
+      await processingQuery;
+    if (processingError) throw processingError;
+
+    processingMap = new Map(
+      (processingRows || []).map((row) => [row.message_sid, row]),
+    );
+  }
+
+  return (logs || []).map((row) => {
+    const proc = processingMap.get(row.twilio_message_sid) || null;
+
+    return {
+      id: row.id,
+      sender: row.profile_name || row.phone_number || "Unknown",
+      body: row.message_text,
+      message_sid: row.twilio_message_sid,
+      created_at: row.created_at,
+      created_at_text: row.created_at ? formatDateTime(row.created_at) : "-",
+      direction: row.direction || "-",
+      org_id: row.org_id,
+
+      outcome_status: proc?.status || "unknown",
+      outcome_result_type: proc?.result_type || "-",
+      outcome_error: proc?.error_message || "",
+      outcome_updated_at: proc?.updated_at
+        ? formatDateTime(proc.updated_at)
+        : "-",
+    };
+  });
 }
 
 async function createPlannedOffDay(
@@ -18170,6 +18217,42 @@ th, td {
   vertical-align: top;
 }
 
+.log-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1px solid rgba(255,255,255,0.10);
+  white-space: nowrap;
+}
+
+.log-badge-success {
+  background: rgba(88, 201, 138, 0.16);
+  color: #c9ffe0;
+  border-color: rgba(88, 201, 138, 0.28);
+}
+
+.log-badge-danger {
+  background: rgba(239, 107, 115, 0.16);
+  color: #ffd7da;
+  border-color: rgba(239, 107, 115, 0.28);
+}
+
+.log-badge-warn {
+  background: rgba(243, 181, 98, 0.16);
+  color: #ffe4b8;
+  border-color: rgba(243, 181, 98, 0.28);
+}
+
+.log-badge-muted {
+  background: rgba(170, 182, 207, 0.14);
+  color: #d9e1f2;
+  border-color: rgba(170, 182, 207, 0.22);
+}
+
+
 th {
   color: var(--muted);
   font-size: 11px;
@@ -18214,6 +18297,9 @@ th {
     <th>Sender</th>
     <th>Message</th>
     <th>Direction</th>
+    <th>Outcome</th>
+    <th>Result Type</th>
+    <th>Error</th>
     <th>Org</th>
     <th>Message SID</th>
   </tr>
@@ -18233,18 +18319,30 @@ async function loadLogs() {
 
     if (!json.ok) return;
 
-    document.getElementById('logRows').innerHTML = (json.data || [])
-      .map(row =>
-        '<tr>' +
-          '<td>' + (row.created_at_text || row.created_at || '') + '</td>' +
-          '<td>' + (row.sender || '') + '</td>' +
-          '<td class="msg">' + (row.body || '') + '</td>' +
-          '<td>' + (row.direction || '-') + '</td>' +
-          '<td>' + (row.org_id ?? '-') + '</td>' +
-          '<td>' + (row.message_sid || '-') + '</td>' +
-        '</tr>'
-      )
-      .join('');
+function getOutcomeBadgeClass(status) {
+  const s = String(status || "").toLowerCase();
+
+  if (s === "completed") return "log-badge log-badge-success";
+  if (s === "failed") return "log-badge log-badge-danger";
+  if (s === "processing") return "log-badge log-badge-warn";
+  return "log-badge log-badge-muted";
+}
+
+document.getElementById('logRows').innerHTML = (json.data || [])
+  .map(row =>
+    '<tr>' +
+      '<td>' + (row.created_at_text || row.created_at || '') + '</td>' +
+      '<td>' + (row.sender || '') + '</td>' +
+      '<td class="msg">' + (row.body || '') + '</td>' +
+      '<td>' + (row.direction || '-') + '</td>' +
+      '<td><span class="' + getOutcomeBadgeClass(row.outcome_status) + '">' + (row.outcome_status || '-') + '</span></td>' +
+      '<td>' + (row.outcome_result_type || '-') + '</td>' +
+      '<td class="msg">' + (row.outcome_error || '-') + '</td>' +
+      '<td>' + (row.org_id ?? '-') + '</td>' +
+      '<td>' + (row.message_sid || '-') + '</td>' +
+    '</tr>'
+  )
+  .join('');
   } catch (err) {
     console.error('Failed to load logs:', err);
   }
