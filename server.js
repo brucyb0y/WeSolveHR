@@ -3596,6 +3596,9 @@ async function requireUserLogin(req, res, next) {
 
   if (!user) {
     req.session.destroy(() => {});
+    if (isApiRoute) {
+      return sendApiError(res, 401, "Session expired");
+    }
     return res.redirect("/login");
   }
 
@@ -3605,6 +3608,7 @@ async function requireUserLogin(req, res, next) {
 
 async function requireDashboardAuth(req, res, next) {
   try {
+    const isApiRoute = req.path.startsWith("/api/");
     // 1) Prefer real user session if present
     const sessionUserId = req.session?.userId;
 
@@ -3644,6 +3648,9 @@ async function requireDashboardAuth(req, res, next) {
 
     const header = req.get("Authorization") || "";
     if (!header.startsWith("Basic ")) {
+      if (isApiRoute) {
+        return sendApiError(res, 401, "Not authenticated");
+      }
       return res.redirect("/login");
     }
 
@@ -3653,6 +3660,9 @@ async function requireDashboardAuth(req, res, next) {
     try {
       decoded = Buffer.from(base64, "base64").toString("utf8");
     } catch {
+      if (isApiRoute) {
+        return sendApiError(res, 401, "Not authenticated");
+      }
       return res.redirect("/login");
     }
 
@@ -3661,8 +3671,10 @@ async function requireDashboardAuth(req, res, next) {
       separatorIndex >= 0 ? decoded.slice(0, separatorIndex) : "";
     const inputPass =
       separatorIndex >= 0 ? decoded.slice(separatorIndex + 1) : "";
-
     if (inputUser !== username || inputPass !== password) {
+      if (isApiRoute) {
+        return sendApiError(res, 401, "Not authenticated");
+      }
       return res.redirect("/login");
     }
 
@@ -18443,8 +18455,15 @@ function renderInsightsGrid(target, cards) {
 const monthlyInsightsGrid = document.getElementById('monthlyInsightsGrid');
 
             try {
-              const res = await fetch('/api/attendance');
-              const json = await res.json();
+const res = await fetch('/api/attendance');
+const contentType = res.headers.get('content-type') || '';
+
+if (!contentType.includes('application/json')) {
+  const text = await res.text();
+  throw new Error('Attendance API returned HTML instead of JSON');
+}
+
+const json = await res.json();
 
               if (!json.ok) {
                 throw new Error(json.error || 'Failed to load attendance');
@@ -18601,8 +18620,15 @@ async function loadAttendanceInsights() {
   if (!weeklyInsightsGrid || !monthlyInsightsGrid) return;
 
   try {
-    const res = await fetch('/api/attendance/insights');
-    const json = await res.json();
+const res = await fetch('/api/attendance/insights');
+const contentType = res.headers.get('content-type') || '';
+
+if (!contentType.includes('application/json')) {
+  const text = await res.text();
+  throw new Error('Attendance insights API returned HTML instead of JSON');
+}
+
+const json = await res.json();
 
     if (!json.ok) {
       throw new Error(json.error || 'Failed to load attendance insights');
