@@ -16578,17 +16578,14 @@ app.get("/api/users", requireDashboardAuth, async (_req, res) => {
   }
 });
 
-app.get("/api/attendance", requireDashboardAuth, async (_req, res) => {
+app.get("/api/attendance", requireDashboardAuth, async (req, res) => {
   try {
-    const data = await getAttendancePageData(DASHBOARD_ORG_ID);
+    const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+    const data = await getAttendancePageData(orgId);
     return sendApiSuccess(res, data);
   } catch (error) {
-    console.error("API /api/attendance error:", error);
-    return sendApiError(
-      res,
-      500,
-      error?.message || "Failed to load attendance",
-    );
+    console.error("attendance api error:", error);
+    return sendApiError(res, 500, "Failed to load attendance");
   }
 });
 
@@ -18490,91 +18487,6 @@ renderInsightsGrid(monthlyInsightsGrid, monthlyCards);
               noUpdateList.innerHTML = '<div class="alert-item">Failed to load attendance</div>';
             }
           }
-
-async function loadAttendanceInsights() {
-  const weeklyInsightsGrid = document.getElementById('weeklyInsightsGrid');
-  const monthlyInsightsGrid = document.getElementById('monthlyInsightsGrid');
-
-  if (!weeklyInsightsGrid || !monthlyInsightsGrid) return;
-
-  try {
-    const res = await fetch('/api/attendance/insights');
-    const json = await res.json();
-
-    if (!json.ok) {
-      throw new Error(json.error || 'Failed to load attendance insights');
-    }
-
-    const data = json.data || {};
-    const weekly = data.weekly || {};
-    const monthly = data.monthly || {};
-
-    const weeklyCards = [
-      {
-        title: 'Most late this week',
-        main: weekly.most_late_count_text ?? '-',
-        lines: weekly.most_late_lines || [],
-      },
-      {
-        title: 'Best attendance streak',
-        main: weekly.best_streak_text ?? '-',
-        lines: weekly.best_streak_lines || [],
-      },
-      {
-        title: 'Most break time this week',
-        main: weekly.most_break_time_text ?? '-',
-        lines: weekly.most_break_time_lines || [],
-      },
-      {
-        title: 'Highest work hours this week',
-        main: weekly.highest_work_hours_text ?? '-',
-        lines: weekly.highest_work_hours_lines || [],
-      },
-    ];
-
-    const monthlyCards = [
-      {
-        title: 'Attendance leaders',
-        main: monthly.attendance_leaders_text ?? '-',
-        lines: monthly.attendance_leader_lines || [],
-      },
-      {
-        title: 'Needs attention',
-        main: monthly.needs_attention_text ?? '-',
-        lines: monthly.needs_attention_lines || [],
-      },
-      {
-        title: 'Most late this month',
-        main: monthly.most_late_text ?? '-',
-        lines: monthly.most_late_lines || [],
-      },
-      {
-        title: 'Most leave this month',
-        main: monthly.most_leave_text ?? '-',
-        lines: monthly.most_leave_lines || [],
-      },
-    ];
-
-    renderInsightsGrid(weeklyInsightsGrid, weeklyCards);
-    renderInsightsGrid(monthlyInsightsGrid, monthlyCards);
-  } catch (error) {
-    console.error('Attendance insights load failed:', error);
-
-    weeklyInsightsGrid.innerHTML =
-      '<div class="insight-card">' +
-        '<div class="insight-card-title">This week</div>' +
-        '<div class="insight-card-main">Failed</div>' +
-        '<div class="insight-subtle">' + escapeHtmlClient(error.message || 'Failed to load') + '</div>' +
-      '</div>';
-
-    monthlyInsightsGrid.innerHTML =
-      '<div class="insight-card">' +
-        '<div class="insight-card-title">This month</div>' +
-        '<div class="insight-card-main">Failed</div>' +
-        '<div class="insight-subtle">' + escapeHtmlClient(error.message || 'Failed to load') + '</div>' +
-      '</div>';
-  }
-}
 
 async function loadAttendanceInsights() {
   const weeklyInsightsGrid = document.getElementById('weeklyInsightsGrid');
