@@ -18692,11 +18692,6 @@ const weeklyCards = [
     lines: weekly.most_break_time_lines || [],
   },
   {
-    title: 'Highest work hours this week',
-    main: weekly.highest_work_hours_text ?? '-',
-    lines: weekly.highest_work_hours_lines || [],
-  },
-  {
     title: 'Careless login this week',
     main: weekly.careless_login_text ?? '-',
     lines: weekly.careless_login_lines || [],
