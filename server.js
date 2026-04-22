@@ -15028,10 +15028,6 @@ async function getAttendanceInsightsForRange(
     .eq("is_active", true);
 
   if (usersError) throw usersError;
-  const workProfilesByUser = await getWorkProfilesByUser(orgId);
-  const defaultShiftStartIso = parseLocalDateTimeForToday(
-    DEFAULT_SHIFT_START_TEXT,
-  );
 
   const attendanceDates = [];
   let cursor = startDate;
@@ -15084,19 +15080,14 @@ async function getAttendanceInsightsForRange(
 
     for (const user of users || []) {
       const agg = perUser.get(user.id);
+
       const attendanceStartDate = user.attendance_start_date || null;
       if (attendanceStartDate && date < attendanceStartDate) {
         continue;
       }
-      const userEvents = eventsByUser.get(user.id) || [];
-      const workProfile = workProfilesByUser.get(user.id);
-      let shiftStartIso = defaultShiftStartIso;
 
-      if (workProfile?.shift_start_time) {
-        shiftStartIso =
-          parseTimeValueToTodayIso(workProfile.shift_start_time) ||
-          defaultShiftStartIso;
-      }
+      const userEvents = eventsByUser.get(user.id) || [];
+      const shiftStartIso = await getShiftStartIsoForUserToday(user.id, orgId);
       const daySummary = getAttendanceSummaryFromEvents(userEvents, {
         shiftStartIso,
       });
@@ -16718,7 +16709,12 @@ app.get("/api/attendance/insights", requireDashboardAuth, async (req, res) => {
     const data = await getAttendanceInsightsData(orgId);
     return sendApiSuccess(res, data);
   } catch (error) {
-    console.error("attendance insights api error:", error);
+    console.error(
+      "attendance insights api error:",
+      error?.message,
+      error?.stack,
+      error,
+    );
     return sendApiError(res, 500, "Failed to load attendance insights");
   }
 });
