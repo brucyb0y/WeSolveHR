@@ -15042,6 +15042,11 @@ async function getAttendanceInsightsForRange(
       on_time_days: 0,
       streak_on_time: 0,
       best_on_time_streak: 0,
+
+      // new
+      careless_login_days: 0,
+      careless_login_min: 0,
+      careless_login_examples: [],
     });
   }
 
@@ -15098,6 +15103,18 @@ async function getAttendanceInsightsForRange(
       agg.total_break_min += daySummary.breakMinutes || 0;
       agg.total_worked_min += daySummary.workedMinutes || 0;
 
+      const workedMinutes = daySummary.workedMinutes || 0;
+      if (workedMinutes > LONG_SHIFT_THRESHOLD_MIN) {
+        agg.careless_login_days += 1;
+        agg.careless_login_min += workedMinutes;
+
+        if (agg.careless_login_examples.length < 3) {
+          agg.careless_login_examples.push(
+            `${date} — ${formatDurationMinutes(workedMinutes)} worked`,
+          );
+        }
+      }
+
       if (lateStatus === "Approved") agg.approved_late_count += 1;
       if (lateStatus === "Not approved") agg.late_count += 1;
       if (lateStatus === "No prior info") {
@@ -15137,11 +15154,41 @@ function buildWeeklyInsightsFromAgg(aggRows) {
     .filter((x) => x.total_worked_min > 0)
     .sort((a, b) => b.total_worked_min - a.total_worked_min);
 
+  const carelessLogin = [...aggRows]
+    .filter((x) => Number(x.careless_login_days || 0) > 0)
+    .sort((a, b) => {
+      if (
+        Number(b.careless_login_days || 0) !==
+        Number(a.careless_login_days || 0)
+      ) {
+        return (
+          Number(b.careless_login_days || 0) -
+          Number(a.careless_login_days || 0)
+        );
+      }
+      return (
+        Number(b.careless_login_min || 0) - Number(a.careless_login_min || 0)
+      );
+    });
+
   return {
     most_late_count_text: mostLate[0] ? String(mostLate[0].late_count) : "-",
     most_late_lines: formatTopPeople(
       mostLate,
       (x) => `${x.name} — ${x.late_count} late login(s)`,
+    ),
+    careless_login_text: carelessLogin[0]
+      ? `${carelessLogin[0].careless_login_days} day(s)`
+      : "-",
+
+    careless_login_lines: formatTopPeople(
+      carelessLogin,
+      (x) =>
+        `${x.name} — ${x.careless_login_days} day(s) above 10h${
+          x.careless_login_examples?.length
+            ? ` | ${x.careless_login_examples[0]}`
+            : ""
+        }`,
     ),
 
     best_streak_text: bestStreak[0]
@@ -15195,6 +15242,23 @@ function buildMonthlyInsightsFromAgg(aggRows) {
     .filter((x) => x.attendance_risk > 0)
     .sort((a, b) => b.attendance_risk - a.attendance_risk);
 
+  const carelessLogin = [...aggRows]
+    .filter((x) => Number(x.careless_login_days || 0) > 0)
+    .sort((a, b) => {
+      if (
+        Number(b.careless_login_days || 0) !==
+        Number(a.careless_login_days || 0)
+      ) {
+        return (
+          Number(b.careless_login_days || 0) -
+          Number(a.careless_login_days || 0)
+        );
+      }
+      return (
+        Number(b.careless_login_min || 0) - Number(a.careless_login_min || 0)
+      );
+    });
+
   const mostLate = [...aggRows]
     .filter((x) => x.late_count > 0)
     .sort((a, b) => b.late_count - a.late_count);
@@ -15224,6 +15288,14 @@ function buildMonthlyInsightsFromAgg(aggRows) {
     most_late_lines: formatTopPeople(
       mostLate,
       (x) => `${x.name} — ${x.late_count} late login(s)`,
+    ),
+    careless_login_text: carelessLogin[0]
+      ? `${carelessLogin[0].careless_login_days} day(s)`
+      : "-",
+
+    careless_login_lines: formatTopPeople(
+      carelessLogin,
+      (x) => `${x.name} — ${x.careless_login_days} day(s) above 10h`,
     ),
 
     most_leave_text: mostLeave[0] ? String(mostLeave[0].leave_count) : "-",
@@ -18091,6 +18163,18 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
   }
 }
 
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 1100px) {
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
           .loading-spinner {
             width: 30px;
             height: 30px;
@@ -18133,22 +18217,28 @@ app.get("/attendance", requireDashboardAuth, async (_req, res) => {
             <button class="tab-btn" data-tab="summary">Team Summary</button>
           </div>
 
-          <div id="tab-overview" class="tab-panel active">
-            <div class="grid-2">
-              <div class="panel">
-                <h2 style="margin-top:0;">Needs attention now</h2>
-                <div id="attentionNow" class="alert-list">
-                  <div class="loading-state">Loading...</div>
-                </div>
-              </div>
+<div class="grid-3">
+  <div class="panel">
+    <h2 style="margin-top:0;">Needs attention now</h2>
+    <div id="attentionNow" class="alert-list">
+      <div class="loading-state">Loading...</div>
+    </div>
+  </div>
 
-              <div class="panel">
-                <h2 style="margin-top:0;">Live grouped view</h2>
-                <div id="liveGroups" class="alert-list">
-                  <div class="loading-state">Loading...</div>
-                </div>
-              </div>
-            </div>
+  <div class="panel">
+    <h2 style="margin-top:0;">Careless login</h2>
+    <div id="carelessLoginList" class="alert-list">
+      <div class="loading-state">Loading...</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2 style="margin-top:0;">Live grouped view</h2>
+    <div id="liveGroups" class="alert-list">
+      <div class="loading-state">Loading...</div>
+    </div>
+  </div>
+</div>
             
             <div class="panel">
   <h2 style="margin-top:0;">Weekly & Monthly Insights</h2>
@@ -18345,6 +18435,7 @@ function renderInsightsGrid(target, cards) {
             const exceptionsBody = document.getElementById('exceptionsTableBody');
             const summaryBody = document.getElementById('summaryTableBody');
             const attentionNow = document.getElementById('attentionNow');
+            const carelessLoginList = document.getElementById('carelessLoginList');
             const liveGroups = document.getElementById('liveGroups');
             const leaveList = document.getElementById('leaveList');
             const noUpdateList = document.getElementById('noUpdateList');
@@ -18361,8 +18452,11 @@ const monthlyInsightsGrid = document.getElementById('monthlyInsightsGrid');
 
               const data = json.data || {};
               const summary = data.summary || {};
-              const rows = data.rows || [];
               const groups = data.groups || {};
+const rows = data.rows || [];
+const carelessRows = rows.filter((row) =>
+  Array.isArray(row.flags) && row.flags.includes('Long shift')
+);
 
               const cards = [
                 ['Logged in now', summary.logged_in_now ?? 0, 'Working currently'],
@@ -18374,8 +18468,7 @@ const monthlyInsightsGrid = document.getElementById('monthlyInsightsGrid');
                 ['Late not approved', summary.unapproved_late ?? 0, 'Needs attention'],
                 ['No prior info', summary.no_prior_info_late ?? 0, 'Joined late directly'],
                 ['Long breaks', summary.long_break_flags ?? 0, 'Break exception'],
-                ['Long shifts', summary.long_shift_flags ?? 0, 'Shift exception'],
-              ];
+['Careless login', summary.long_shift_flags ?? 0, 'Worked above 10h, likely wrong entry'],              ];
 
               statsGrid.innerHTML = cards.map((card) => {
                 return '<div class="stat-card">' +
@@ -18437,26 +18530,38 @@ tableBody.innerHTML = sortedRows.map((row) => {
                 '</tr>';
               }).join('') || '<tr><td colspan="8" class="empty-cell">No summary data</td></tr>';
 
-              const attentionItems = [];
-              if ((summary.unapproved_late ?? 0) > 0) {
-                attentionItems.push('Late not approved: ' + summary.unapproved_late);
-              }
-              if ((summary.no_prior_info_late ?? 0) > 0) {
-                attentionItems.push('Late without prior info: ' + summary.no_prior_info_late);
-              }
-              if ((summary.long_break_flags ?? 0) > 0) {
-                attentionItems.push('Long break flags: ' + summary.long_break_flags);
-              }
-              if ((summary.long_shift_flags ?? 0) > 0) {
-                attentionItems.push('Long shift flags: ' + summary.long_shift_flags);
-              }
-              if ((summary.not_logged_in_yet ?? 0) > 0) {
-                attentionItems.push('No attendance update yet: ' + summary.not_logged_in_yet);
-              }
+const attentionItems = [];
+if ((summary.unapproved_late ?? 0) > 0) {
+  attentionItems.push('Late not approved: ' + summary.unapproved_late);
+}
+if ((summary.no_prior_info_late ?? 0) > 0) {
+  attentionItems.push('Late without prior info: ' + summary.no_prior_info_late);
+}
+if ((summary.long_break_flags ?? 0) > 0) {
+  attentionItems.push('Long break flags: ' + summary.long_break_flags);
+}
+if ((summary.long_shift_flags ?? 0) > 0) {
+  attentionItems.push('Careless login: ' + summary.long_shift_flags);
+}
+if ((summary.not_logged_in_yet ?? 0) > 0) {
+  attentionItems.push('No attendance update yet: ' + summary.not_logged_in_yet);
+}
 
-              attentionNow.innerHTML = attentionItems.length
-                ? attentionItems.map((item) => '<div class="alert-item">' + escapeHtmlClient(item) + '</div>').join('')
-                : '<div class="alert-item">No immediate issues right now</div>';
+attentionNow.innerHTML = attentionItems.length
+  ? attentionItems.map((item) => '<div class="alert-item">' + escapeHtmlClient(item) + '</div>').join('')
+  : '<div class="alert-item">No immediate issues right now</div>';
+          
+if (carelessLoginList) {
+  carelessLoginList.innerHTML = carelessRows.length
+    ? carelessRows.map((row) => {
+        return '<div class="alert-item">' +
+          '<strong>' + employeeLink(row.user_id, row.name) + '</strong><br>' +
+          'Worked: ' + escapeHtmlClient(row.worked_today_text || '-') +
+          '<br><span class="muted">Likely incorrect attendance entry</span>' +
+        '</div>';
+      }).join('')
+    : '<div class="alert-item">No careless login issues today</div>';
+}
 
               liveGroups.innerHTML = [
                 '<div class="alert-item"><strong>On break now:</strong><br>' + ((groups.on_break_now || []).map((x) => escapeHtmlClient(x.name)).join('<br>') || 'None') + '</div>',
@@ -18483,6 +18588,9 @@ noUpdateList.innerHTML = (groups.no_update_yet || []).length
               liveGroups.innerHTML = '<div class="alert-item">Failed to load attendance</div>';
               leaveList.innerHTML = '<div class="alert-item">Failed to load attendance</div>';
               noUpdateList.innerHTML = '<div class="alert-item">Failed to load attendance</div>';
+              if (carelessLoginList) {
+  carelessLoginList.innerHTML = '<div class="alert-item">Failed to load attendance</div>';
+}
             }
           }
 
@@ -18504,51 +18612,61 @@ async function loadAttendanceInsights() {
     const weekly = data.weekly || {};
     const monthly = data.monthly || {};
 
-    const weeklyCards = [
-      {
-        title: 'Most late this week',
-        main: weekly.most_late_count_text ?? '-',
-        lines: weekly.most_late_lines || [],
-      },
-      {
-        title: 'Best attendance streak',
-        main: weekly.best_streak_text ?? '-',
-        lines: weekly.best_streak_lines || [],
-      },
-      {
-        title: 'Most break time this week',
-        main: weekly.most_break_time_text ?? '-',
-        lines: weekly.most_break_time_lines || [],
-      },
-      {
-        title: 'Highest work hours this week',
-        main: weekly.highest_work_hours_text ?? '-',
-        lines: weekly.highest_work_hours_lines || [],
-      },
-    ];
+const weeklyCards = [
+  {
+    title: 'Most late this week',
+    main: weekly.most_late_count_text ?? '-',
+    lines: weekly.most_late_lines || [],
+  },
+  {
+    title: 'Best attendance streak',
+    main: weekly.best_streak_text ?? '-',
+    lines: weekly.best_streak_lines || [],
+  },
+  {
+    title: 'Most break time this week',
+    main: weekly.most_break_time_text ?? '-',
+    lines: weekly.most_break_time_lines || [],
+  },
+  {
+    title: 'Highest work hours this week',
+    main: weekly.highest_work_hours_text ?? '-',
+    lines: weekly.highest_work_hours_lines || [],
+  },
+  {
+    title: 'Careless login this week',
+    main: weekly.careless_login_text ?? '-',
+    lines: weekly.careless_login_lines || [],
+  },
+];
 
-    const monthlyCards = [
-      {
-        title: 'Attendance leaders',
-        main: monthly.attendance_leaders_text ?? '-',
-        lines: monthly.attendance_leader_lines || [],
-      },
-      {
-        title: 'Needs attention',
-        main: monthly.needs_attention_text ?? '-',
-        lines: monthly.needs_attention_lines || [],
-      },
-      {
-        title: 'Most late this month',
-        main: monthly.most_late_text ?? '-',
-        lines: monthly.most_late_lines || [],
-      },
-      {
-        title: 'Most leave this month',
-        main: monthly.most_leave_text ?? '-',
-        lines: monthly.most_leave_lines || [],
-      },
-    ];
+const monthlyCards = [
+  {
+    title: 'Attendance leaders',
+    main: monthly.attendance_leaders_text ?? '-',
+    lines: monthly.attendance_leader_lines || [],
+  },
+  {
+    title: 'Needs attention',
+    main: monthly.needs_attention_text ?? '-',
+    lines: monthly.needs_attention_lines || [],
+  },
+  {
+    title: 'Most late this month',
+    main: monthly.most_late_text ?? '-',
+    lines: monthly.most_late_lines || [],
+  },
+  {
+    title: 'Most leave this month',
+    main: monthly.most_leave_text ?? '-',
+    lines: monthly.most_leave_lines || [],
+  },
+  {
+    title: 'Careless login this month',
+    main: monthly.careless_login_text ?? '-',
+    lines: monthly.careless_login_lines || [],
+  },
+];
 
     renderInsightsGrid(weeklyInsightsGrid, weeklyCards);
     renderInsightsGrid(monthlyInsightsGrid, monthlyCards);
