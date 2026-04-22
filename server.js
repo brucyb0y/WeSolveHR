@@ -15116,7 +15116,7 @@ async function getAttendanceInsightsForRange(
       agg.total_worked_min += daySummary.workedMinutes || 0;
 
       const workedMinutes = daySummary.workedMinutes || 0;
-      if (workedMinutes > LONG_SHIFT_THRESHOLD_MIN) {
+      if (user.role !== "admin" && workedMinutes > LONG_SHIFT_THRESHOLD_MIN) {
         agg.careless_login_days += 1;
         agg.careless_login_min += workedMinutes;
 
@@ -15380,8 +15380,10 @@ async function getAttendancePageData(orgId) {
       else if (latest?.action) status = latest.action;
 
       const flags = [];
-      if (summary.longShiftFlag) flags.push("Long shift");
-      if (summary.longBreakFlag) flags.push("Long break");
+      if (user.role !== "admin" && summary.longShiftFlag)
+        flags.push("Long shift");
+      if (user.role !== "admin" && summary.longBreakFlag)
+        flags.push("Long break");
       if (lateInfo && !lateInfo.is_approved) flags.push("Late not approved");
       if (lateInfo && String(lateInfo.note || "").includes("TIME_UNSURE")) {
         flags.push("Time unsure");
@@ -15434,7 +15436,9 @@ async function getAttendancePageData(orgId) {
       (x) => x.status === "login" || x.status === "back",
     ).length,
     on_break_now: rows.filter((x) => x.status === "break").length,
-    not_logged_in_yet: rows.filter((x) => x.status === "no_update").length,
+    not_logged_in_yet: rows.filter(
+      (x) => x.role !== "admin" && x.status === "no_update",
+    ).length,
     on_leave_today: rows.filter((x) => x.status === "leave").length,
     late_today: rows.filter(
       (x) =>
@@ -15448,7 +15452,9 @@ async function getAttendancePageData(orgId) {
     no_prior_info_late: rows.filter((x) => x.late_status === "No prior info")
       .length,
     long_break_flags: rows.filter((x) => x.flags.includes("Long break")).length,
-    long_shift_flags: rows.filter((x) => x.flags.includes("Long shift")).length,
+    llong_shift_flags: rows.filter(
+      (x) => x.role !== "admin" && x.flags.includes("Long shift"),
+    ).length,
   };
 
   const groups = {
@@ -15457,7 +15463,9 @@ async function getAttendancePageData(orgId) {
     expected_late: rows.filter(
       (x) => x.late_status === "Approved" || x.late_status === "Not approved",
     ),
-    no_update_yet: rows.filter((x) => x.status === "no_update"),
+    no_update_yet: rows.filter(
+      (x) => x.role !== "admin" && x.status === "no_update",
+    ),
     exceptions: rows.filter(
       (x) =>
         x.flags.length > 0 ||
@@ -18474,7 +18482,9 @@ const json = await res.json();
               const groups = data.groups || {};
 const rows = data.rows || [];
 const carelessRows = rows.filter((row) =>
-  Array.isArray(row.flags) && row.flags.includes('Long shift')
+  row.role !== 'admin' &&
+  Array.isArray(row.flags) &&
+  row.flags.includes('Long shift')
 );
 
               const cards = [
