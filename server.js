@@ -18469,12 +18469,10 @@ tableBody.innerHTML = sortedRows.map((row) => {
                 ? (groups.on_leave_today || []).map((x) => '<div class="alert-item">' + employeeLink(x.user_id, x.name) + '</div>').join('')
                 : '<div class="alert-item">Nobody is on leave today</div>';
 
-              noUpdateList.innerHTML = (groups.no_update_yet || []).length
-                ? (groups.no_update_yet || []).map((x) => '<div class="alert-item">' + employeeLink(x.user_id, x.name) + '</div>').join('')
-                : '<div class="alert-item">Everyone has updated attendance</div>';
+noUpdateList.innerHTML = (groups.no_update_yet || []).length
+  ? (groups.no_update_yet || []).map((x) => '<div class="alert-item">' + employeeLink(x.user_id, x.name) + '</div>').join('')
+  : '<div class="alert-item">Everyone has updated attendance</div>';
 
-renderInsightsGrid(weeklyInsightsGrid, weeklyCards);
-renderInsightsGrid(monthlyInsightsGrid, monthlyCards);
             } catch (error) {
               console.error('Attendance page load failed:', error);
               statsGrid.innerHTML = '<div class="stat-card"><div class="stat-label">Error</div><div class="stat-value">!</div><div class="stat-note">' + escapeHtmlClient(error.message || 'Failed to load') + '</div></div>';
