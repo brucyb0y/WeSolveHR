@@ -15028,6 +15028,10 @@ async function getAttendanceInsightsForRange(
     .eq("is_active", true);
 
   if (usersError) throw usersError;
+  const workProfilesByUser = await getWorkProfilesByUser(orgId);
+  const defaultShiftStartIso = parseLocalDateTimeForToday(
+    DEFAULT_SHIFT_START_TEXT,
+  );
 
   const attendanceDates = [];
   let cursor = startDate;
@@ -15081,7 +15085,14 @@ async function getAttendanceInsightsForRange(
     for (const user of users || []) {
       const agg = perUser.get(user.id);
       const userEvents = eventsByUser.get(user.id) || [];
-      const shiftStartIso = await getShiftStartIsoForUserToday(user.id, orgId);
+      const workProfile = workProfilesByUser.get(user.id);
+      let shiftStartIso = defaultShiftStartIso;
+
+      if (workProfile?.shift_start_time) {
+        shiftStartIso =
+          parseTimeValueToTodayIso(workProfile.shift_start_time) ||
+          defaultShiftStartIso;
+      }
       const daySummary = getAttendanceSummaryFromEvents(userEvents, {
         shiftStartIso,
       });
@@ -15479,6 +15490,22 @@ async function getAttendancePageData(orgId) {
     rows,
     groups,
   };
+}
+
+async function getWorkProfilesByUser(orgId) {
+  const { data, error } = await supabase
+    .from("user_work_profiles")
+    .select(
+      "user_id, shift_start_time, employment_type, shift_end_time, working_hours",
+    );
+
+  if (error) throw error;
+
+  const map = new Map();
+  for (const row of data || []) {
+    map.set(row.user_id, row);
+  }
+  return map;
 }
 
 async function getTasksPageData(filters = {}, orgId) {
