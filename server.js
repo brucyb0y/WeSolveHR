@@ -18366,8 +18366,6 @@ const monthlyInsightsGrid = document.getElementById('monthlyInsightsGrid');
               const summary = data.summary || {};
               const rows = data.rows || [];
               const groups = data.groups || {};
-const weekly = {};
-const monthly = {};
 
               const cards = [
                 ['Logged in now', summary.logged_in_now ?? 0, 'Working currently'],
@@ -18478,52 +18476,6 @@ tableBody.innerHTML = sortedRows.map((row) => {
                 ? (groups.no_update_yet || []).map((x) => '<div class="alert-item">' + employeeLink(x.user_id, x.name) + '</div>').join('')
                 : '<div class="alert-item">Everyone has updated attendance</div>';
 
-const weeklyCards = [
-  {
-    title: 'Most late this week',
-    main: 'Coming soon',
-    lines: ['Temporarily disabled to keep attendance fast'],
-  },
-  {
-    title: 'Best attendance streak',
-    main: 'Coming soon',
-    lines: ['Temporarily disabled to keep attendance fast'],
-  },
-  {
-    title: 'Most break time this week',
-    main: 'Coming soon',
-    lines: ['Temporarily disabled to keep attendance fast'],
-  },
-  {
-    title: 'Highest work hours this week',
-    main: 'Coming soon',
-    lines: ['Temporarily disabled to keep attendance fast'],
-  },
-];
-
-const monthlyCards = [
-  {
-    title: 'Attendance leaders',
-    main: 'Coming soon',
-    lines: ['Temporarily disabled to keep attendance fast'],
-  },
-  {
-    title: 'Needs attention',
-    main: 'Coming soon',
-    lines: ['Temporarily disabled to keep attendance fast'],
-  },
-  {
-    title: 'Most late this month',
-    main: 'Coming soon',
-    lines: ['Temporarily disabled to keep attendance fast'],
-  },
-  {
-    title: 'Most leave this month',
-    main: 'Coming soon',
-    lines: ['Temporarily disabled to keep attendance fast'],
-  },
-];
-
 renderInsightsGrid(weeklyInsightsGrid, weeklyCards);
 renderInsightsGrid(monthlyInsightsGrid, monthlyCards);
             } catch (error) {
@@ -18538,6 +18490,91 @@ renderInsightsGrid(monthlyInsightsGrid, monthlyCards);
               noUpdateList.innerHTML = '<div class="alert-item">Failed to load attendance</div>';
             }
           }
+
+async function loadAttendanceInsights() {
+  const weeklyInsightsGrid = document.getElementById('weeklyInsightsGrid');
+  const monthlyInsightsGrid = document.getElementById('monthlyInsightsGrid');
+
+  if (!weeklyInsightsGrid || !monthlyInsightsGrid) return;
+
+  try {
+    const res = await fetch('/api/attendance/insights');
+    const json = await res.json();
+
+    if (!json.ok) {
+      throw new Error(json.error || 'Failed to load attendance insights');
+    }
+
+    const data = json.data || {};
+    const weekly = data.weekly || {};
+    const monthly = data.monthly || {};
+
+    const weeklyCards = [
+      {
+        title: 'Most late this week',
+        main: weekly.most_late_count_text ?? '-',
+        lines: weekly.most_late_lines || [],
+      },
+      {
+        title: 'Best attendance streak',
+        main: weekly.best_streak_text ?? '-',
+        lines: weekly.best_streak_lines || [],
+      },
+      {
+        title: 'Most break time this week',
+        main: weekly.most_break_time_text ?? '-',
+        lines: weekly.most_break_time_lines || [],
+      },
+      {
+        title: 'Highest work hours this week',
+        main: weekly.highest_work_hours_text ?? '-',
+        lines: weekly.highest_work_hours_lines || [],
+      },
+    ];
+
+    const monthlyCards = [
+      {
+        title: 'Attendance leaders',
+        main: monthly.attendance_leaders_text ?? '-',
+        lines: monthly.attendance_leader_lines || [],
+      },
+      {
+        title: 'Needs attention',
+        main: monthly.needs_attention_text ?? '-',
+        lines: monthly.needs_attention_lines || [],
+      },
+      {
+        title: 'Most late this month',
+        main: monthly.most_late_text ?? '-',
+        lines: monthly.most_late_lines || [],
+      },
+      {
+        title: 'Most leave this month',
+        main: monthly.most_leave_text ?? '-',
+        lines: monthly.most_leave_lines || [],
+      },
+    ];
+
+    renderInsightsGrid(weeklyInsightsGrid, weeklyCards);
+    renderInsightsGrid(monthlyInsightsGrid, monthlyCards);
+  } catch (error) {
+    console.error('Attendance insights load failed:', error);
+
+    weeklyInsightsGrid.innerHTML =
+      '<div class="insight-card">' +
+        '<div class="insight-card-title">This week</div>' +
+        '<div class="insight-card-main">Failed</div>' +
+        '<div class="insight-subtle">' + escapeHtmlClient(error.message || 'Failed to load') + '</div>' +
+      '</div>';
+
+    monthlyInsightsGrid.innerHTML =
+      '<div class="insight-card">' +
+        '<div class="insight-card-title">This month</div>' +
+        '<div class="insight-card-main">Failed</div>' +
+        '<div class="insight-subtle">' + escapeHtmlClient(error.message || 'Failed to load') + '</div>' +
+      '</div>';
+  }
+}
 
 async function loadAttendanceInsights() {
   const weeklyInsightsGrid = document.getElementById('weeklyInsightsGrid');
