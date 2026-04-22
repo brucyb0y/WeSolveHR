@@ -15023,7 +15023,7 @@ async function getAttendanceInsightsForRange(
 ) {
   const { data: users, error: usersError } = await supabase
     .from("users")
-    .select("id, name, role")
+    .select("id, name, role, attendance_start_date")
     .eq("org_id", orgId)
     .eq("is_active", true);
 
@@ -15084,6 +15084,10 @@ async function getAttendanceInsightsForRange(
 
     for (const user of users || []) {
       const agg = perUser.get(user.id);
+      const attendanceStartDate = user.attendance_start_date || null;
+      if (attendanceStartDate && date < attendanceStartDate) {
+        continue;
+      }
       const userEvents = eventsByUser.get(user.id) || [];
       const workProfile = workProfilesByUser.get(user.id);
       let shiftStartIso = defaultShiftStartIso;
