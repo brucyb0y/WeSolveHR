@@ -15234,26 +15234,6 @@ function buildMonthlyInsightsFromAgg(aggRows) {
   };
 }
 
-async function getAttendanceInsightsData(orgId) {
-  const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
-
-  const { startDate: weekStartDate, endDateExclusive: weekEndDateExclusive } =
-    getWeekDateRangeForAttendance(APP_TIMEZONE);
-
-  const monthStartDate = attendanceDate.slice(0, 8) + "01";
-  const monthEndDateExclusive = addDaysToDateString(attendanceDate, 1);
-
-  const [weeklyAgg, monthlyAgg] = await Promise.all([
-    getAttendanceInsightsForRange(orgId, weekStartDate, weekEndDateExclusive),
-    getAttendanceInsightsForRange(orgId, monthStartDate, monthEndDateExclusive),
-  ]);
-
-  return {
-    weekly: buildWeeklyInsightsFromAgg(weeklyAgg),
-    monthly: buildMonthlyInsightsFromAgg(monthlyAgg),
-  };
-}
-
 async function getAttendancePageData(orgId) {
   const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
   const { startUtc, endUtc } = getCurrentAttendanceDayRange();
