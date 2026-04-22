@@ -15234,6 +15234,26 @@ function buildMonthlyInsightsFromAgg(aggRows) {
   };
 }
 
+async function getAttendanceInsightsData(orgId) {
+  const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
+
+  const { startDate: weekStartDate, endDateExclusive: weekEndDateExclusive } =
+    getWeekDateRangeForAttendance(APP_TIMEZONE);
+
+  const monthStartDate = attendanceDate.slice(0, 8) + "01";
+  const monthEndDateExclusive = addDaysToDateString(attendanceDate, 1);
+
+  const [weeklyAgg, monthlyAgg] = await Promise.all([
+    getAttendanceInsightsForRange(orgId, weekStartDate, weekEndDateExclusive),
+    getAttendanceInsightsForRange(orgId, monthStartDate, monthEndDateExclusive),
+  ]);
+
+  return {
+    weekly: buildWeeklyInsightsFromAgg(weeklyAgg),
+    monthly: buildMonthlyInsightsFromAgg(monthlyAgg),
+  };
+}
+
 async function getAttendancePageData(orgId) {
   const attendanceDate = getAttendanceDayDateStringFromDate(new Date());
   const { startUtc, endUtc } = getCurrentAttendanceDayRange();
@@ -16589,6 +16609,17 @@ app.get("/api/attendance", requireDashboardAuth, async (_req, res) => {
       500,
       error?.message || "Failed to load attendance",
     );
+  }
+});
+
+app.get("/api/attendance/insights", requireDashboardAuth, async (req, res) => {
+  try {
+    const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+    const data = await getAttendanceInsightsData(orgId);
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("attendance insights api error:", error);
+    return sendApiError(res, 500, "Failed to load attendance insights");
   }
 });
 
@@ -18534,26 +18565,6 @@ async function loadAttendanceInsights() {
 
   if (!weeklyInsightsGrid || !monthlyInsightsGrid) return;
 
-  function renderInsightLines(items, emptyText = '-') {
-    if (!items || !items.length) {
-      return '<div class="insight-subtle">' + escapeHtmlClient(emptyText) + '</div>';
-    }
-
-    return '<div class="insight-list">' + items.map((item) => {
-      return '<div class="insight-line">' + escapeHtmlClient(item) + '</div>';
-    }).join('') + '</div>';
-  }
-
-  function renderInsightsGrid(target, cards) {
-    target.innerHTML = cards.map((card) => {
-      return '<div class="insight-card">' +
-        '<div class="insight-card-title">' + escapeHtmlClient(card.title) + '</div>' +
-        '<div class="insight-card-main">' + escapeHtmlClient(card.main ?? '-') + '</div>' +
-        renderInsightLines(card.lines || [], 'No data yet') +
-      '</div>';
-    }).join('');
-  }
-
   try {
     const res = await fetch('/api/attendance/insights');
     const json = await res.json();
@@ -18618,14 +18629,18 @@ async function loadAttendanceInsights() {
     console.error('Attendance insights load failed:', error);
 
     weeklyInsightsGrid.innerHTML =
-      '<div class="insight-card"><div class="insight-card-title">This week</div><div class="insight-card-main">Failed</div><div class="insight-subtle">' +
-      escapeHtmlClient(error.message || 'Failed to load') +
-      '</div></div>';
+      '<div class="insight-card">' +
+        '<div class="insight-card-title">This week</div>' +
+        '<div class="insight-card-main">Failed</div>' +
+        '<div class="insight-subtle">' + escapeHtmlClient(error.message || 'Failed to load') + '</div>' +
+      '</div>';
 
     monthlyInsightsGrid.innerHTML =
-      '<div class="insight-card"><div class="insight-card-title">This month</div><div class="insight-card-main">Failed</div><div class="insight-subtle">' +
-      escapeHtmlClient(error.message || 'Failed to load') +
-      '</div></div>';
+      '<div class="insight-card">' +
+        '<div class="insight-card-title">This month</div>' +
+        '<div class="insight-card-main">Failed</div>' +
+        '<div class="insight-subtle">' + escapeHtmlClient(error.message || 'Failed to load') + '</div>' +
+      '</div>';
   }
 }
 
@@ -18643,24 +18658,32 @@ async function loadAttendanceInsights() {
             });
           });
 
-          loadAttendancePage();
+loadAttendancePage();
 loadAttendanceInsights();
-setInterval(loadAttendancePage, 60000);
-setInterval(loadAttendanceInsights, 5 * 60000);
 
-          setInterval(() => {
-            loadAttendancePage().catch((error) => {
-              console.error('Periodic attendance load failed:', error);
-            });
-          }, 60000);
+setInterval(() => {
+  loadAttendancePage().catch((error) => {
+    console.error('Periodic attendance load failed:', error);
+  });
+}, 60000);
 
-          document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-              loadAttendancePage().catch((error) => {
-                console.error('Visibility attendance load failed:', error);
-              });
-            }
-          });
+setInterval(() => {
+  loadAttendanceInsights().catch((error) => {
+    console.error('Periodic attendance insights load failed:', error);
+  });
+}, 5 * 60000);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    loadAttendancePage().catch((error) => {
+      console.error('Visibility attendance load failed:', error);
+    });
+
+    loadAttendanceInsights().catch((error) => {
+      console.error('Visibility attendance insights load failed:', error);
+    });
+  }
+});
         </script>
       </body>
     </html>
