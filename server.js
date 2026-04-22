@@ -18619,12 +18619,25 @@ if (carelessLoginList) {
     : '<div class="alert-item">No careless login issues today</div>';
 }
 
-              liveGroups.innerHTML = [
-                '<div class="alert-item"><strong>On break now:</strong><br>' + ((groups.on_break_now || []).map((x) => escapeHtmlClient(x.name)).join('<br>') || 'None') + '</div>',
-                '<div class="alert-item"><strong>Expected late:</strong><br>' + ((groups.expected_late || []).map((x) => escapeHtmlClient(x.name + ' (' + (x.late_expected_login_text || '-') + ')')).join('<br>') || 'None') + '</div>',
-                '<div class="alert-item"><strong>No update yet:</strong><br>' + ((groups.no_update_yet || []).map((x) => escapeHtmlClient(x.name)).join('<br>') || 'None') + '</div>',
-                '<div class="alert-item"><strong>On leave today:</strong><br>' + ((groups.on_leave_today || []).map((x) => escapeHtmlClient(x.name)).join('<br>') || 'None') + '</div>'
-              ].join('');
+liveGroups.innerHTML = [
+  '<div class="alert-item"><strong>On break now:</strong><br>' +
+    ((groups.on_break_now || []).map((x) => employeeLink(x.user_id, x.name)).join('<br>') || 'None') +
+  '</div>',
+
+  '<div class="alert-item"><strong>Expected late:</strong><br>' +
+    ((groups.expected_late || []).map((x) =>
+      employeeLink(x.user_id, x.name) + ' (' + escapeHtmlClient(x.late_expected_login_text || '-') + ')'
+    ).join('<br>') || 'None') +
+  '</div>',
+
+  '<div class="alert-item"><strong>No update yet:</strong><br>' +
+    ((groups.no_update_yet || []).map((x) => employeeLink(x.user_id, x.name)).join('<br>') || 'None') +
+  '</div>',
+
+  '<div class="alert-item"><strong>On leave today:</strong><br>' +
+    ((groups.on_leave_today || []).map((x) => employeeLink(x.user_id, x.name)).join('<br>') || 'None') +
+  '</div>'
+].join('');
 
               leaveList.innerHTML = (groups.on_leave_today || []).length
                 ? (groups.on_leave_today || []).map((x) => '<div class="alert-item">' + employeeLink(x.user_id, x.name) + '</div>').join('')
