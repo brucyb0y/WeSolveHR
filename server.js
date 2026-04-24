@@ -2394,7 +2394,7 @@ function renderClientsListPage() {
   `;
 }
 
-function renderNewClientPage() {
+function renderNewClientPage({ users = [] }) {
   return `
     <html>
       <head>
@@ -2661,17 +2661,19 @@ function renderNewClientPage() {
   <div class="grid">
     <div class="field">
       <label>Account Manager</label>
-      <select name="account_manager_user_id">
-        <option value="">Select account manager</option>
-      </select>
+<select name="account_manager_user_id">
+  <option value="">Select account manager</option>
+  ${users.map((u) => `<option value="${u.id}">${u.name}</option>`).join("")}
+</select>
       <div class="hint">Later this will load active users from WeSolveHR.</div>
     </div>
 
     <div class="field">
       <label>Project Manager</label>
-      <select name="project_manager_user_id">
-        <option value="">Select project manager</option>
-      </select>
+<select name="project_manager_user_id">
+  <option value="">Select project manager</option>
+  ${users.map((u) => `<option value="${u.id}">${u.name}</option>`).join("")}
+</select>
       <div class="hint">Later this will load active users from WeSolveHR.</div>
     </div>
   </div>
@@ -17155,16 +17157,15 @@ app.get("/clients", requireDashboardAuth, async (_req, res) => {
 
 app.get("/clients/new", requireDashboardAuth, async (_req, res) => {
   try {
-    return res.status(200).type("html").send(renderNewClientPage());
+    const { data: users } = await supabase
+      .from("users")
+      .select("id, name")
+      .eq("is_active", true);
+
+    return res.status(200).type("html").send(renderNewClientPage({ users }));
   } catch (error) {
     console.error("New client page error:", error);
-    return res.status(500).type("html").send(`
-      <html>
-        <body>
-          <pre>${escapeHtml(error?.stack || error?.message || String(error))}</pre>
-        </body>
-      </html>
-    `);
+    return res.status(500).send("Error loading page");
   }
 });
 
