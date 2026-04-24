@@ -2208,6 +2208,454 @@ function renderQuickActionModal() {
   `;
 }
 
+function renderClientsListPage() {
+  return `
+    <html>
+      <head>
+        <title>Clients | WeSolveHR</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+          ${buildTopNavCss()}
+
+          .wrap {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px 18px 36px;
+          }
+
+          .topbar, .panel, .stat-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+
+          .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 18px 20px;
+          }
+
+          .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--primary);
+            font-weight: 700;
+            margin-bottom: 8px;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 30px;
+            letter-spacing: -0.04em;
+          }
+
+          .subtitle {
+            color: var(--muted);
+            margin-top: 8px;
+            font-size: 14px;
+          }
+
+          .action-btn {
+            display: inline-flex;
+            align-items: center;
+            text-decoration: none;
+            color: var(--text-strong);
+            padding: 11px 14px;
+            border-radius: 12px;
+            background: var(--primary-soft);
+            border: 1px solid color-mix(in srgb, var(--primary) 55%, transparent);
+            font-weight: 800;
+          }
+
+          .stats {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+          }
+
+          .stat-card {
+            padding: 14px;
+          }
+
+          .stat-label {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 700;
+          }
+
+          .stat-value {
+            margin-top: 10px;
+            font-size: 28px;
+            font-weight: 800;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+
+          th, td {
+            padding: 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            text-align: left;
+            font-size: 14px;
+          }
+
+          th {
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 12px;
+          }
+
+          .empty {
+            padding: 28px;
+            text-align: center;
+            color: var(--muted);
+          }
+
+          @media (max-width: 900px) {
+            .stats {
+              grid-template-columns: 1fr;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        ${renderTopNav("clients")}
+
+        <div class="wrap">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Client Workspace</div>
+              <h1>Clients</h1>
+              <div class="subtitle">Internal consulting CRM layer for client work, updates, actions, documents, and progress.</div>
+            </div>
+
+            <a class="action-btn" href="/clients/new">+ New Client</a>
+          </div>
+
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-label">Total Clients</div>
+              <div class="stat-value">0</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Active</div>
+              <div class="stat-value">0</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Waiting on Client</div>
+              <div class="stat-value">0</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">At Risk</div>
+              <div class="stat-value">0</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>Services</th>
+                  <th>Project Manager</th>
+                  <th>Status</th>
+                  <th>Health</th>
+                  <th>Open Work</th>
+                  <th>Waiting</th>
+                  <th>Last Update</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colspan="9" class="empty">
+                    No clients yet. Click “New Client” to start.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+function renderNewClientPage() {
+  return `
+    <html>
+      <head>
+        <title>New Client | WeSolveHR</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+          ${buildTopNavCss()}
+
+          .wrap {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px 18px 36px;
+          }
+
+          .topbar, .panel {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+
+          .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 18px 20px;
+          }
+
+          .panel {
+            padding: 20px;
+            margin-bottom: 16px;
+          }
+
+          .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--primary);
+            font-weight: 700;
+            margin-bottom: 8px;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 30px;
+            letter-spacing: -0.04em;
+          }
+
+          h2 {
+            margin: 0 0 14px;
+            font-size: 18px;
+          }
+
+          .subtitle {
+            color: var(--muted);
+            margin-top: 8px;
+            font-size: 14px;
+          }
+
+          .grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+          }
+
+          .field {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+          }
+
+          label {
+            font-size: 13px;
+            font-weight: 800;
+          }
+
+          input, select, textarea {
+            width: 100%;
+            padding: 12px 13px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.04);
+            color: var(--text);
+            font: inherit;
+          }
+
+          textarea {
+            min-height: 90px;
+            resize: vertical;
+          }
+
+          .hint {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.5;
+          }
+
+          .actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 18px;
+          }
+
+          .btn {
+            padding: 11px 14px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.12);
+            color: var(--text);
+            background: rgba(255,255,255,0.05);
+            font-weight: 800;
+            text-decoration: none;
+            cursor: pointer;
+          }
+
+          .btn-primary {
+            background: var(--primary-soft);
+            color: var(--text-strong);
+            border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+          }
+
+          @media (max-width: 800px) {
+            .grid {
+              grid-template-columns: 1fr;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        ${renderTopNav("clients")}
+
+        <div class="wrap">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Create Client</div>
+              <h1>New Client</h1>
+              <div class="subtitle">This page is the starting shell. Database save will come after DB tables are added.</div>
+            </div>
+            <a class="btn" href="/clients">← Back to Clients</a>
+          </div>
+
+          <form method="POST" action="/api/clients">
+            <div class="panel">
+              <h2>Basic Info</h2>
+              <div class="grid">
+                <div class="field">
+                  <label>Client Name</label>
+                  <input name="name" placeholder="Example: Everloop" />
+                </div>
+
+                <div class="field">
+                  <label>Company Name</label>
+                  <input name="company_name" placeholder="Example: Everloop AI Inc." />
+                </div>
+
+                <div class="field">
+                  <label>Slug</label>
+                  <input name="slug" placeholder="example: everloop" />
+                  <div class="hint">This will be used later in the client view link.</div>
+                </div>
+
+                <div class="field">
+                  <label>Status</label>
+                  <select name="status">
+                    <option value="active">Active</option>
+                    <option value="paused">Paused</option>
+                    <option value="onboarding">Onboarding</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label>Health</label>
+                  <select name="health_status">
+                    <option value="healthy">Healthy</option>
+                    <option value="watch">Watch</option>
+                    <option value="at_risk">At Risk</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label>Start Date</label>
+                  <input type="date" name="start_date" />
+                </div>
+              </div>
+
+              <div class="field" style="margin-top:14px;">
+                <label>Description</label>
+                <textarea name="description" placeholder="Short internal description of this client relationship..."></textarea>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h2>Services</h2>
+              <div class="grid">
+                <label><input type="checkbox" name="services" value="Tech" /> Tech</label>
+                <label><input type="checkbox" name="services" value="Sales" /> Sales</label>
+                <label><input type="checkbox" name="services" value="Marketing" /> Marketing</label>
+                <label><input type="checkbox" name="services" value="GTM" /> GTM</label>
+                <label><input type="checkbox" name="services" value="Design" /> Design</label>
+                <label><input type="checkbox" name="services" value="QA" /> QA</label>
+                <label><input type="checkbox" name="services" value="Operations" /> Operations</label>
+                <label><input type="checkbox" name="services" value="Support" /> Support</label>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h2>Primary Client Contact</h2>
+              <div class="grid">
+                <div class="field">
+                  <label>Name</label>
+                  <input name="contact_name" placeholder="Client contact name" />
+                </div>
+
+                <div class="field">
+                  <label>Email</label>
+                  <input name="contact_email" placeholder="email@example.com" />
+                </div>
+
+                <div class="field">
+                  <label>Phone</label>
+                  <input name="contact_phone" placeholder="+1..." />
+                </div>
+
+                <div class="field">
+                  <label>Role</label>
+                  <input name="contact_role" placeholder="Founder / CEO / PM" />
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h2>Internal Ownership</h2>
+              <div class="grid">
+                <div class="field">
+                  <label>Account Owner</label>
+                  <input name="account_owner" placeholder="Example: Aj" />
+                </div>
+
+                <div class="field">
+                  <label>Project Manager</label>
+                  <input name="project_manager" placeholder="Example: Niharika" />
+                </div>
+              </div>
+
+              <div class="actions">
+                <a class="btn" href="/clients">Cancel</a>
+                <button class="btn btn-primary" type="submit">Create Client</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
 function renderTopNav(active = "") {
   const items = [
     { href: "/dashboard", label: "Dashboard", key: "dashboard" },
@@ -2216,6 +2664,7 @@ function renderTopNav(active = "") {
     { href: "/logs", label: "Logs", key: "logs" },
     { href: "/bugs", label: "Bug Board", key: "bugs" },
     { href: "/reports", label: "Reports", key: "reports" },
+    { href: "/clients", label: "Clients", key: "clients" },
     { href: "/account", label: "My Account", key: "account" },
     { href: "/logout", label: "Logout", key: "logout" },
   ];
@@ -16653,6 +17102,44 @@ app.get("/", (_req, res) => {
       </body>
     </html>
   `);
+});
+
+app.get("/clients", requireDashboardAuth, async (_req, res) => {
+  try {
+    return res.status(200).type("html").send(renderClientsListPage());
+  } catch (error) {
+    console.error("Clients page error:", error);
+    return res.status(500).type("html").send(`
+      <html>
+        <body>
+          <pre>${escapeHtml(error?.stack || error?.message || String(error))}</pre>
+        </body>
+      </html>
+    `);
+  }
+});
+
+app.get("/clients/new", requireDashboardAuth, async (_req, res) => {
+  try {
+    return res.status(200).type("html").send(renderNewClientPage());
+  } catch (error) {
+    console.error("New client page error:", error);
+    return res.status(500).type("html").send(`
+      <html>
+        <body>
+          <pre>${escapeHtml(error?.stack || error?.message || String(error))}</pre>
+        </body>
+      </html>
+    `);
+  }
+});
+
+app.post("/api/clients", requireDashboardAuth, async (req, res) => {
+  return sendApiError(
+    res,
+    501,
+    "Client database tables are not added yet. This form shell is ready; saving comes in the DB phase.",
+  );
 });
 
 app.get("/dashboard", requireDashboardAuth, async (req, res) => {
