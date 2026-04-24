@@ -1539,6 +1539,47 @@ function isManagerOrAdmin(user) {
   return user?.role === "admin" || user?.role === "manager";
 }
 
+function normalizeSlug(input) {
+  return String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function ensureArray(value) {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+async function insertClientActivityLog({
+  orgId,
+  clientId,
+  actorUserId,
+  action,
+  entityType = null,
+  entityId = null,
+  oldValue = null,
+  newValue = null,
+}) {
+  const { error } = await supabase.from("client_activity_logs").insert([
+    {
+      org_id: orgId,
+      client_id: clientId,
+      actor_user_id: actorUserId || null,
+      action,
+      entity_type: entityType,
+      entity_id: entityId,
+      old_value: oldValue,
+      new_value: newValue,
+    },
+  ]);
+
+  if (error) {
+    console.error("insertClientActivityLog error:", error);
+  }
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -2208,7 +2249,45 @@ function renderQuickActionModal() {
   `;
 }
 
-function renderClientsListPage() {
+function renderClientsListPage({ clients = [], summary = {} } = {}) {
+  const rowsHtml = clients.length
+    ? clients
+        .map((client) => {
+          const serviceNames = (client.service_names || []).join(", ") || "-";
+
+          return `
+            <tr>
+              <td>
+                <div style="font-weight:800;">
+                  <a href="/clients/${client.id}" style="color:var(--text-strong); text-decoration:none;">
+                    ${escapeHtml(client.name)}
+                  </a>
+                </div>
+                <div class="muted">${escapeHtml(client.company_name || "-")}</div>
+              </td>
+              <td>${escapeHtml(serviceNames)}</td>
+              <td>${escapeHtml(client.project_manager_name || "-")}</td>
+              <td><span class="badge badge-info">${escapeHtml(client.status || "-")}</span></td>
+              <td><span class="${client.health_status === "at_risk" ? "badge badge-danger" : client.health_status === "watch" ? "badge badge-warn" : "badge badge-ok"}">${escapeHtml(client.health_status || "-")}</span></td>
+              <td>${escapeHtml(client.open_work_count || 0)}</td>
+              <td>${escapeHtml(client.waiting_count || 0)}</td>
+              <td>${escapeHtml(client.last_update_text || "-")}</td>
+              <td>
+                <a class="small-link" href="/clients/${client.id}">Open</a>
+                <a class="small-link" href="/clients/${client.id}/edit">Edit</a>
+              </td>
+            </tr>
+          `;
+        })
+        .join("")
+    : `
+      <tr>
+        <td colspan="9" class="empty">
+          No clients yet. Click “New Client” to start.
+        </td>
+      </tr>
+    `;
+
   return `
     <html>
       <head>
@@ -2309,6 +2388,7 @@ function renderClientsListPage() {
             border-bottom: 1px solid rgba(255,255,255,0.08);
             text-align: left;
             font-size: 14px;
+            vertical-align: top;
           }
 
           th {
@@ -2324,9 +2404,49 @@ function renderClientsListPage() {
             color: var(--muted);
           }
 
+          .small-link {
+            display:inline-flex;
+            margin-right:8px;
+            color:var(--primary);
+            font-weight:800;
+            text-decoration:none;
+          }
+
+          .badge {
+            display:inline-flex;
+            padding:6px 9px;
+            border-radius:999px;
+            font-size:12px;
+            font-weight:800;
+          }
+
+          .badge-ok {
+            background: var(--success-soft);
+            color: var(--text-strong);
+          }
+
+          .badge-warn {
+            background: var(--accent-soft);
+            color: var(--text-strong);
+          }
+
+          .badge-danger {
+            background: var(--danger-soft);
+            color: var(--text-strong);
+          }
+
+          .badge-info {
+            background: var(--info-soft);
+            color: var(--text-strong);
+          }
+
           @media (max-width: 900px) {
             .stats {
               grid-template-columns: 1fr;
+            }
+
+            .panel {
+              overflow-x: auto;
             }
           }
         </style>
@@ -2348,19 +2468,19 @@ function renderClientsListPage() {
           <div class="stats">
             <div class="stat-card">
               <div class="stat-label">Total Clients</div>
-              <div class="stat-value">0</div>
+              <div class="stat-value">${summary.total || 0}</div>
             </div>
             <div class="stat-card">
               <div class="stat-label">Active</div>
-              <div class="stat-value">0</div>
+              <div class="stat-value">${summary.active || 0}</div>
             </div>
             <div class="stat-card">
               <div class="stat-label">Waiting on Client</div>
-              <div class="stat-value">0</div>
+              <div class="stat-value">${summary.waiting || 0}</div>
             </div>
             <div class="stat-card">
               <div class="stat-label">At Risk</div>
-              <div class="stat-value">0</div>
+              <div class="stat-value">${summary.atRisk || 0}</div>
             </div>
           </div>
 
@@ -2380,11 +2500,7 @@ function renderClientsListPage() {
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td colspan="9" class="empty">
-                    No clients yet. Click “New Client” to start.
-                  </td>
-                </tr>
+                ${rowsHtml}
               </tbody>
             </table>
           </div>
@@ -2686,6 +2802,328 @@ function renderNewClientPage({ users = [] }) {
   </div>
 </div>
 </form>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+function renderClientWorkspacePage({
+  client,
+  contacts = [],
+  services = [],
+  workItems = [],
+  updates = [],
+  actions = [],
+  milestones = [],
+  documents = [],
+}) {
+  return `
+    <html>
+      <head>
+        <title>${escapeHtml(client?.name || "Client")} | WeSolveHR</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+          ${buildTopNavCss()}
+
+          .wrap {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px 18px 36px;
+          }
+
+          .topbar, .panel, .stat-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+
+          .topbar {
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            gap:16px;
+            flex-wrap:wrap;
+            margin-bottom:20px;
+            padding:18px 20px;
+          }
+
+          h1 {
+            margin:0;
+            font-size:30px;
+            letter-spacing:-0.04em;
+          }
+
+          .subtitle {
+            color:var(--muted);
+            margin-top:8px;
+            font-size:14px;
+          }
+
+          .eyebrow {
+            font-size:11px;
+            letter-spacing:0.16em;
+            text-transform:uppercase;
+            color:var(--primary);
+            font-weight:700;
+            margin-bottom:8px;
+          }
+
+          .btn {
+            display:inline-flex;
+            align-items:center;
+            text-decoration:none;
+            color:var(--text);
+            padding:10px 13px;
+            border-radius:12px;
+            background:rgba(255,255,255,0.05);
+            border:1px solid rgba(255,255,255,0.12);
+            font-weight:800;
+          }
+
+          .btn-primary {
+            background:var(--primary-soft);
+            color:var(--text-strong);
+            border-color:color-mix(in srgb, var(--primary) 55%, transparent);
+          }
+
+          .stats {
+            display:grid;
+            grid-template-columns:repeat(4, minmax(0, 1fr));
+            gap:12px;
+            margin-bottom:20px;
+          }
+
+          .stat-card {
+            padding:14px;
+          }
+
+          .stat-label {
+            color:var(--muted);
+            font-size:12px;
+            text-transform:uppercase;
+            letter-spacing:0.08em;
+            font-weight:700;
+          }
+
+          .stat-value {
+            margin-top:10px;
+            font-size:26px;
+            font-weight:800;
+          }
+
+          .tabs {
+            display:flex;
+            flex-wrap:wrap;
+            gap:10px;
+            margin-bottom:18px;
+          }
+
+          .tab {
+            padding:10px 14px;
+            border-radius:999px;
+            background:rgba(255,255,255,0.05);
+            border:1px solid rgba(255,255,255,0.10);
+            font-weight:800;
+          }
+
+          .grid-2 {
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:16px;
+          }
+
+          .panel {
+            padding:18px;
+            margin-bottom:16px;
+          }
+
+          .panel h2 {
+            margin:0 0 14px;
+            font-size:18px;
+          }
+
+          .item {
+            padding:12px 0;
+            border-top:1px solid rgba(255,255,255,0.08);
+          }
+
+          .item:first-child {
+            border-top:0;
+          }
+
+          .item-title {
+            font-weight:800;
+            margin-bottom:6px;
+          }
+
+          .meta {
+            color:var(--muted);
+            font-size:13px;
+            line-height:1.5;
+          }
+
+          @media (max-width: 900px) {
+            .stats, .grid-2 {
+              grid-template-columns:1fr;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        ${renderTopNav("clients")}
+
+        <div class="wrap">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Client Workspace</div>
+              <h1>${escapeHtml(client.name)}</h1>
+              <div class="subtitle">
+                ${escapeHtml(client.company_name || "-")} · ${escapeHtml(client.status || "-")} · ${escapeHtml(client.health_status || "-")}
+              </div>
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <a class="btn" href="/clients">← Clients</a>
+              <a class="btn btn-primary" href="/clients/${client.id}/edit">Edit Client</a>
+              <a class="btn" href="/clients/${client.id}/reset">Reset</a>
+            </div>
+          </div>
+
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-label">Services</div>
+              <div class="stat-value">${services.length}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Open Work</div>
+              <div class="stat-value">${workItems.length}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Actions Needed</div>
+              <div class="stat-value">${actions.length}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Contacts</div>
+              <div class="stat-value">${contacts.length}</div>
+            </div>
+          </div>
+
+          <div class="tabs">
+            <div class="tab">Overview</div>
+            <div class="tab">Work Items</div>
+            <div class="tab">Updates</div>
+            <div class="tab">Actions Needed</div>
+            <div class="tab">Milestones</div>
+            <div class="tab">Documents</div>
+            <div class="tab">Team / Contractors</div>
+            <div class="tab">Billing</div>
+            <div class="tab">Internal Ops</div>
+          </div>
+
+          <div class="grid-2">
+            <div class="panel">
+              <h2>Overview</h2>
+              <div class="meta"><strong>Description:</strong> ${escapeHtml(client.description || "-")}</div>
+              <div class="meta"><strong>Start Date:</strong> ${escapeHtml(client.start_date || "-")}</div>
+              <div class="meta"><strong>Slug:</strong> ${escapeHtml(client.slug || "-")}</div>
+              <div class="meta"><strong>Account Manager:</strong> ${escapeHtml(client.account_manager_name || "-")}</div>
+              <div class="meta"><strong>Project Manager:</strong> ${escapeHtml(client.project_manager_name || "-")}</div>
+            </div>
+
+            <div class="panel">
+              <h2>Services</h2>
+              ${
+                services.length
+                  ? services
+                      .map(
+                        (s) =>
+                          `<div class="item"><div class="item-title">${escapeHtml(s.name)}</div></div>`,
+                      )
+                      .join("")
+                  : `<div class="meta">No services selected.</div>`
+              }
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="panel">
+              <h2>Client Contacts</h2>
+              ${
+                contacts.length
+                  ? contacts
+                      .map(
+                        (c) => `
+                    <div class="item">
+                      <div class="item-title">${escapeHtml(c.name || "-")} ${c.is_primary ? "· Primary" : ""}</div>
+                      <div class="meta">${escapeHtml(c.role || "-")}</div>
+                      <div class="meta">${escapeHtml(c.email || "-")} · ${escapeHtml(c.phone || "-")}</div>
+                    </div>
+                  `,
+                      )
+                      .join("")
+                  : `<div class="meta">No contacts added.</div>`
+              }
+            </div>
+
+            <div class="panel">
+              <h2>Recent Updates</h2>
+              ${
+                updates.length
+                  ? updates
+                      .map(
+                        (u) => `
+                    <div class="item">
+                      <div class="item-title">${escapeHtml(u.title || "Update")}</div>
+                      <div class="meta">${escapeHtml(u.update_text || "")}</div>
+                    </div>
+                  `,
+                      )
+                      .join("")
+                  : `<div class="meta">No updates yet.</div>`
+              }
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="panel">
+              <h2>Open Work Items</h2>
+              ${
+                workItems.length
+                  ? workItems
+                      .map(
+                        (w) => `
+                    <div class="item">
+                      <div class="item-title">${escapeHtml(w.title)}</div>
+                      <div class="meta">${escapeHtml(w.status)} · ${escapeHtml(w.priority)} · Due ${escapeHtml(w.due_date || "-")}</div>
+                    </div>
+                  `,
+                      )
+                      .join("")
+                  : `<div class="meta">No work items yet.</div>`
+              }
+            </div>
+
+            <div class="panel">
+              <h2>Actions Needed</h2>
+              ${
+                actions.length
+                  ? actions
+                      .map(
+                        (a) => `
+                    <div class="item">
+                      <div class="item-title">${escapeHtml(a.title)}</div>
+                      <div class="meta">${escapeHtml(a.owner_type)} · ${escapeHtml(a.status)} · Due ${escapeHtml(a.due_date || "-")}</div>
+                    </div>
+                  `,
+                      )
+                      .join("")
+                  : `<div class="meta">No actions yet.</div>`
+              }
+            </div>
+          </div>
         </div>
       </body>
     </html>
@@ -17140,41 +17578,403 @@ app.get("/", (_req, res) => {
   `);
 });
 
-app.get("/clients", requireDashboardAuth, async (_req, res) => {
+app.get("/clients", requireDashboardAuth, async (req, res) => {
   try {
-    return res.status(200).type("html").send(renderClientsListPage());
+    const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+
+    const { data: clients, error } = await supabase
+      .from("clients")
+      .select(
+        `
+        id,
+        name,
+        company_name,
+        slug,
+        status,
+        health_status,
+        start_date,
+        description,
+        account_manager_user_id,
+        project_manager_user_id,
+        created_at,
+        account_manager:users!clients_account_manager_user_id_fkey(name),
+        project_manager:users!clients_project_manager_user_id_fkey(name)
+      `,
+      )
+      .eq("org_id", orgId)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("clients list error:", error);
+      return res.status(500).send("Failed to load clients");
+    }
+
+    const clientIds = (clients || []).map((c) => c.id);
+
+    let serviceRows = [];
+    if (clientIds.length) {
+      const { data: servicesData, error: servicesError } = await supabase
+        .from("client_services")
+        .select(
+          `
+          client_id,
+          services(name)
+        `,
+        )
+        .in("client_id", clientIds)
+        .eq("is_active", true)
+        .is("deleted_at", null);
+
+      if (servicesError) {
+        console.error("client services list error:", servicesError);
+      } else {
+        serviceRows = servicesData || [];
+      }
+    }
+
+    const serviceMap = {};
+    for (const row of serviceRows) {
+      if (!serviceMap[row.client_id]) serviceMap[row.client_id] = [];
+      if (row.services?.name) serviceMap[row.client_id].push(row.services.name);
+    }
+
+    const decoratedClients = (clients || []).map((client) => ({
+      ...client,
+      service_names: serviceMap[client.id] || [],
+      account_manager_name: client.account_manager?.name || "",
+      project_manager_name: client.project_manager?.name || "",
+      open_work_count: 0,
+      waiting_count: 0,
+      last_update_text: "-",
+    }));
+
+    const summary = {
+      total: decoratedClients.length,
+      active: decoratedClients.filter((c) => c.status === "active").length,
+      waiting: 0,
+      atRisk: decoratedClients.filter((c) => c.health_status === "at_risk")
+        .length,
+    };
+
+    res
+      .type("html")
+      .send(renderClientsListPage({ clients: decoratedClients, summary }));
   } catch (error) {
-    console.error("Clients page error:", error);
-    return res.status(500).type("html").send(`
-      <html>
-        <body>
-          <pre>${escapeHtml(error?.stack || error?.message || String(error))}</pre>
-        </body>
-      </html>
-    `);
+    console.error("GET /clients fatal error:", error);
+    res.status(500).send("Failed to load clients");
   }
 });
 
-app.get("/clients/new", requireDashboardAuth, async (_req, res) => {
-  try {
-    const { data: users } = await supabase
-      .from("users")
-      .select("id, name")
-      .eq("is_active", true);
+app.get("/clients/new", requireDashboardAuth, async (req, res) => {
+  const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
 
-    return res.status(200).type("html").send(renderNewClientPage({ users }));
-  } catch (error) {
-    console.error("New client page error:", error);
-    return res.status(500).send("Error loading page");
+  const { data: users, error } = await supabase
+    .from("users")
+    .select("id, name")
+    .eq("org_id", orgId)
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error("clients new users error:", error);
   }
+
+  res.type("html").send(renderNewClientPage({ users: users || [] }));
 });
 
 app.post("/api/clients", requireDashboardAuth, async (req, res) => {
-  return sendApiError(
-    res,
-    501,
-    "Client database tables are not added yet. This form shell is ready; saving comes in the DB phase.",
-  );
+  try {
+    const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+    const actorUserId = req.loggedInUser?.id || null;
+    const body = req.body || {};
+
+    const name = String(body.name || "").trim();
+    const companyName = String(body.company_name || "").trim();
+    const slug = normalizeSlug(body.slug || name);
+
+    if (!name) {
+      return res.status(400).send("Client name is required");
+    }
+
+    if (!slug) {
+      return res.status(400).send("Slug is required");
+    }
+
+    const clientRow = {
+      org_id: orgId,
+      name,
+      company_name: companyName || null,
+      slug,
+      status: body.status || "active",
+      health_status: body.health_status || "healthy",
+      start_date: body.start_date || null,
+      description: body.description || null,
+      account_manager_user_id: body.account_manager_user_id || null,
+      project_manager_user_id: body.project_manager_user_id || null,
+      created_by_user_id: actorUserId,
+      updated_by_user_id: actorUserId,
+    };
+
+    const { data: client, error: clientError } = await supabase
+      .from("clients")
+      .insert([clientRow])
+      .select("*")
+      .maybeSingle();
+
+    if (clientError) {
+      console.error("client insert error:", clientError);
+
+      if (clientError.code === "23505") {
+        return res
+          .status(400)
+          .send(
+            "A client with this slug already exists. Go back and choose a different slug.",
+          );
+      }
+
+      return res.status(500).send("Failed to create client");
+    }
+
+    const selectedServices = ensureArray(body.services)
+      .map((x) => String(x).trim())
+      .filter(Boolean);
+
+    if (selectedServices.length) {
+      const { data: serviceRows, error: serviceLookupError } = await supabase
+        .from("services")
+        .select("id, name")
+        .eq("org_id", orgId)
+        .in("name", selectedServices);
+
+      if (serviceLookupError) {
+        console.error("service lookup error:", serviceLookupError);
+      } else {
+        const clientServiceRows = (serviceRows || []).map((service) => ({
+          org_id: orgId,
+          client_id: client.id,
+          service_id: service.id,
+        }));
+
+        if (clientServiceRows.length) {
+          const { error: clientServiceError } = await supabase
+            .from("client_services")
+            .insert(clientServiceRows);
+
+          if (clientServiceError) {
+            console.error("client services insert error:", clientServiceError);
+          }
+        }
+      }
+    }
+
+    const contactRows = [];
+
+    if (
+      body.contact_name ||
+      body.contact_email ||
+      body.contact_phone ||
+      body.contact_role
+    ) {
+      contactRows.push({
+        org_id: orgId,
+        client_id: client.id,
+        name: body.contact_name || null,
+        email: body.contact_email || null,
+        phone: body.contact_phone || null,
+        role: body.contact_role || null,
+        is_primary: true,
+      });
+    }
+
+    if (
+      body.contact_2_name ||
+      body.contact_2_email ||
+      body.contact_2_phone ||
+      body.contact_2_role
+    ) {
+      contactRows.push({
+        org_id: orgId,
+        client_id: client.id,
+        name: body.contact_2_name || null,
+        email: body.contact_2_email || null,
+        phone: body.contact_2_phone || null,
+        role: body.contact_2_role || null,
+        is_primary: false,
+      });
+    }
+
+    if (contactRows.length) {
+      const { error: contactsError } = await supabase
+        .from("client_contacts")
+        .insert(contactRows);
+
+      if (contactsError) {
+        console.error("client contacts insert error:", contactsError);
+      }
+    }
+
+    await insertClientActivityLog({
+      orgId,
+      clientId: client.id,
+      actorUserId,
+      action: "client_created",
+      entityType: "clients",
+      entityId: client.id,
+      newValue: client,
+    });
+
+    return res.redirect(`/clients/${client.id}`);
+  } catch (error) {
+    console.error("POST /api/clients fatal error:", error);
+    return res.status(500).send("Failed to create client");
+  }
+});
+
+app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
+  try {
+    const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+    const clientId = Number(req.params.id);
+
+    if (!clientId) {
+      return res.status(400).send("Invalid client id");
+    }
+
+    const { data: client, error: clientError } = await supabase
+      .from("clients")
+      .select(
+        `
+        *,
+        account_manager:users!clients_account_manager_user_id_fkey(name),
+        project_manager:users!clients_project_manager_user_id_fkey(name)
+      `,
+      )
+      .eq("org_id", orgId)
+      .eq("id", clientId)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (clientError) {
+      console.error("client workspace lookup error:", clientError);
+      return res.status(500).send("Failed to load client");
+    }
+
+    if (!client) {
+      return res.status(404).send("Client not found");
+    }
+
+    const [
+      contactsResult,
+      servicesResult,
+      workItemsResult,
+      updatesResult,
+      actionsResult,
+      milestonesResult,
+      documentsResult,
+    ] = await Promise.all([
+      supabase
+        .from("client_contacts")
+        .select("*")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .order("is_primary", { ascending: false }),
+      supabase
+        .from("client_services")
+        .select("services(name)")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .is("deleted_at", null),
+      supabase
+        .from("client_work_items")
+        .select("*")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("client_updates")
+        .select("*")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(5),
+      supabase
+        .from("client_actions")
+        .select("*")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("client_milestones")
+        .select("*")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("client_documents")
+        .select("*")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    const decoratedClient = {
+      ...client,
+      account_manager_name: client.account_manager?.name || "",
+      project_manager_name: client.project_manager?.name || "",
+    };
+
+    const services = (servicesResult.data || [])
+      .map((row) => row.services)
+      .filter(Boolean);
+
+    res.type("html").send(
+      renderClientWorkspacePage({
+        client: decoratedClient,
+        contacts: contactsResult.data || [],
+        services,
+        workItems: workItemsResult.data || [],
+        updates: updatesResult.data || [],
+        actions: actionsResult.data || [],
+        milestones: milestonesResult.data || [],
+        documents: documentsResult.data || [],
+      }),
+    );
+  } catch (error) {
+    console.error("GET /clients/:id fatal error:", error);
+    res.status(500).send("Failed to load client workspace");
+  }
+});
+
+app.get("/clients/:id/edit", requireDashboardAuth, async (req, res) => {
+  res.type("html").send(`
+    <html>
+      <body style="font-family:sans-serif;">
+        <h1>Edit Client</h1>
+        <p>Edit page comes in next phase.</p>
+        <a href="/clients/${escapeHtml(req.params.id)}">Back to client</a>
+      </body>
+    </html>
+  `);
+});
+
+app.get("/clients/:id/reset", requireDashboardAuth, async (req, res) => {
+  res.type("html").send(`
+    <html>
+      <body style="font-family:sans-serif;">
+        <h1>Reset Client</h1>
+        <p>Reset/archive page comes in next phase.</p>
+        <a href="/clients/${escapeHtml(req.params.id)}">Back to client</a>
+      </body>
+    </html>
+  `);
 });
 
 app.get("/dashboard", requireDashboardAuth, async (req, res) => {
