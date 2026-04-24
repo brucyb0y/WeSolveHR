@@ -11310,21 +11310,30 @@ function buildEmployeeMonthlyAttendanceSummaryFromData({
     if (!eventsByAttendanceDay.has(attendanceDate)) {
       eventsByAttendanceDay.set(attendanceDate, []);
     }
+
     eventsByAttendanceDay.get(attendanceDate).push(ev);
+  }
+
+  for (const [, dayEvents] of eventsByAttendanceDay) {
+    dayEvents.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   }
 
   const nowDate = getAttendanceDayDateStringFromDate(new Date());
 
   let presentDays = 0;
-  let leaveDays = leaveRows.length;
+  const leaveDays = leaveRows.length;
+
   let lateJoins = 0;
   let approvedLate = 0;
   let unapprovedLate = 0;
   let uninformedLate = 0;
+
   let totalLoginMinutes = 0;
   let loginDays = 0;
+
   let totalBreakMin = 0;
   let breakDays = 0;
+
   let longShiftCount = 0;
   let longBreakCount = 0;
   let possibleHalfDays = 0;
@@ -11337,20 +11346,31 @@ function buildEmployeeMonthlyAttendanceSummaryFromData({
     const dayEvents = eventsByAttendanceDay.get(date) || [];
     if (!dayEvents.length) continue;
 
+    const dayShiftStartIso =
+      shiftStartIso || `${date}T10:30:00${APP_TIMEZONE_OFFSET}`;
+
     const summary = getAttendanceSummaryFromEvents(dayEvents, {
-      shiftStartIso,
+      shiftStartIso: dayShiftStartIso,
     });
 
     if (summary.firstLogin) {
       presentDays += 1;
 
       const firstLogin = new Date(summary.firstLogin.created_at);
-      const midnight = new Date(`${date}T00:00:00${APP_TIMEZONE_OFFSET}`);
-      const minsFromMidnight =
-        firstLogin.getHours() * 60 + firstLogin.getMinutes();
 
-      totalLoginMinutes += minsFromMidnight;
-      loginDays += 1;
+      const loginTimeText = firstLogin.toLocaleTimeString("en-IN", {
+        timeZone: APP_TIMEZONE,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+
+      const [hh, mm] = loginTimeText.split(":").map(Number);
+
+      if (!Number.isNaN(hh) && !Number.isNaN(mm)) {
+        totalLoginMinutes += hh * 60 + mm;
+        loginDays += 1;
+      }
     }
 
     if (summary.breakMinutes > 0) {
@@ -11364,16 +11384,40 @@ function buildEmployeeMonthlyAttendanceSummaryFromData({
   }
 
   for (const row of lateRows || []) {
-    lateJoins += 1;
+    const lateDate = row.late_date;
+    const dayEvents = eventsByAttendanceDay.get(lateDate) || [];
+    const firstLogin = getFirstLoginEvent(dayEvents);
 
-    const firstDayEvents = eventsByAttendanceDay.get(row.late_date) || [];
-    const firstLogin = getFirstLoginEvent(firstDayEvents);
+    if (firstLogin) {
+      const shiftStartForLate =
+        row.shift_start_at || `${lateDate}T10:30:00${APP_TIMEZONE_OFFSET}`;
+
+      const lateMinutes = Math.max(
+        0,
+        Math.round(
+          (new Date(firstLogin.created_at) - new Date(shiftStartForLate)) /
+            60000,
+        ),
+      );
+
+      // If they actually logged in on time, ignore stale late_arrivals row.
+      if (lateMinutes <= 10) {
+        continue;
+      }
+    }
+
+    lateJoins += 1;
 
     if (row.is_approved) {
       approvedLate += 1;
-    } else if (firstLogin) {
-      unapprovedLate += 1;
     } else {
+      unapprovedLate += 1;
+    }
+
+    const isTimeUnsure =
+      !row.expected_login_at || String(row.note || "").includes("TIME_UNSURE");
+
+    if (isTimeUnsure) {
       uninformedLate += 1;
     }
   }
@@ -11407,25 +11451,30 @@ function buildEmployeeMonthlyAttendanceSummaryFromData({
     .map((x) => x.off_date)
     .filter((d) => d >= nowDate);
 
-  const managerCorrectionCount = (auditRows || []).filter(
-    (row) =>
-      String(row.action_type || "").startsWith("mark_") ||
-      String(row.action_type || "").startsWith("fix_") ||
-      String(row.action_type || "").startsWith("force_") ||
-      String(row.action_type || "").startsWith("remove_") ||
-      String(row.action_type || "").startsWith("undo_") ||
-      String(row.action_type || "").startsWith("reset_") ||
-      String(row.action_type || "").startsWith("lock_") ||
-      String(row.action_type || "").startsWith("unlock_"),
-  ).length;
+  const managerCorrectionCount = (auditRows || []).filter((row) => {
+    const actionType = String(row.action_type || "");
+
+    return (
+      actionType.startsWith("mark_") ||
+      actionType.startsWith("fix_") ||
+      actionType.startsWith("force_") ||
+      actionType.startsWith("remove_") ||
+      actionType.startsWith("undo_") ||
+      actionType.startsWith("reset_") ||
+      actionType.startsWith("lock_") ||
+      actionType.startsWith("unlock_")
+    );
+  }).length;
 
   let totalWorkingDays = 0;
+
   for (
     let date = startDate;
     date < endDateExclusive;
     date = addDaysToDateString(date, 1)
   ) {
     const weekday = getWeekdayNameFromDateString(date);
+
     if (weekday !== "sunday") {
       totalWorkingDays += 1;
     }
@@ -11434,19 +11483,24 @@ function buildEmployeeMonthlyAttendanceSummaryFromData({
   return {
     redReportDays: redReportDates.length,
     redReportDates,
+
     presentDays,
     leaveDays,
     pastLeaveDates,
     upcomingLeaveDates,
+
     lateJoins,
     approvedLate,
     unapprovedLate,
     uninformedLate,
+
     avgLoginTimeText,
     avgBreakMin,
+
     longShiftCount,
     longBreakCount,
     possibleHalfDays,
+
     managerCorrectionCount,
     totalWorkingDays,
   };
