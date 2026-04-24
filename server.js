@@ -2612,6 +2612,7 @@ function renderNewClientPage() {
                   <label>Name</label>
                   <input name="contact_name" placeholder="Client contact name" />
                 </div>
+        
 
                 <div class="field">
                   <label>Email</label>
@@ -2629,27 +2630,60 @@ function renderNewClientPage() {
                 </div>
               </div>
             </div>
-
+            
             <div class="panel">
-              <h2>Internal Ownership</h2>
-              <div class="grid">
-                <div class="field">
-                  <label>Account Owner</label>
-                  <input name="account_owner" placeholder="Example: Aj" />
-                </div>
+  <h2>Additional Client Contacts</h2>
+  <div class="grid">
+    <div class="field">
+      <label>Contact 2 Name</label>
+      <input name="contact_2_name" placeholder="Optional" />
+    </div>
 
-                <div class="field">
-                  <label>Project Manager</label>
-                  <input name="project_manager" placeholder="Example: Niharika" />
-                </div>
-              </div>
+    <div class="field">
+      <label>Contact 2 Email</label>
+      <input name="contact_2_email" placeholder="Optional" />
+    </div>
 
-              <div class="actions">
-                <a class="btn" href="/clients">Cancel</a>
-                <button class="btn btn-primary" type="submit">Create Client</button>
-              </div>
-            </div>
-          </form>
+    <div class="field">
+      <label>Contact 2 Phone</label>
+      <input name="contact_2_phone" placeholder="Optional" />
+    </div>
+
+    <div class="field">
+      <label>Contact 2 Role</label>
+      <input name="contact_2_role" placeholder="Founder / PM / Finance / Marketing" />
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Internal Ownership</h2>
+  <div class="grid">
+    <div class="field">
+      <label>Account Manager</label>
+      <select name="account_manager_user_id">
+        <option value="">Select account manager</option>
+      </select>
+      <div class="hint">Later this will load active users from WeSolveHR.</div>
+    </div>
+
+    <div class="field">
+      <label>Project Manager</label>
+      <select name="project_manager_user_id">
+        <option value="">Select project manager</option>
+      </select>
+      <div class="hint">Later this will load active users from WeSolveHR.</div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="actions">
+    <a class="btn" href="/clients">Cancel</a>
+    <button class="btn btn-primary" type="submit">Create Client</button>
+  </div>
+</div>
+</form>
         </div>
       </body>
     </html>
