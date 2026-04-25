@@ -2833,7 +2833,27 @@ function renderClientWorkspacePage({
   milestones = [],
   documents = [],
   users = [],
+  selectedTab = "overview",
 }) {
+  const activeTab = [
+    "overview",
+    "work",
+    "updates",
+    "actions",
+    "milestones",
+    "documents",
+    "team",
+    "billing",
+    "internal",
+  ].includes(selectedTab)
+    ? selectedTab
+    : "overview";
+
+  const tabLink = (key, label) => `
+    <a class="tab ${activeTab === key ? "active" : ""}" href="/clients/${Number(client.id)}?tab=${key}">
+      ${label}
+    </a>
+  `;
   return `
     <html>
       <head>
@@ -2902,10 +2922,21 @@ function renderClientWorkspacePage({
             display:flex; flex-wrap:wrap; gap:10px; margin-bottom:18px;
           }
 
-          .tab {
-            padding:10px 14px; border-radius:999px; background:rgba(255,255,255,0.05);
-            border:1px solid rgba(255,255,255,0.10); font-weight:800;
-          }
+.tab {
+  padding:10px 14px;
+  border-radius:999px;
+  background:rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.10);
+  font-weight:800;
+  text-decoration:none;
+  color:var(--text);
+}
+
+.tab.active {
+  background:var(--primary-soft);
+  border-color:color-mix(in srgb, var(--primary) 55%, transparent);
+  color:var(--text-strong);
+}
           
           .work-table {
   width: 100%;
@@ -3130,203 +3161,336 @@ function renderClientWorkspacePage({
             <div class="stat-card"><div class="stat-label">Contacts</div><div class="stat-value">${contacts.length}</div></div>
           </div>
 
-          <div class="tabs">
-            <div class="tab">Overview</div>
-            <div class="tab">Work Items</div>
-            <div class="tab">Updates</div>
-            <div class="tab">Actions Needed</div>
-            <div class="tab">Milestones</div>
-            <div class="tab">Documents</div>
-            <div class="tab">Team / Contractors</div>
-            <div class="tab">Billing</div>
-            <div class="tab">Internal Ops</div>
-          </div>
-
-          <div class="grid-2">
-            <div class="panel">
-              <h2>Overview</h2>
-              <div class="meta"><strong>Description:</strong> ${escapeHtml(client.description || "-")}</div>
-              <div class="meta"><strong>Start Date:</strong> ${escapeHtml(client.start_date || "-")}</div>
-              <div class="meta"><strong>Slug:</strong> ${escapeHtml(client.slug || "-")}</div>
-              <div class="meta"><strong>Account Manager:</strong> ${escapeHtml(client.account_manager_name || "-")}</div>
-              <div class="meta"><strong>Project Manager:</strong> ${escapeHtml(client.project_manager_name || "-")}</div>
-              <div class="meta">
-                <strong>Google Drive Folder:</strong>
-                ${
-                  client.google_drive_folder_url
-                    ? `<a href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">📁 Open Client Folder</a>`
-                    : `<span style="color: var(--danger);">Not set</span>`
-                }
-              </div>
-            </div>
-
-            <div class="panel">
-              <h2>Services</h2>
-              ${
-                services.length
-                  ? services
-                      .map(
-                        (s) =>
-                          `<div class="item"><div class="item-title">${escapeHtml(s.name)}</div></div>`,
-                      )
-                      .join("")
-                  : `<div class="meta">No services selected.</div>`
-              }
-            </div>
-          </div>
-
-          <div class="grid-2">
-            <div class="panel">
-              <h2>Client Contacts</h2>
-              ${
-                contacts.length
-                  ? contacts
-                      .map(
-                        (c) => `
-                    <div class="item">
-                      <div class="item-title">${escapeHtml(c.name || "-")} ${c.is_primary ? "· Primary" : ""}</div>
-                      <div class="meta">${escapeHtml(c.role || "-")}</div>
-                      <div class="meta">${escapeHtml(c.email || "-")} · ${escapeHtml(c.phone || "-")}</div>
-                    </div>
-                  `,
-                      )
-                      .join("")
-                  : `<div class="meta">No contacts added.</div>`
-              }
-            </div>
-
-            <div class="panel">
-              <h2>Recent Updates</h2>
-              ${
-                updates.length
-                  ? updates
-                      .map(
-                        (u) => `
-                    <div class="item">
-                      <div class="item-title">${escapeHtml(u.title || "Update")}</div>
-                      <div class="meta">${escapeHtml(u.update_text || "")}</div>
-                    </div>
-                  `,
-                      )
-                      .join("")
-                  : `<div class="meta">No updates yet.</div>`
-              }
-            </div>
-          </div>
-
-          <div class="grid-2">
-          <div class="panel">
-  <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
-    <div>
-      <h2 style="margin:0;">Work Items</h2>
-      <div class="work-summary-chips">
-        <span class="summary-chip">All ${workItems.length}</span>
-        <span class="summary-chip">Todo ${workItems.filter((w) => w.status === "todo").length}</span>
-        <span class="summary-chip">In Progress ${workItems.filter((w) => w.status === "in_progress").length}</span>
-        <span class="summary-chip">Done ${workItems.filter((w) => w.status === "done").length}</span>
-        <span class="summary-chip">Blocked ${
-          workItems.filter((w) => {
-            if (!w.dependency_work_item_id) return false;
-            const dep = workItems.find(
-              (x) => String(x.id) === String(w.dependency_work_item_id),
-            );
-            return dep && dep.status !== "done";
-          }).length
-        }</span>
-      </div>
-    </div>
-
-    <button class="btn btn-primary" type="button" onclick="openWorkItemModal()">+ Add Work Item</button>
-  </div>
-
-  <div class="work-card-list">
-    ${
-      workItems.length
-        ? workItems
-            .map((w) => {
-              const ownerName =
-                users.find((u) => String(u.id) === String(w.owner_user_id))
-                  ?.name || "-";
-
-              const dep = w.dependency_work_item_id
-                ? workItems.find(
-                    (x) => String(x.id) === String(w.dependency_work_item_id),
-                  )
-                : null;
-
-              const isBlockedByDependency = dep && dep.status !== "done";
-
-              const statusClass =
-                w.status === "done"
-                  ? "badge badge-ok"
-                  : w.status === "in_progress"
-                    ? "badge badge-info"
-                    : isBlockedByDependency
-                      ? "badge badge-warn"
-                      : "badge badge-muted";
-
-              const dependencyText = dep
-                ? isBlockedByDependency
-                  ? `Blocked by #${escapeHtml(dep.id)} · ${escapeHtml(dep.title)}`
-                  : `Dependency complete: #${escapeHtml(dep.id)} · ${escapeHtml(dep.title)}`
-                : "No dependency";
-
-              return `
-              <div class="work-card">
-                <div class="work-card-top">
-                  <div>
-                    <div class="work-card-title">${escapeHtml(w.title || "Untitled")}</div>
-                    <div class="meta">${escapeHtml(w.description || "No description")}</div>
-                  </div>
-
-                  <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
-                    <span class="${statusClass}">
-                      ${isBlockedByDependency && w.status !== "done" ? "blocked" : escapeHtml(w.status || "todo")}
-                    </span>
-                    <span class="badge badge-muted">${escapeHtml(w.priority || "medium")}</span>
-                  </div>
-                </div>
-
-                <div class="work-card-meta">
-                  <div><strong>Owner:</strong> ${escapeHtml(ownerName)}</div>
-                  <div><strong>Due:</strong> ${escapeHtml(w.due_date || "-")}</div>
-                  <div><strong>Depends:</strong> ${dependencyText}</div>
-                  <div><strong>Last updated:</strong> ${escapeHtml(w.updated_at ? formatDateTime(w.updated_at) : "-")}</div>
-                </div>
-
-                <div class="work-card-actions">
-                  <button class="btn" type="button" onclick="openWorkItemDetail(${Number(w.id)})">Open / Edit</button>
-                  <button class="btn" type="button" onclick="quickUpdateWorkItem(${Number(w.id)}, 'in_progress')">Start</button>
-                  <button class="btn" type="button" onclick="quickUpdateWorkItem(${Number(w.id)}, 'done')">Done</button>
-                  <button class="btn" type="button" onclick="archiveWorkItem(${Number(w.id)})">Archive</button>
-                </div>
-              </div>
-            `;
-            })
-            .join("")
-        : `<div class="meta">No work items yet. Add the first work item for this client.</div>`
-    }
-  </div>
+<div class="tabs">
+  ${tabLink("overview", "Overview")}
+  ${tabLink("work", "Work Items")}
+  ${tabLink("updates", "Updates")}
+  ${tabLink("actions", "Actions Needed")}
+  ${tabLink("milestones", "Milestones")}
+  ${tabLink("documents", "Documents")}
+  ${tabLink("team", "Team / Contractors")}
+  ${tabLink("billing", "Billing")}
+  ${tabLink("internal", "Internal Ops")}
 </div>
 
-            <div class="panel">
-              <h2>Actions Needed</h2>
-              ${
-                actions.length
-                  ? actions
-                      .map(
-                        (a) => `
-                    <div class="item">
-                      <div class="item-title">${escapeHtml(a.title)}</div>
-                      <div class="meta">${escapeHtml(a.owner_type)} · ${escapeHtml(a.status)} · Due ${escapeHtml(a.due_date || "-")}</div>
-                    </div>
-                  `,
-                      )
-                      .join("")
-                  : `<div class="meta">No actions yet.</div>`
-              }
+${
+  activeTab === "overview"
+    ? `
+      <div class="grid-2">
+        <div class="panel">
+          <h2>Overview</h2>
+          <div class="meta"><strong>Description:</strong> ${escapeHtml(client.description || "-")}</div>
+          <div class="meta"><strong>Start Date:</strong> ${escapeHtml(client.start_date || "-")}</div>
+          <div class="meta"><strong>Slug:</strong> ${escapeHtml(client.slug || "-")}</div>
+          <div class="meta"><strong>Account Manager:</strong> ${escapeHtml(client.account_manager_name || "-")}</div>
+          <div class="meta"><strong>Project Manager:</strong> ${escapeHtml(client.project_manager_name || "-")}</div>
+          <div class="meta">
+            <strong>Google Drive Folder:</strong>
+            ${
+              client.google_drive_folder_url
+                ? `<a href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">📁 Open Client Folder</a>`
+                : `<span style="color: var(--danger);">Not set</span>`
+            }
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Services</h2>
+          ${
+            services.length
+              ? services
+                  .map(
+                    (s) =>
+                      `<div class="item"><div class="item-title">${escapeHtml(s.name)}</div></div>`,
+                  )
+                  .join("")
+              : `<div class="meta">No services selected.</div>`
+          }
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <h2>Client Contacts</h2>
+          ${
+            contacts.length
+              ? contacts
+                  .map(
+                    (c) => `
+                <div class="item">
+                  <div class="item-title">${escapeHtml(c.name || "-")} ${c.is_primary ? "· Primary" : ""}</div>
+                  <div class="meta">${escapeHtml(c.role || "-")}</div>
+                  <div class="meta">${escapeHtml(c.email || "-")} · ${escapeHtml(c.phone || "-")}</div>
+                </div>
+              `,
+                  )
+                  .join("")
+              : `<div class="meta">No contacts added.</div>`
+          }
+        </div>
+
+        <div class="panel">
+          <h2>Recent Updates</h2>
+          ${
+            updates.length
+              ? updates
+                  .map(
+                    (u) => `
+                <div class="item">
+                  <div class="item-title">${escapeHtml(u.title || "Update")}</div>
+                  <div class="meta">${escapeHtml(u.update_text || "")}</div>
+                </div>
+              `,
+                  )
+                  .join("")
+              : `<div class="meta">No updates yet.</div>`
+          }
+        </div>
+      </div>
+    `
+    : ""
+}
+
+${
+  activeTab === "work"
+    ? `
+      <div class="panel">
+        <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
+          <div>
+            <h2 style="margin:0;">Work Items</h2>
+            <div class="work-summary-chips">
+              <span class="summary-chip">All ${workItems.length}</span>
+              <span class="summary-chip">Todo ${workItems.filter((w) => w.status === "todo").length}</span>
+              <span class="summary-chip">In Progress ${workItems.filter((w) => w.status === "in_progress").length}</span>
+              <span class="summary-chip">Done ${workItems.filter((w) => w.status === "done").length}</span>
+              <span class="summary-chip">Blocked ${
+                workItems.filter((w) => {
+                  if (!w.dependency_work_item_id) return false;
+                  const dep = workItems.find(
+                    (x) => String(x.id) === String(w.dependency_work_item_id),
+                  );
+                  return dep && dep.status !== "done";
+                }).length
+              }</span>
             </div>
           </div>
+
+          <button class="btn btn-primary" type="button" onclick="openWorkItemModal()">+ Add Work Item</button>
+        </div>
+
+        <div class="work-card-list">
+          ${
+            workItems.length
+              ? workItems
+                  .map((w) => {
+                    const ownerName =
+                      users.find(
+                        (u) => String(u.id) === String(w.owner_user_id),
+                      )?.name || "-";
+
+                    const dep = w.dependency_work_item_id
+                      ? workItems.find(
+                          (x) =>
+                            String(x.id) === String(w.dependency_work_item_id),
+                        )
+                      : null;
+
+                    const isBlockedByDependency = dep && dep.status !== "done";
+
+                    const statusClass =
+                      w.status === "done"
+                        ? "badge badge-ok"
+                        : w.status === "in_progress"
+                          ? "badge badge-info"
+                          : isBlockedByDependency
+                            ? "badge badge-warn"
+                            : "badge badge-muted";
+
+                    const dependencyText = dep
+                      ? isBlockedByDependency
+                        ? `Blocked by #${escapeHtml(dep.id)} · ${escapeHtml(dep.title)}`
+                        : `Dependency complete: #${escapeHtml(dep.id)} · ${escapeHtml(dep.title)}`
+                      : "No dependency";
+
+                    return `
+                    <div class="work-card">
+                      <div class="work-card-top">
+                        <div>
+                          <div class="work-card-title">${escapeHtml(w.title || "Untitled")}</div>
+                          <div class="meta">${escapeHtml(w.description || "No description")}</div>
+                        </div>
+
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+                          <span class="${statusClass}">
+                            ${isBlockedByDependency && w.status !== "done" ? "blocked" : escapeHtml(w.status || "todo")}
+                          </span>
+                          <span class="badge badge-muted">${escapeHtml(w.priority || "medium")}</span>
+                        </div>
+                      </div>
+
+                      <div class="work-card-meta">
+                        <div><strong>Owner:</strong> ${escapeHtml(ownerName)}</div>
+                        <div><strong>Due:</strong> ${escapeHtml(w.due_date || "-")}</div>
+                        <div><strong>Depends:</strong> ${dependencyText}</div>
+                        <div><strong>Last updated:</strong> ${escapeHtml(w.updated_at ? formatDateTime(w.updated_at) : "-")}</div>
+                      </div>
+
+                      <div class="work-card-actions">
+                        <button class="btn" type="button" onclick="openWorkItemDetail(${Number(w.id)})">Open / Edit</button>
+                        <button class="btn" type="button" onclick="quickUpdateWorkItem(${Number(w.id)}, 'in_progress')">Start</button>
+                        <button class="btn" type="button" onclick="quickUpdateWorkItem(${Number(w.id)}, 'done')">Done</button>
+                        <button class="btn" type="button" onclick="archiveWorkItem(${Number(w.id)})">Archive</button>
+                      </div>
+                    </div>
+                  `;
+                  })
+                  .join("")
+              : `<div class="meta">No work items yet. Add the first work item for this client.</div>`
+          }
+        </div>
+      </div>
+    `
+    : ""
+}
+
+${
+  activeTab === "updates"
+    ? `
+      <div class="panel">
+        <h2>Updates</h2>
+        ${
+          updates.length
+            ? updates
+                .map(
+                  (u) => `
+              <div class="item">
+                <div class="item-title">${escapeHtml(u.title || "Update")}</div>
+                <div class="meta">${escapeHtml(u.update_text || "")}</div>
+                <div class="meta">${escapeHtml(u.created_at ? formatDateTime(u.created_at) : "-")}</div>
+              </div>
+            `,
+                )
+                .join("")
+            : `<div class="meta">No updates yet.</div>`
+        }
+      </div>
+    `
+    : ""
+}
+
+${
+  activeTab === "actions"
+    ? `
+      <div class="panel">
+        <h2>Actions Needed</h2>
+        ${
+          actions.length
+            ? actions
+                .map(
+                  (a) => `
+              <div class="item">
+                <div class="item-title">${escapeHtml(a.title)}</div>
+                <div class="meta">${escapeHtml(a.owner_type)} · ${escapeHtml(a.status)} · Due ${escapeHtml(a.due_date || "-")}</div>
+              </div>
+            `,
+                )
+                .join("")
+            : `<div class="meta">No actions yet.</div>`
+        }
+      </div>
+    `
+    : ""
+}
+
+${
+  activeTab === "milestones"
+    ? `
+      <div class="panel">
+        <h2>Milestones</h2>
+        ${
+          milestones.length
+            ? milestones
+                .map(
+                  (m) => `
+              <div class="item">
+                <div class="item-title">${escapeHtml(m.title || "Milestone")}</div>
+                <div class="meta">${escapeHtml(m.status || "-")} · ${escapeHtml(m.due_date || "-")}</div>
+              </div>
+            `,
+                )
+                .join("")
+            : `<div class="meta">No milestones yet.</div>`
+        }
+      </div>
+    `
+    : ""
+}
+
+${
+  activeTab === "documents"
+    ? `
+      <div class="panel">
+        <h2>Documents</h2>
+        <div class="meta" style="margin-bottom:12px;">
+          Main document system is Google Drive.
+          ${
+            client.google_drive_folder_url
+              ? `<a href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">Open Client Folder</a>`
+              : `<span style="color: var(--danger);">Google Drive folder not set</span>`
+          }
+        </div>
+
+        ${
+          documents.length
+            ? documents
+                .map(
+                  (d) => `
+              <div class="item">
+                <div class="item-title">${escapeHtml(d.title || d.name || "Document")}</div>
+                <div class="meta">${escapeHtml(d.url || "-")}</div>
+              </div>
+            `,
+                )
+                .join("")
+            : `<div class="meta">No separate documents tracked. Use the Google Drive folder.</div>`
+        }
+      </div>
+    `
+    : ""
+}
+
+${
+  activeTab === "team"
+    ? `
+      <div class="panel">
+        <h2>Team / Contractors</h2>
+        <div class="meta">Coming soon. Later this can show assigned internal team members and contractors for this client.</div>
+      </div>
+    `
+    : ""
+}
+
+${
+  activeTab === "billing"
+    ? `
+      <div class="panel">
+        <h2>Billing</h2>
+        <div class="meta">Coming soon. Later this can show invoices, payment status, retainers, and billing notes.</div>
+      </div>
+    `
+    : ""
+}
+
+${
+  activeTab === "internal"
+    ? `
+      <div class="panel">
+        <h2>Internal Ops</h2>
+        <div class="meta">Coming soon. Later this can show internal notes, risks, escalation status, and delivery health.</div>
+      </div>
+    `
+    : ""
+}
           
           <div id="workItemModal" class="work-modal" onclick="closeWorkItemModal(event)">
   <div class="work-modal-card" onclick="event.stopPropagation()">
@@ -4199,7 +4363,6 @@ function renderTopNav(active = "") {
     { href: "/bugs", label: "Bug Board", key: "bugs" },
     { href: "/reports", label: "Reports", key: "reports" },
     { href: "/clients", label: "Clients", key: "clients" },
-    { href: "/work-items", label: "Work Items", key: "work-items" },
     { href: "/account", label: "My Account", key: "account" },
     { href: "/logout", label: "Logout", key: "logout" },
   ];
@@ -15795,54 +15958,6 @@ function renderDashboardPage(data) {
   `;
 }
 
-app.get("/work-items", requireDashboardAuth, async (req, res) => {
-  try {
-    const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
-
-    const [workItemsResult, usersResult] = await Promise.all([
-      supabase
-        .from("client_work_items")
-        .select(
-          `
-          *,
-          clients(name)
-        `,
-        )
-        .eq("org_id", orgId)
-        .eq("is_active", true)
-        .is("deleted_at", null)
-        .order("updated_at", { ascending: false }),
-
-      supabase
-        .from("users")
-        .select("id, name")
-        .eq("org_id", orgId)
-        .eq("is_active", true)
-        .order("name", { ascending: true }),
-    ]);
-
-    if (workItemsResult.error) {
-      console.error("work items page lookup error:", workItemsResult.error);
-      return res.status(500).send("Failed to load work items");
-    }
-
-    if (usersResult.error) {
-      console.error("work items users lookup error:", usersResult.error);
-    }
-
-    return res.type("html").send(
-      renderWorkItemsPage({
-        workItems: workItemsResult.data || [],
-        users: usersResult.data || [],
-        currentUser: req.loggedInUser || null,
-      }),
-    );
-  } catch (error) {
-    console.error("GET /work-items fatal error:", error);
-    return res.status(500).send("Failed to load work items");
-  }
-});
-
 app.get("/health/live", (_req, res) => {
   return res.status(200).json({ ok: true, status: "live" });
 });
@@ -19374,6 +19489,7 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
   try {
     const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
     const clientId = Number(req.params.id);
+    const selectedTab = String(req.query.tab || "overview");
 
     if (!clientId) {
       return res.status(400).send("Invalid client id");
@@ -19524,6 +19640,7 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
         milestones: milestonesResult.data || [],
         documents: documentsResult.data || [],
         users: usersResult.data || [],
+        selectedTab,
       }),
     );
   } catch (error) {
