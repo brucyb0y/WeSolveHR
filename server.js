@@ -3333,39 +3333,132 @@ function renderClientWorkspacePage({
     window.location.reload();
   }
 
-  async function openWorkItemDetail(id) {
-    const modal = document.getElementById("workItemDetailModal");
-    const title = document.getElementById("workItemDetailTitle");
-    const body = document.getElementById("workItemDetailBody");
+async function openWorkItemDetail(id) {
+  const modal = document.getElementById("workItemDetailModal");
+  const title = document.getElementById("workItemDetailTitle");
+  const body = document.getElementById("workItemDetailBody");
 
-    title.textContent = "Work Item #" + id;
-    body.innerHTML = "Loading...";
-    modal.classList.add("open");
+  title.textContent = "Work Item #" + id;
+  body.innerHTML = "Loading...";
+  modal.classList.add("open");
 
-    const res = await fetch("/api/client-work-items/" + id);
-    const json = await res.json();
+  const res = await fetch("/api/client-work-items/" + id);
+  const json = await res.json();
 
-    if (!json.ok) {
-      body.innerHTML = json.error || "Failed to load work item";
-      return;
-    }
-
-    const w = json.data;
-
-    title.textContent = "#" + w.id + " — " + w.title;
-
-    body.innerHTML =
-      "<div><strong>Status:</strong> " + escapeHtmlClient(w.status || "-") + "</div>" +
-      "<div><strong>Priority:</strong> " + escapeHtmlClient(w.priority || "-") + "</div>" +
-      "<div><strong>Owner:</strong> " + escapeHtmlClient(w.owner?.name || "-") + "</div>" +
-      "<div><strong>Due Date:</strong> " + escapeHtmlClient(w.due_date || "-") + "</div>" +
-      "<div><strong>Depends On:</strong> " + escapeHtmlClient(w.dependency ? ("#" + w.dependency.id + " · " + w.dependency.title + " (" + w.dependency.status + ")") : "-") + "</div>" +
-      "<div><strong>Created:</strong> " + escapeHtmlClient(w.created_at || "-") + "</div>" +
-      "<div><strong>Last Updated:</strong> " + escapeHtmlClient(w.updated_at || "-") + "</div>" +
-      "<hr style='border-color:rgba(255,255,255,0.1); margin:14px 0;' />" +
-      "<div><strong>Description:</strong></div>" +
-      "<div style='white-space:pre-wrap; margin-top:8px;'>" + escapeHtmlClient(w.description || "-") + "</div>";
+  if (!json.ok) {
+    body.innerHTML = json.error || "Failed to load work item";
+    return;
   }
+
+  const w = json.data;
+
+  title.textContent = "#" + w.id + " — Edit Work Item";
+
+  body.innerHTML =
+    '<div class="form-grid">' +
+
+      '<div class="form-field">' +
+        '<label>Title</label>' +
+        '<input id="editWorkTitle" value="' + escapeHtmlClient(w.title || "") + '" />' +
+      '</div>' +
+
+      '<div class="form-field">' +
+        '<label>Status</label>' +
+        '<select id="editWorkStatus">' +
+          '<option value="todo" ' + ((w.status || "todo") === "todo" ? "selected" : "") + '>Todo</option>' +
+          '<option value="in_progress" ' + (w.status === "in_progress" ? "selected" : "") + '>In Progress</option>' +
+          '<option value="done" ' + (w.status === "done" ? "selected" : "") + '>Done</option>' +
+        '</select>' +
+      '</div>' +
+
+      '<div class="form-field">' +
+        '<label>Priority</label>' +
+        '<select id="editWorkPriority">' +
+          '<option value="low" ' + (w.priority === "low" ? "selected" : "") + '>Low</option>' +
+          '<option value="medium" ' + ((w.priority || "medium") === "medium" ? "selected" : "") + '>Medium</option>' +
+          '<option value="high" ' + (w.priority === "high" ? "selected" : "") + '>High</option>' +
+        '</select>' +
+      '</div>' +
+
+      '<div class="form-field">' +
+        '<label>Due Date</label>' +
+        '<input id="editWorkDueDate" type="date" value="' + escapeHtmlClient(w.due_date || "") + '" />' +
+      '</div>' +
+
+      '<div class="form-field">' +
+        '<label>Owner</label>' +
+        '<select id="editWorkOwner">' +
+          '<option value="">No owner</option>' +
+          ${JSON.stringify(users.map((u) => ({ id: u.id, name: u.name })))}.map(function(u) {
+            return '<option value="' + u.id + '" ' + (String(w.owner_user_id || "") === String(u.id) ? "selected" : "") + '>' + escapeHtmlClient(u.name) + '</option>';
+          }).join("") +
+        '</select>' +
+      '</div>' +
+
+      '<div class="form-field">' +
+        '<label>Depends On</label>' +
+        '<select id="editWorkDependency">' +
+          '<option value="">No dependency</option>' +
+          ${JSON.stringify(workItems.map((item) => ({ id: item.id, title: item.title })))}.filter(function(item) {
+            return Number(item.id) !== Number(w.id);
+          }).map(function(item) {
+            return '<option value="' + item.id + '" ' + (String(w.dependency_work_item_id || "") === String(item.id) ? "selected" : "") + '>#' + item.id + ' · ' + escapeHtmlClient(item.title) + '</option>';
+          }).join("") +
+        '</select>' +
+      '</div>' +
+
+      '<div class="form-field" style="grid-column:1 / -1;">' +
+        '<label>Description</label>' +
+        '<textarea id="editWorkDescription">' + escapeHtmlClient(w.description || "") + '</textarea>' +
+      '</div>' +
+
+    '</div>' +
+
+    '<div style="margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.10);">' +
+      '<div><strong>Created:</strong> ' + escapeHtmlClient(w.created_at || "-") + '</div>' +
+      '<div><strong>Last Updated:</strong> ' + escapeHtmlClient(w.updated_at || "-") + '</div>' +
+      '<div><strong>Current Dependency:</strong> ' + escapeHtmlClient(w.dependency ? ("#" + w.dependency.id + " · " + w.dependency.title + " (" + w.dependency.status + ")") : "-") + '</div>' +
+    '</div>' +
+
+    '<div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">' +
+      '<button class="btn" type="button" onclick="closeWorkItemDetail()">Cancel</button>' +
+      '<button class="btn btn-primary" type="button" onclick="saveWorkItemChanges(' + Number(w.id) + ')">Save Changes</button>' +
+    '</div>';
+}
+
+async function saveWorkItemChanges(id) {
+  const title = document.getElementById("editWorkTitle").value.trim();
+
+  if (!title) {
+    alert("Title is required");
+    return;
+  }
+
+  const payload = {
+    title,
+    status: document.getElementById("editWorkStatus").value,
+    priority: document.getElementById("editWorkPriority").value,
+    owner_user_id: document.getElementById("editWorkOwner").value || null,
+    due_date: document.getElementById("editWorkDueDate").value || null,
+    dependency_work_item_id: document.getElementById("editWorkDependency").value || null,
+    description: document.getElementById("editWorkDescription").value.trim()
+  };
+
+  const res = await fetch("/api/client-work-items/" + id, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    alert(json.error || "Failed to update work item");
+    return;
+  }
+
+  window.location.reload();
+}
 
   function closeWorkItemDetail(event) {
     if (event && event.target && event.target.id !== "workItemDetailModal") return;
@@ -18168,9 +18261,14 @@ app.patch(
       }
 
       const allowedStatuses = ["todo", "in_progress", "done"];
+      const allowedPriorities = ["low", "medium", "high"];
 
       if (body.status && !allowedStatuses.includes(body.status)) {
         return sendApiError(res, 400, "Invalid status");
+      }
+
+      if (body.priority && !allowedPriorities.includes(body.priority)) {
+        return sendApiError(res, 400, "Invalid priority");
       }
 
       const { data: existing, error: existingError } = await supabase
@@ -18191,7 +18289,55 @@ app.patch(
         return sendApiError(res, 404, "Work item not found");
       }
 
-      if (body.status === "done" && existing.dependency_work_item_id) {
+      const dependencyId =
+        body.dependency_work_item_id === "" ||
+        body.dependency_work_item_id === undefined ||
+        body.dependency_work_item_id === null
+          ? null
+          : Number(body.dependency_work_item_id);
+
+      if (dependencyId && dependencyId === id) {
+        return sendApiError(res, 400, "A work item cannot depend on itself");
+      }
+
+      if (dependencyId) {
+        const { data: dependency, error: dependencyError } = await supabase
+          .from("client_work_items")
+          .select("id, client_id, title, status")
+          .eq("org_id", orgId)
+          .eq("id", dependencyId)
+          .eq("client_id", existing.client_id)
+          .eq("is_active", true)
+          .is("deleted_at", null)
+          .maybeSingle();
+
+        if (dependencyError) {
+          console.error("dependency lookup error:", dependencyError);
+          return sendApiError(res, 500, "Failed to validate dependency");
+        }
+
+        if (!dependency) {
+          return sendApiError(
+            res,
+            400,
+            "Dependency work item not found for this client",
+          );
+        }
+
+        if (body.status === "done" && dependency.status !== "done") {
+          return sendApiError(
+            res,
+            400,
+            `Cannot mark done yet. Dependency is still not done: ${dependency.title}`,
+          );
+        }
+      }
+
+      if (
+        body.status === "done" &&
+        !dependencyId &&
+        existing.dependency_work_item_id
+      ) {
         const { data: dependency } = await supabase
           .from("client_work_items")
           .select("id, title, status")
@@ -18213,7 +18359,35 @@ app.patch(
         last_updated_by_user_id: actorUserId,
       };
 
-      if (body.status) {
+      if (body.title !== undefined) {
+        const title = String(body.title || "").trim();
+        if (!title) return sendApiError(res, 400, "Title is required");
+        patch.title = title;
+      }
+
+      if (body.description !== undefined) {
+        patch.description = String(body.description || "").trim() || null;
+      }
+
+      if (body.owner_user_id !== undefined) {
+        patch.owner_user_id = body.owner_user_id
+          ? Number(body.owner_user_id)
+          : null;
+      }
+
+      if (body.priority !== undefined) {
+        patch.priority = body.priority || "medium";
+      }
+
+      if (body.due_date !== undefined) {
+        patch.due_date = body.due_date || null;
+      }
+
+      if (body.dependency_work_item_id !== undefined) {
+        patch.dependency_work_item_id = dependencyId;
+      }
+
+      if (body.status !== undefined) {
         patch.status = body.status;
         patch.completed_at =
           body.status === "done" ? new Date().toISOString() : null;
