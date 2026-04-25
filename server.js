@@ -2936,8 +2936,29 @@ function renderClientWorkspacePage({
   font-weight:800;
 }
 
+.badge-ok {
+  background: var(--success-soft);
+  color: var(--text-strong);
+}
+
 .badge-info {
   background: var(--info-soft);
+  color: var(--text-strong);
+}
+
+.badge-warn {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+.badge-muted {
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+}
+
+.badge-danger {
+  background: var(--danger-soft);
+  color: var(--text-strong);
 }
 
 .work-modal {
@@ -3126,7 +3147,24 @@ function renderClientWorkspacePage({
           <div class="grid-2">
 <div class="panel">
   <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
-    <h2 style="margin:0;">Work Items</h2>
+    <div>
+      <h2 style="margin:0;">Work Items</h2>
+      <div class="meta">
+        Todo: ${workItems.filter((w) => w.status === "todo").length}
+        · In Progress: ${workItems.filter((w) => w.status === "in_progress").length}
+        · Done: ${workItems.filter((w) => w.status === "done").length}
+        · Blocked: ${
+          workItems.filter((w) => {
+            if (!w.dependency_work_item_id) return false;
+            const dep = workItems.find(
+              (x) => String(x.id) === String(w.dependency_work_item_id),
+            );
+            return dep && dep.status !== "done";
+          }).length
+        }
+      </div>
+    </div>
+
     <button class="btn btn-primary" type="button" onclick="openWorkItemModal()">+ Add Work Item</button>
   </div>
 
@@ -3149,41 +3187,66 @@ function renderClientWorkspacePage({
             </thead>
             <tbody>
               ${workItems
-                .map(
-                  (w) => `
-                <tr>
-                  <td>
-                    <a href="#" onclick="event.preventDefault(); openWorkItemDetail(${Number(w.id)})" style="font-weight:800;">
-                      ${escapeHtml(w.title)}
-                    </a>
-                    <div class="meta">${escapeHtml((w.description || "").slice(0, 80))}</div>
-                  </td>
-<td>${escapeHtml(users.find((u) => String(u.id) === String(w.owner_user_id))?.name || "-")}</td>
-<td><span class="badge badge-info">${escapeHtml(w.status || "todo")}</span></td>
-                  <td>${escapeHtml(w.priority || "medium")}</td>
-                  <td>${escapeHtml(w.due_date || "-")}</td>
-                  <td>
-${
-  w.dependency_work_item_id
-    ? (() => {
-        const dep = workItems.find(
-          (x) => String(x.id) === String(w.dependency_work_item_id),
-        );
-        return dep
-          ? `#${escapeHtml(dep.id)} · ${escapeHtml(dep.title)} (${escapeHtml(dep.status)})`
-          : `#${escapeHtml(w.dependency_work_item_id)}`;
-      })()
-    : "-"
-}
-                  </td>
-                  <td>${escapeHtml(w.updated_at ? formatDateTime(w.updated_at) : "-")}</td>
-                  <td>
-                    <button class="btn" type="button" onclick="updateWorkItemStatus(${Number(w.id)}, 'in_progress')">Start</button>
-                    <button class="btn" type="button" onclick="updateWorkItemStatus(${Number(w.id)}, 'done')">Done</button>
-                  </td>
-                </tr>
-              `,
-                )
+                .map((w) => {
+                  const ownerName =
+                    users.find((u) => String(u.id) === String(w.owner_user_id))
+                      ?.name || "-";
+
+                  const dep = w.dependency_work_item_id
+                    ? workItems.find(
+                        (x) =>
+                          String(x.id) === String(w.dependency_work_item_id),
+                      )
+                    : null;
+
+                  const isBlockedByDependency = dep && dep.status !== "done";
+
+                  const statusClass =
+                    w.status === "done"
+                      ? "badge badge-ok"
+                      : w.status === "in_progress"
+                        ? "badge badge-info"
+                        : isBlockedByDependency
+                          ? "badge badge-warn"
+                          : "badge badge-muted";
+
+                  const dependencyText = dep
+                    ? isBlockedByDependency
+                      ? `Blocked by #${escapeHtml(dep.id)} · ${escapeHtml(dep.title)}`
+                      : `Complete: #${escapeHtml(dep.id)} · ${escapeHtml(dep.title)}`
+                    : "-";
+
+                  return `
+                  <tr>
+                    <td>
+                      <a href="#" onclick="event.preventDefault(); openWorkItemDetail(${Number(w.id)})" style="font-weight:800;">
+                        ${escapeHtml(w.title)}
+                      </a>
+                      <div class="meta">${escapeHtml((w.description || "").slice(0, 80))}</div>
+                    </td>
+
+                    <td>${escapeHtml(ownerName)}</td>
+
+                    <td>
+                      <span class="${statusClass}">
+                        ${isBlockedByDependency && w.status !== "done" ? "blocked" : escapeHtml(w.status || "todo")}
+                      </span>
+                    </td>
+
+                    <td>${escapeHtml(w.priority || "medium")}</td>
+                    <td>${escapeHtml(w.due_date || "-")}</td>
+                    <td>${dependencyText}</td>
+                    <td>${escapeHtml(w.updated_at ? formatDateTime(w.updated_at) : "-")}</td>
+
+                    <td>
+                      <button class="btn" type="button" onclick="openWorkItemDetail(${Number(w.id)})">Edit</button>
+                      <button class="btn" type="button" onclick="quickUpdateWorkItem(${Number(w.id)}, 'in_progress')">Start</button>
+                      <button class="btn" type="button" onclick="quickUpdateWorkItem(${Number(w.id)}, 'done')">Done</button>
+                      <button class="btn" type="button" onclick="archiveWorkItem(${Number(w.id)})">Archive</button>
+                    </td>
+                  </tr>
+                `;
+                })
                 .join("")}
             </tbody>
           </table>
@@ -3280,6 +3343,38 @@ ${
         </div>
         
         <script>
+<script>
+  const WORK_ITEM_USERS = ${JSON.stringify(users.map((u) => ({ id: u.id, name: u.name })))};
+  const WORK_ITEMS = ${JSON.stringify(
+    workItems.map((w) => ({
+      id: w.id,
+      title: w.title,
+      status: w.status,
+      owner_user_id: w.owner_user_id,
+      dependency_work_item_id: w.dependency_work_item_id,
+      priority: w.priority,
+      due_date: w.due_date,
+      description: w.description,
+      created_at: w.created_at,
+      updated_at: w.updated_at,
+    })),
+  )};
+
+  function showLoadingModal(message) {
+    const modal = document.getElementById("workItemDetailModal");
+    const title = document.getElementById("workItemDetailTitle");
+    const body = document.getElementById("workItemDetailBody");
+
+    title.textContent = "Opening this page";
+    body.innerHTML =
+      '<div style="padding:20px; text-align:center;">' +
+        '<div style="font-size:18px; font-weight:800; margin-bottom:8px;">Please wait...</div>' +
+        '<div class="meta">' + escapeHtmlClient(message || "Loading details...") + '</div>' +
+      '</div>';
+
+    modal.classList.add("open");
+  }
+
   function openWorkItemModal() {
     document.getElementById("workItemModal").classList.add("open");
   }
@@ -3296,6 +3391,8 @@ ${
       alert("Title is required");
       return;
     }
+
+    showLoadingModal("Creating work item...");
 
     const payload = {
       client_id: clientId,
@@ -3315,16 +3412,19 @@ ${
 
     const json = await res.json();
 
-if (!json.ok) {
-  alert("Create failed: " + (json.error || "Unknown error"));
-  console.error("Create work item failed:", json);
-  return;
-}
+    if (!json.ok) {
+      alert("Create failed: " + (json.error || "Unknown error"));
+      console.error("Create work item failed:", json);
+      closeWorkItemDetail();
+      return;
+    }
 
     window.location.reload();
   }
 
-  async function updateWorkItemStatus(id, status) {
+  async function quickUpdateWorkItem(id, status) {
+    showLoadingModal("Updating work item status...");
+
     const res = await fetch("/api/client-work-items/" + id, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -3335,143 +3435,179 @@ if (!json.ok) {
 
     if (!json.ok) {
       alert(json.error || "Failed to update work item");
+      closeWorkItemDetail();
       return;
     }
 
     window.location.reload();
   }
 
-async function openWorkItemDetail(id) {
-  const modal = document.getElementById("workItemDetailModal");
-  const title = document.getElementById("workItemDetailTitle");
-  const body = document.getElementById("workItemDetailBody");
+  async function archiveWorkItem(id) {
+    if (!confirm("Archive this work item? It will be hidden but not permanently deleted.")) {
+      return;
+    }
 
-  title.textContent = "Work Item #" + id;
-  body.innerHTML = "Loading...";
-  modal.classList.add("open");
+    showLoadingModal("Archiving work item...");
 
-  const res = await fetch("/api/client-work-items/" + id);
-  const json = await res.json();
+    const res = await fetch("/api/client-work-items/" + id, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archive: true })
+    });
 
-  if (!json.ok) {
-    body.innerHTML = json.error || "Failed to load work item";
-    return;
+    const json = await res.json();
+
+    if (!json.ok) {
+      alert(json.error || "Failed to archive work item");
+      closeWorkItemDetail();
+      return;
+    }
+
+    window.location.reload();
   }
 
-  const w = json.data;
+  async function openWorkItemDetail(id) {
+    showLoadingModal("Opening work item details...");
 
-  title.textContent = "#" + w.id + " — Edit Work Item";
+    const res = await fetch("/api/client-work-items/" + id);
+    const json = await res.json();
 
-  body.innerHTML =
-    '<div class="form-grid">' +
+    if (!json.ok) {
+      document.getElementById("workItemDetailBody").innerHTML =
+        escapeHtmlClient(json.error || "Failed to load work item");
+      return;
+    }
 
-      '<div class="form-field">' +
-        '<label>Title</label>' +
-        '<input id="editWorkTitle" value="' + escapeHtmlClient(w.title || "") + '" />' +
+    const w = json.data;
+
+    const ownerOptions = WORK_ITEM_USERS.map(function(u) {
+      return '<option value="' + u.id + '" ' +
+        (String(w.owner_user_id || "") === String(u.id) ? "selected" : "") +
+        '>' + escapeHtmlClient(u.name) + '</option>';
+    }).join("");
+
+    const dependencyOptions = WORK_ITEMS
+      .filter(function(item) {
+        return Number(item.id) !== Number(w.id);
+      })
+      .map(function(item) {
+        return '<option value="' + item.id + '" ' +
+          (String(w.dependency_work_item_id || "") === String(item.id) ? "selected" : "") +
+          '>#' + item.id + ' · ' + escapeHtmlClient(item.title) + ' (' + escapeHtmlClient(item.status || "todo") + ')</option>';
+      })
+      .join("");
+
+    document.getElementById("workItemDetailTitle").textContent =
+      "#" + w.id + " — Edit Work Item";
+
+    document.getElementById("workItemDetailBody").innerHTML =
+      '<div class="form-grid">' +
+
+        '<div class="form-field">' +
+          '<label>Title</label>' +
+          '<input id="editWorkTitle" value="' + escapeHtmlClient(w.title || "") + '" />' +
+        '</div>' +
+
+        '<div class="form-field">' +
+          '<label>Status</label>' +
+          '<select id="editWorkStatus">' +
+            '<option value="todo" ' + ((w.status || "todo") === "todo" ? "selected" : "") + '>Todo</option>' +
+            '<option value="in_progress" ' + (w.status === "in_progress" ? "selected" : "") + '>In Progress</option>' +
+            '<option value="done" ' + (w.status === "done" ? "selected" : "") + '>Done</option>' +
+          '</select>' +
+        '</div>' +
+
+        '<div class="form-field">' +
+          '<label>Priority</label>' +
+          '<select id="editWorkPriority">' +
+            '<option value="low" ' + (w.priority === "low" ? "selected" : "") + '>Low</option>' +
+            '<option value="medium" ' + ((w.priority || "medium") === "medium" ? "selected" : "") + '>Medium</option>' +
+            '<option value="high" ' + (w.priority === "high" ? "selected" : "") + '>High</option>' +
+          '</select>' +
+        '</div>' +
+
+        '<div class="form-field">' +
+          '<label>Due Date</label>' +
+          '<input id="editWorkDueDate" type="date" value="' + escapeHtmlClient(w.due_date || "") + '" />' +
+        '</div>' +
+
+        '<div class="form-field">' +
+          '<label>Owner</label>' +
+          '<select id="editWorkOwner">' +
+            '<option value="">No owner</option>' +
+            ownerOptions +
+          '</select>' +
+        '</div>' +
+
+        '<div class="form-field">' +
+          '<label>Depends On</label>' +
+          '<select id="editWorkDependency">' +
+            '<option value="">No dependency</option>' +
+            dependencyOptions +
+          '</select>' +
+        '</div>' +
+
+        '<div class="form-field" style="grid-column:1 / -1;">' +
+          '<label>Description</label>' +
+          '<textarea id="editWorkDescription">' + escapeHtmlClient(w.description || "") + '</textarea>' +
+        '</div>' +
+
       '</div>' +
 
-      '<div class="form-field">' +
-        '<label>Status</label>' +
-        '<select id="editWorkStatus">' +
-          '<option value="todo" ' + ((w.status || "todo") === "todo" ? "selected" : "") + '>Todo</option>' +
-          '<option value="in_progress" ' + (w.status === "in_progress" ? "selected" : "") + '>In Progress</option>' +
-          '<option value="done" ' + (w.status === "done" ? "selected" : "") + '>Done</option>' +
-        '</select>' +
+      '<div style="margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.10);">' +
+        '<div><strong>Created:</strong> ' + escapeHtmlClient(w.created_at || "-") + '</div>' +
+        '<div><strong>Last Updated:</strong> ' + escapeHtmlClient(w.updated_at || "-") + '</div>' +
       '</div>' +
 
-      '<div class="form-field">' +
-        '<label>Priority</label>' +
-        '<select id="editWorkPriority">' +
-          '<option value="low" ' + (w.priority === "low" ? "selected" : "") + '>Low</option>' +
-          '<option value="medium" ' + ((w.priority || "medium") === "medium" ? "selected" : "") + '>Medium</option>' +
-          '<option value="high" ' + (w.priority === "high" ? "selected" : "") + '>High</option>' +
-        '</select>' +
-      '</div>' +
-
-      '<div class="form-field">' +
-        '<label>Due Date</label>' +
-        '<input id="editWorkDueDate" type="date" value="' + escapeHtmlClient(w.due_date || "") + '" />' +
-      '</div>' +
-
-      '<div class="form-field">' +
-        '<label>Owner</label>' +
-        '<select id="editWorkOwner">' +
-          '<option value="">No owner</option>' +
-          ${JSON.stringify(users.map((u) => ({ id: u.id, name: u.name })))}.map(function(u) {
-            return '<option value="' + u.id + '" ' + (String(w.owner_user_id || "") === String(u.id) ? "selected" : "") + '>' + escapeHtmlClient(u.name) + '</option>';
-          }).join("") +
-        '</select>' +
-      '</div>' +
-
-      '<div class="form-field">' +
-        '<label>Depends On</label>' +
-        '<select id="editWorkDependency">' +
-          '<option value="">No dependency</option>' +
-          ${JSON.stringify(workItems.map((item) => ({ id: item.id, title: item.title })))}.filter(function(item) {
-            return Number(item.id) !== Number(w.id);
-          }).map(function(item) {
-            return '<option value="' + item.id + '" ' + (String(w.dependency_work_item_id || "") === String(item.id) ? "selected" : "") + '>#' + item.id + ' · ' + escapeHtmlClient(item.title) + '</option>';
-          }).join("") +
-        '</select>' +
-      '</div>' +
-
-      '<div class="form-field" style="grid-column:1 / -1;">' +
-        '<label>Description</label>' +
-        '<textarea id="editWorkDescription">' + escapeHtmlClient(w.description || "") + '</textarea>' +
-      '</div>' +
-
-    '</div>' +
-
-    '<div style="margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.10);">' +
-      '<div><strong>Created:</strong> ' + escapeHtmlClient(w.created_at || "-") + '</div>' +
-      '<div><strong>Last Updated:</strong> ' + escapeHtmlClient(w.updated_at || "-") + '</div>' +
-      '<div><strong>Current Dependency:</strong> ' + escapeHtmlClient(w.dependency ? ("#" + w.dependency.id + " · " + w.dependency.title + " (" + w.dependency.status + ")") : "-") + '</div>' +
-    '</div>' +
-
-    '<div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">' +
-      '<button class="btn" type="button" onclick="closeWorkItemDetail()">Cancel</button>' +
-      '<button class="btn btn-primary" type="button" onclick="saveWorkItemChanges(' + Number(w.id) + ')">Save Changes</button>' +
-    '</div>';
-}
-
-async function saveWorkItemChanges(id) {
-  const title = document.getElementById("editWorkTitle").value.trim();
-
-  if (!title) {
-    alert("Title is required");
-    return;
+      '<div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px; flex-wrap:wrap;">' +
+        '<button class="btn" type="button" onclick="closeWorkItemDetail()">Cancel</button>' +
+        '<button class="btn" type="button" onclick="archiveWorkItem(' + Number(w.id) + ')">Archive</button>' +
+        '<button class="btn btn-primary" type="button" onclick="saveWorkItemChanges(' + Number(w.id) + ')">Save Changes</button>' +
+      '</div>';
   }
 
-  const payload = {
-    title,
-    status: document.getElementById("editWorkStatus").value,
-    priority: document.getElementById("editWorkPriority").value,
-    owner_user_id: document.getElementById("editWorkOwner").value || null,
-    due_date: document.getElementById("editWorkDueDate").value || null,
-    dependency_work_item_id: document.getElementById("editWorkDependency").value || null,
-    description: document.getElementById("editWorkDescription").value.trim()
-  };
+  async function saveWorkItemChanges(id) {
+    const title = document.getElementById("editWorkTitle").value.trim();
 
-  const res = await fetch("/api/client-work-items/" + id, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
+    if (!title) {
+      alert("Title is required");
+      return;
+    }
 
-  const json = await res.json();
+    showLoadingModal("Saving work item changes...");
 
-  if (!json.ok) {
-    alert(json.error || "Failed to update work item");
-    return;
+    const payload = {
+      title,
+      status: document.getElementById("editWorkStatus").value,
+      priority: document.getElementById("editWorkPriority").value,
+      owner_user_id: document.getElementById("editWorkOwner").value || null,
+      due_date: document.getElementById("editWorkDueDate").value || null,
+      dependency_work_item_id: document.getElementById("editWorkDependency").value || null,
+      description: document.getElementById("editWorkDescription").value.trim()
+    };
+
+    const res = await fetch("/api/client-work-items/" + id, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const json = await res.json();
+
+    if (!json.ok) {
+      alert(json.error || "Failed to update work item");
+      closeWorkItemDetail();
+      return;
+    }
+
+    window.location.reload();
   }
-
-  window.location.reload();
-}
 
   function closeWorkItemDetail(event) {
     if (event && event.target && event.target.id !== "workItemDetailModal") return;
     document.getElementById("workItemDetailModal").classList.remove("open");
   }
+</script>
 </script>
       </body>
     </html>
@@ -18029,13 +18165,7 @@ app.get(
 
       const { data, error } = await supabase
         .from("client_work_items")
-        .select(
-          `
-        *,
-        owner:users!client_work_items_owner_user_id_fkey(name),
-        dependency:client_work_items!client_work_items_dependency_work_item_id_fkey(id, title, status)
-      `,
-        )
+        .select("*")
         .eq("org_id", orgId)
         .eq("id", id)
         .eq("is_active", true)
@@ -18271,14 +18401,6 @@ app.patch(
       const allowedStatuses = ["todo", "in_progress", "done"];
       const allowedPriorities = ["low", "medium", "high"];
 
-      if (body.status && !allowedStatuses.includes(body.status)) {
-        return sendApiError(res, 400, "Invalid status");
-      }
-
-      if (body.priority && !allowedPriorities.includes(body.priority)) {
-        return sendApiError(res, 400, "Invalid priority");
-      }
-
       const { data: existing, error: existingError } = await supabase
         .from("client_work_items")
         .select("*")
@@ -18297,6 +18419,49 @@ app.patch(
         return sendApiError(res, 404, "Work item not found");
       }
 
+      if (body.archive === true) {
+        const archivePatch = {
+          is_active: false,
+          deleted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          last_updated_by_user_id: actorUserId,
+        };
+
+        const { data, error } = await supabase
+          .from("client_work_items")
+          .update(archivePatch)
+          .eq("org_id", orgId)
+          .eq("id", id)
+          .select("*")
+          .maybeSingle();
+
+        if (error) {
+          console.error("archive work item error:", error);
+          return sendApiError(res, 500, "Failed to archive work item");
+        }
+
+        await insertClientActivityLog({
+          orgId,
+          clientId: existing.client_id,
+          actorUserId,
+          action: "work_item_archived",
+          entityType: "client_work_items",
+          entityId: id,
+          oldValue: existing,
+          newValue: data,
+        });
+
+        return sendApiSuccess(res, data);
+      }
+
+      if (body.status && !allowedStatuses.includes(body.status)) {
+        return sendApiError(res, 400, "Invalid status");
+      }
+
+      if (body.priority && !allowedPriorities.includes(body.priority)) {
+        return sendApiError(res, 400, "Invalid priority");
+      }
+
       const dependencyId =
         body.dependency_work_item_id === "" ||
         body.dependency_work_item_id === undefined ||
@@ -18308,12 +18473,18 @@ app.patch(
         return sendApiError(res, 400, "A work item cannot depend on itself");
       }
 
-      if (dependencyId) {
+      let effectiveDependencyId = dependencyId;
+
+      if (body.dependency_work_item_id === undefined) {
+        effectiveDependencyId = existing.dependency_work_item_id || null;
+      }
+
+      if (effectiveDependencyId) {
         const { data: dependency, error: dependencyError } = await supabase
           .from("client_work_items")
           .select("id, client_id, title, status")
           .eq("org_id", orgId)
-          .eq("id", dependencyId)
+          .eq("id", effectiveDependencyId)
           .eq("client_id", existing.client_id)
           .eq("is_active", true)
           .is("deleted_at", null)
@@ -18333,27 +18504,6 @@ app.patch(
         }
 
         if (body.status === "done" && dependency.status !== "done") {
-          return sendApiError(
-            res,
-            400,
-            `Cannot mark done yet. Dependency is still not done: ${dependency.title}`,
-          );
-        }
-      }
-
-      if (
-        body.status === "done" &&
-        !dependencyId &&
-        existing.dependency_work_item_id
-      ) {
-        const { data: dependency } = await supabase
-          .from("client_work_items")
-          .select("id, title, status")
-          .eq("org_id", orgId)
-          .eq("id", existing.dependency_work_item_id)
-          .maybeSingle();
-
-        if (dependency && dependency.status !== "done") {
           return sendApiError(
             res,
             400,
