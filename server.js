@@ -2876,12 +2876,15 @@ function renderClientWorkspacePage({
             border-color:color-mix(in srgb, var(--primary) 55%, transparent);
           }
 
-          .stats, .grid-2 {
+          .stats {
             display:grid; grid-template-columns:repeat(4, minmax(0, 1fr));
             gap:12px; margin-bottom:20px;
           }
 
-          .grid-2 { grid-template-columns:1fr 1fr; gap:16px; }
+          .grid-2 {
+            display:grid; grid-template-columns:1fr 1fr;
+            gap:16px; margin-bottom:20px;
+          }
 
           .stat-card, .panel { padding:18px; }
           .panel { margin-bottom:16px; }
@@ -2907,28 +2910,6 @@ function renderClientWorkspacePage({
           .item:first-child { border-top:0; }
           .item-title { font-weight:800; margin-bottom:6px; }
 
-          .field {
-            display:flex; flex-direction:column; gap:8px; margin-bottom:14px;
-          }
-
-          label { font-size:13px; font-weight:800; }
-
-          input:not([type="checkbox"]), textarea {
-            width:100%; padding:12px 13px; border-radius:12px;
-            border:1px solid var(--line); background:rgba(255,255,255,0.04);
-            color:var(--text); font:inherit;
-          }
-
-          textarea { min-height:90px; resize:vertical; }
-
-          .check-row {
-            display:flex; align-items:center; gap:8px; margin-top:6px;
-          }
-
-          .actions {
-            display:flex; justify-content:flex-end; margin-top:14px;
-          }
-
           a { color: var(--primary); }
 
           @media (max-width: 900px) {
@@ -2952,6 +2933,11 @@ function renderClientWorkspacePage({
 
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
               <a class="btn" href="/clients">← Clients</a>
+              ${
+                client.google_drive_folder_url
+                  ? `<a class="btn" href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">📁 Open Drive</a>`
+                  : ""
+              }
               <a class="btn btn-primary" href="/clients/${client.id}/edit">Edit Client</a>
               <a class="btn" href="/clients/${client.id}/reset">Reset</a>
             </div>
@@ -2985,13 +2971,13 @@ function renderClientWorkspacePage({
               <div class="meta"><strong>Account Manager:</strong> ${escapeHtml(client.account_manager_name || "-")}</div>
               <div class="meta"><strong>Project Manager:</strong> ${escapeHtml(client.project_manager_name || "-")}</div>
               <div class="meta">
-  <strong>Google Drive Folder:</strong>
-  ${
-    client.google_drive_folder_url
-      ? `<a href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">Open Folder</a>`
-      : "-"
-  }
-</div>
+                <strong>Google Drive Folder:</strong>
+                ${
+                  client.google_drive_folder_url
+                    ? `<a href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">📁 Open Client Folder</a>`
+                    : `<span style="color: var(--danger);">Not set</span>`
+                }
+              </div>
             </div>
 
             <div class="panel">
