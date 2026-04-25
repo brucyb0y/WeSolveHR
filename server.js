@@ -2956,6 +2956,76 @@ function renderClientWorkspacePage({
   color: var(--text);
 }
 
+.work-summary-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.summary-chip {
+  display: inline-flex;
+  padding: 8px 11px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.work-card-list {
+  display: grid;
+  gap: 12px;
+}
+
+.work-card {
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.035);
+}
+
+.work-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.work-card-title {
+  font-size: 16px;
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+
+.work-card-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+.work-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+@media (max-width: 900px) {
+  .work-card-top {
+    flex-direction: column;
+  }
+
+  .work-card-meta {
+    grid-template-columns: 1fr;
+  }
+}
+
 .badge-danger {
   background: var(--danger-soft);
   color: var(--text-strong);
@@ -3145,15 +3215,16 @@ function renderClientWorkspacePage({
           </div>
 
           <div class="grid-2">
-<div class="panel">
+          <div class="panel">
   <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
     <div>
       <h2 style="margin:0;">Work Items</h2>
-      <div class="meta">
-        Todo: ${workItems.filter((w) => w.status === "todo").length}
-        · In Progress: ${workItems.filter((w) => w.status === "in_progress").length}
-        · Done: ${workItems.filter((w) => w.status === "done").length}
-        · Blocked: ${
+      <div class="work-summary-chips">
+        <span class="summary-chip">All ${workItems.length}</span>
+        <span class="summary-chip">Todo ${workItems.filter((w) => w.status === "todo").length}</span>
+        <span class="summary-chip">In Progress ${workItems.filter((w) => w.status === "in_progress").length}</span>
+        <span class="summary-chip">Done ${workItems.filter((w) => w.status === "done").length}</span>
+        <span class="summary-chip">Blocked ${
           workItems.filter((w) => {
             if (!w.dependency_work_item_id) return false;
             const dep = workItems.find(
@@ -3161,99 +3232,81 @@ function renderClientWorkspacePage({
             );
             return dep && dep.status !== "done";
           }).length
-        }
+        }</span>
       </div>
     </div>
 
     <button class="btn btn-primary" type="button" onclick="openWorkItemModal()">+ Add Work Item</button>
   </div>
 
-  ${
-    workItems.length
-      ? `
-        <div style="overflow-x:auto;">
-          <table class="work-table">
-            <thead>
-              <tr>
-                <th>Work</th>
-                <th>Owner</th>
-                <th>Status</th>
-                <th>Priority</th>
-                <th>Due</th>
-                <th>Depends On</th>
-                <th>Last Updated</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${workItems
-                .map((w) => {
-                  const ownerName =
-                    users.find((u) => String(u.id) === String(w.owner_user_id))
-                      ?.name || "-";
+  <div class="work-card-list">
+    ${
+      workItems.length
+        ? workItems
+            .map((w) => {
+              const ownerName =
+                users.find((u) => String(u.id) === String(w.owner_user_id))
+                  ?.name || "-";
 
-                  const dep = w.dependency_work_item_id
-                    ? workItems.find(
-                        (x) =>
-                          String(x.id) === String(w.dependency_work_item_id),
-                      )
-                    : null;
+              const dep = w.dependency_work_item_id
+                ? workItems.find(
+                    (x) => String(x.id) === String(w.dependency_work_item_id),
+                  )
+                : null;
 
-                  const isBlockedByDependency = dep && dep.status !== "done";
+              const isBlockedByDependency = dep && dep.status !== "done";
 
-                  const statusClass =
-                    w.status === "done"
-                      ? "badge badge-ok"
-                      : w.status === "in_progress"
-                        ? "badge badge-info"
-                        : isBlockedByDependency
-                          ? "badge badge-warn"
-                          : "badge badge-muted";
+              const statusClass =
+                w.status === "done"
+                  ? "badge badge-ok"
+                  : w.status === "in_progress"
+                    ? "badge badge-info"
+                    : isBlockedByDependency
+                      ? "badge badge-warn"
+                      : "badge badge-muted";
 
-                  const dependencyText = dep
-                    ? isBlockedByDependency
-                      ? `Blocked by #${escapeHtml(dep.id)} · ${escapeHtml(dep.title)}`
-                      : `Complete: #${escapeHtml(dep.id)} · ${escapeHtml(dep.title)}`
-                    : "-";
+              const dependencyText = dep
+                ? isBlockedByDependency
+                  ? `Blocked by #${escapeHtml(dep.id)} · ${escapeHtml(dep.title)}`
+                  : `Dependency complete: #${escapeHtml(dep.id)} · ${escapeHtml(dep.title)}`
+                : "No dependency";
 
-                  return `
-                  <tr>
-                    <td>
-                      <a href="#" onclick="event.preventDefault(); openWorkItemDetail(${Number(w.id)})" style="font-weight:800;">
-                        ${escapeHtml(w.title)}
-                      </a>
-                      <div class="meta">${escapeHtml((w.description || "").slice(0, 80))}</div>
-                    </td>
+              return `
+              <div class="work-card">
+                <div class="work-card-top">
+                  <div>
+                    <div class="work-card-title">${escapeHtml(w.title || "Untitled")}</div>
+                    <div class="meta">${escapeHtml(w.description || "No description")}</div>
+                  </div>
 
-                    <td>${escapeHtml(ownerName)}</td>
+                  <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+                    <span class="${statusClass}">
+                      ${isBlockedByDependency && w.status !== "done" ? "blocked" : escapeHtml(w.status || "todo")}
+                    </span>
+                    <span class="badge badge-muted">${escapeHtml(w.priority || "medium")}</span>
+                  </div>
+                </div>
 
-                    <td>
-                      <span class="${statusClass}">
-                        ${isBlockedByDependency && w.status !== "done" ? "blocked" : escapeHtml(w.status || "todo")}
-                      </span>
-                    </td>
+                <div class="work-card-meta">
+                  <div><strong>Owner:</strong> ${escapeHtml(ownerName)}</div>
+                  <div><strong>Due:</strong> ${escapeHtml(w.due_date || "-")}</div>
+                  <div><strong>Depends:</strong> ${dependencyText}</div>
+                  <div><strong>Last updated:</strong> ${escapeHtml(w.updated_at ? formatDateTime(w.updated_at) : "-")}</div>
+                </div>
 
-                    <td>${escapeHtml(w.priority || "medium")}</td>
-                    <td>${escapeHtml(w.due_date || "-")}</td>
-                    <td>${dependencyText}</td>
-                    <td>${escapeHtml(w.updated_at ? formatDateTime(w.updated_at) : "-")}</td>
-
-                    <td>
-                      <button class="btn" type="button" onclick="openWorkItemDetail(${Number(w.id)})">Edit</button>
-                      <button class="btn" type="button" onclick="quickUpdateWorkItem(${Number(w.id)}, 'in_progress')">Start</button>
-                      <button class="btn" type="button" onclick="quickUpdateWorkItem(${Number(w.id)}, 'done')">Done</button>
-                      <button class="btn" type="button" onclick="archiveWorkItem(${Number(w.id)})">Archive</button>
-                    </td>
-                  </tr>
-                `;
-                })
-                .join("")}
-            </tbody>
-          </table>
-        </div>
-      `
-      : `<div class="meta">No work items yet. Add the first work item for this client.</div>`
-  }
+                <div class="work-card-actions">
+                  <button class="btn" type="button" onclick="openWorkItemDetail(${Number(w.id)})">Open / Edit</button>
+                  <button class="btn" type="button" onclick="quickUpdateWorkItem(${Number(w.id)}, 'in_progress')">Start</button>
+                  <button class="btn" type="button" onclick="quickUpdateWorkItem(${Number(w.id)}, 'done')">Done</button>
+                  <button class="btn" type="button" onclick="archiveWorkItem(${Number(w.id)})">Archive</button>
+                </div>
+              </div>
+            `;
+            })
+            .join("")
+        : `<div class="meta">No work items yet. Add the first work item for this client.</div>`
+    }
+  </div>
 </div>
 
             <div class="panel">
@@ -3342,7 +3395,6 @@ function renderClientWorkspacePage({
 </div>
         </div>
         
-        <script>
 <script>
   const WORK_ITEM_USERS = ${JSON.stringify(users.map((u) => ({ id: u.id, name: u.name })))};
   const WORK_ITEMS = ${JSON.stringify(
@@ -3607,7 +3659,6 @@ function renderClientWorkspacePage({
     if (event && event.target && event.target.id !== "workItemDetailModal") return;
     document.getElementById("workItemDetailModal").classList.remove("open");
   }
-</script>
 </script>
       </body>
     </html>
