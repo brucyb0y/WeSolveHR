@@ -2675,9 +2675,21 @@ function renderNewClientPage({ users = [] }) {
 
                 <div class="field">
                   <label>Slug</label>
-                  <input name="slug" placeholder="example: everloop" />
+                  <input name="slug" placeholder="example: SomeAi" />
                   <div class="hint">This will be used later in the client view link.</div>
                 </div>
+                
+                <div class="field">
+  <label>Google Drive Folder Link</label>
+  <input
+    name="google_drive_folder_url"
+    placeholder="Paste main Google Drive client folder link"
+    required
+  />
+  <div class="hint">
+    Create one Google Drive folder for this client and paste the folder link here.
+  </div>
+</div>
 
                 <div class="field">
                   <label>Status</label>
@@ -2972,6 +2984,14 @@ function renderClientWorkspacePage({
               <div class="meta"><strong>Slug:</strong> ${escapeHtml(client.slug || "-")}</div>
               <div class="meta"><strong>Account Manager:</strong> ${escapeHtml(client.account_manager_name || "-")}</div>
               <div class="meta"><strong>Project Manager:</strong> ${escapeHtml(client.project_manager_name || "-")}</div>
+              <div class="meta">
+  <strong>Google Drive Folder:</strong>
+  ${
+    client.google_drive_folder_url
+      ? `<a href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">Open Folder</a>`
+      : "-"
+  }
+</div>
             </div>
 
             <div class="panel">
@@ -3062,60 +3082,6 @@ function renderClientWorkspacePage({
                       )
                       .join("")
                   : `<div class="meta">No actions yet.</div>`
-              }
-            </div>
-          </div>
-
-          <div class="grid-2">
-            <div class="panel">
-              <h2>Add Google Drive Link</h2>
-              <form method="POST" action="/api/clients/${client.id}/documents">
-                <div class="field">
-                  <label>Title</label>
-                  <input name="title" placeholder="Proposal, Contract, Scope Doc, Meeting Notes" />
-                </div>
-
-                <div class="field">
-                  <label>Google Drive / Docs Link</label>
-                  <input name="url" placeholder="Paste Google Drive or Google Docs link here" />
-                </div>
-
-                <div class="field">
-                  <label>Notes</label>
-                  <textarea name="notes" placeholder="Short note about this document"></textarea>
-                </div>
-
-                <label class="check-row">
-                  <input type="checkbox" name="is_client_visible" />
-                  Visible to client later
-                </label>
-
-                <div class="actions">
-                  <button class="btn btn-primary" type="submit">Save Google Drive Link</button>
-                </div>
-              </form>
-            </div>
-
-            <div class="panel">
-              <h2>Google Drive Links</h2>
-              ${
-                documents.length
-                  ? documents
-                      .map(
-                        (d) => `
-                    <div class="item">
-                      <div class="item-title">
-                        <a href="${escapeHtml(d.url)}" target="_blank" rel="noopener noreferrer">
-                          ${escapeHtml(d.title)}
-                        </a>
-                      </div>
-                      <div class="meta">${escapeHtml(d.notes || "-")}</div>
-                      <div class="meta">Client visible: ${d.is_client_visible ? "Yes" : "No"}</div>
-                    </div>
-                  `,
-                      )
-                      .join("")
-                  : `<div class="meta">No Google Drive links added yet.</div>`
               }
             </div>
           </div>
@@ -17836,6 +17802,19 @@ app.post("/api/clients", requireDashboardAuth, async (req, res) => {
     const name = String(body.name || "").trim();
     const companyName = String(body.company_name || "").trim();
     const slug = normalizeSlug(body.slug || name);
+    const googleDriveFolderUrl = String(
+      body.google_drive_folder_url || "",
+    ).trim();
+
+    if (!googleDriveFolderUrl) {
+      return res.status(400).send("Google Drive folder link is required");
+    }
+
+    if (!googleDriveFolderUrl.startsWith("https://drive.google.com/")) {
+      return res
+        .status(400)
+        .send("Please enter a valid Google Drive folder link");
+    }
 
     if (!name) {
       return res.status(400).send("Client name is required");
@@ -17850,6 +17829,7 @@ app.post("/api/clients", requireDashboardAuth, async (req, res) => {
       name,
       company_name: companyName || null,
       slug,
+      google_drive_folder_url: googleDriveFolderUrl,
       status: body.status || "active",
       health_status: body.health_status || "healthy",
       start_date: body.start_date || null,
