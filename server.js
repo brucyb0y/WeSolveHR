@@ -3665,6 +3665,531 @@ function renderClientWorkspacePage({
   `;
 }
 
+function renderWorkItemsPage({
+  workItems = [],
+  users = [],
+  currentUser = null,
+} = {}) {
+  const currentUserId = currentUser?.id || null;
+
+  const ownerNameFor = (item) =>
+    users.find((u) => String(u.id) === String(item.owner_user_id))?.name || "-";
+
+  const clientNameFor = (item) => item.clients?.name || item.client_name || "-";
+
+  const dependencyFor = (item) => {
+    if (!item.dependency_work_item_id) return null;
+    return (
+      workItems.find(
+        (w) => String(w.id) === String(item.dependency_work_item_id),
+      ) || null
+    );
+  };
+
+  const isBlocked = (item) => {
+    const dep = dependencyFor(item);
+    return dep && dep.status !== "done";
+  };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const isDueToday = (item) => {
+    if (!item.due_date) return false;
+    const d = new Date(item.due_date + "T00:00:00");
+    return d.getTime() === today.getTime();
+  };
+
+  const isDueSoon = (item) => {
+    if (!item.due_date) return false;
+    const d = new Date(item.due_date + "T00:00:00");
+    const diffDays = Math.round(
+      (d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    return diffDays >= 0 && diffDays <= 2;
+  };
+
+  const myItems = currentUserId
+    ? workItems.filter((w) => String(w.owner_user_id) === String(currentUserId))
+    : [];
+
+  const sortedItems = [...workItems].sort((a, b) => {
+    const blockedA = isBlocked(a) ? 1 : 0;
+    const blockedB = isBlocked(b) ? 1 : 0;
+    if (blockedA !== blockedB) return blockedB - blockedA;
+
+    const priorityWeight = { high: 3, medium: 2, low: 1 };
+    const pa = priorityWeight[a.priority] || 0;
+    const pb = priorityWeight[b.priority] || 0;
+    if (pa !== pb) return pb - pa;
+
+    const da = a.due_date
+      ? new Date(a.due_date).getTime()
+      : Number.MAX_SAFE_INTEGER;
+    const db = b.due_date
+      ? new Date(b.due_date).getTime()
+      : Number.MAX_SAFE_INTEGER;
+    return da - db;
+  });
+
+  const cardHtml = (item) => {
+    const dep = dependencyFor(item);
+    const blocked = isBlocked(item);
+
+    const statusClass =
+      item.status === "done"
+        ? "badge badge-ok"
+        : item.status === "in_progress"
+          ? "badge badge-info"
+          : blocked
+            ? "badge badge-warn"
+            : "badge badge-muted";
+
+    const dueClass = isDueToday(item)
+      ? "badge badge-danger"
+      : isDueSoon(item)
+        ? "badge badge-warn"
+        : "badge badge-muted";
+
+    const dependencyText = dep
+      ? blocked
+        ? `Blocked by #${escapeHtml(dep.id)} · ${escapeHtml(dep.title)}`
+        : `Dependency complete: #${escapeHtml(dep.id)} · ${escapeHtml(dep.title)}`
+      : "No dependency";
+
+    return `
+      <div class="work-card">
+        <div class="work-card-top">
+          <div>
+            <div class="work-card-title">${escapeHtml(item.title || "Untitled")}</div>
+            <div class="meta">Client: <a href="/clients/${Number(item.client_id)}">${escapeHtml(clientNameFor(item))}</a></div>
+            <div class="meta">${escapeHtml(item.description || "No description")}</div>
+          </div>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+            <span class="${statusClass}">
+              ${blocked && item.status !== "done" ? "blocked" : escapeHtml(item.status || "todo")}
+            </span>
+            <span class="badge badge-muted">${escapeHtml(item.priority || "medium")}</span>
+            <span class="${dueClass}">Due ${escapeHtml(item.due_date || "-")}</span>
+          </div>
+        </div>
+
+        <div class="work-card-meta">
+          <div><strong>Owner:</strong> ${escapeHtml(ownerNameFor(item))}</div>
+          <div><strong>Depends:</strong> ${dependencyText}</div>
+          <div><strong>Last updated:</strong> ${escapeHtml(item.updated_at ? formatDateTime(item.updated_at) : "-")}</div>
+          <div><strong>Created:</strong> ${escapeHtml(item.created_at ? formatDateTime(item.created_at) : "-")}</div>
+        </div>
+
+        <div class="work-card-actions">
+          <a class="btn" href="/clients/${Number(item.client_id)}">Open Client</a>
+          <button class="btn" type="button" onclick="patchWorkItem(${Number(item.id)}, { status: 'in_progress' })">Start</button>
+          <button class="btn" type="button" onclick="patchWorkItem(${Number(item.id)}, { status: 'done' })">Done</button>
+          <button class="btn" type="button" onclick="patchWorkItem(${Number(item.id)}, { archive: true }, true)">Archive</button>
+        </div>
+      </div>
+    `;
+  };
+
+  return `
+    <html>
+      <head>
+        <title>Work Items | WeSolveHR</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+          ${buildTopNavCss()}
+
+          .wrap {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px 18px 36px;
+          }
+
+          .topbar, .panel, .stat-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+
+          .topbar {
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            gap:16px;
+            flex-wrap:wrap;
+            margin-bottom:20px;
+            padding:18px 20px;
+          }
+
+          .eyebrow {
+            font-size:11px;
+            letter-spacing:0.16em;
+            text-transform:uppercase;
+            color:var(--primary);
+            font-weight:700;
+            margin-bottom:8px;
+          }
+
+          h1 {
+            margin:0;
+            font-size:30px;
+            letter-spacing:-0.04em;
+          }
+
+          .subtitle, .meta {
+            color:var(--muted);
+            font-size:13px;
+            line-height:1.5;
+          }
+
+          .subtitle {
+            margin-top:8px;
+            font-size:14px;
+          }
+
+          .stats {
+            display:grid;
+            grid-template-columns:repeat(4, minmax(0, 1fr));
+            gap:12px;
+            margin-bottom:20px;
+          }
+
+          .stat-card {
+            padding:16px;
+          }
+
+          .stat-label {
+            color:var(--muted);
+            font-size:12px;
+            text-transform:uppercase;
+            letter-spacing:0.08em;
+            font-weight:800;
+          }
+
+          .stat-value {
+            margin-top:10px;
+            font-size:28px;
+            font-weight:900;
+          }
+
+          .panel {
+            padding:18px;
+            margin-bottom:16px;
+          }
+
+          .filter-row {
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
+            margin-bottom:16px;
+          }
+
+          .filter-chip {
+            padding:10px 14px;
+            border-radius:999px;
+            border:1px solid rgba(255,255,255,0.10);
+            background:rgba(255,255,255,0.05);
+            color:var(--text);
+            font-weight:800;
+            cursor:pointer;
+          }
+
+          .filter-chip.active {
+            background:var(--primary-soft);
+            border-color:color-mix(in srgb, var(--primary) 55%, transparent);
+          }
+
+          .work-card-list {
+            display:grid;
+            gap:12px;
+          }
+
+          .work-card {
+            padding:14px;
+            border-radius:16px;
+            border:1px solid rgba(255,255,255,0.10);
+            background:rgba(255,255,255,0.035);
+          }
+
+          .work-card.hidden {
+            display:none;
+          }
+
+          .work-card-top {
+            display:flex;
+            justify-content:space-between;
+            gap:14px;
+            align-items:flex-start;
+            margin-bottom:12px;
+          }
+
+          .work-card-title {
+            font-size:17px;
+            font-weight:900;
+            margin-bottom:6px;
+          }
+
+          .work-card-meta {
+            display:grid;
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+            gap:8px 14px;
+            color:var(--muted);
+            font-size:13px;
+            margin-top:10px;
+          }
+
+          .work-card-actions {
+            display:flex;
+            gap:8px;
+            flex-wrap:wrap;
+            margin-top:14px;
+          }
+
+          .btn {
+            display:inline-flex;
+            align-items:center;
+            text-decoration:none;
+            color:var(--text);
+            padding:10px 13px;
+            border-radius:12px;
+            background:rgba(255,255,255,0.05);
+            border:1px solid rgba(255,255,255,0.12);
+            font-weight:800;
+            cursor:pointer;
+          }
+
+          .badge {
+            display:inline-flex;
+            padding:6px 9px;
+            border-radius:999px;
+            font-size:12px;
+            font-weight:800;
+          }
+
+          .badge-ok {
+            background:var(--success-soft);
+            color:var(--text-strong);
+          }
+
+          .badge-info {
+            background:var(--info-soft);
+            color:var(--text-strong);
+          }
+
+          .badge-warn {
+            background:var(--accent-soft);
+            color:var(--text-strong);
+          }
+
+          .badge-danger {
+            background:var(--danger-soft);
+            color:var(--text-strong);
+          }
+
+          .badge-muted {
+            background:rgba(255,255,255,0.08);
+            color:var(--text);
+          }
+
+          .loading-overlay {
+            position:fixed;
+            inset:0;
+            background:rgba(3, 8, 20, 0.70);
+            backdrop-filter:blur(8px);
+            display:none;
+            align-items:center;
+            justify-content:center;
+            padding:18px;
+            z-index:9999;
+          }
+
+          .loading-overlay.open {
+            display:flex;
+          }
+
+          .loading-box {
+            width:min(420px, 100%);
+            border-radius:22px;
+            border:1px solid var(--line);
+            background:linear-gradient(180deg, var(--panel), var(--panel-strong));
+            box-shadow:var(--shadow-soft);
+            padding:22px;
+            text-align:center;
+          }
+
+          @media (max-width:900px) {
+            .stats {
+              grid-template-columns:1fr;
+            }
+
+            .work-card-top {
+              flex-direction:column;
+            }
+
+            .work-card-meta {
+              grid-template-columns:1fr;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        ${renderTopNav("work-items")}
+
+        <div class="wrap">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Execution View</div>
+              <h1>Work Items</h1>
+              <div class="subtitle">All client work across the company, sorted by blockers, priority, and due date.</div>
+            </div>
+          </div>
+
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-label">Total Open</div>
+              <div class="stat-value">${workItems.filter((w) => w.status !== "done").length}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">My Work</div>
+              <div class="stat-value">${myItems.filter((w) => w.status !== "done").length}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Blocked</div>
+              <div class="stat-value">${workItems.filter((w) => isBlocked(w)).length}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Due Today</div>
+              <div class="stat-value">${workItems.filter((w) => isDueToday(w)).length}</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="filter-row">
+              <button class="filter-chip active" type="button" onclick="filterWorkItems('all', this)">All</button>
+              <button class="filter-chip" type="button" onclick="filterWorkItems('mine', this)">My Work</button>
+              <button class="filter-chip" type="button" onclick="filterWorkItems('high', this)">High Priority</button>
+              <button class="filter-chip" type="button" onclick="filterWorkItems('blocked', this)">Blocked</button>
+              <button class="filter-chip" type="button" onclick="filterWorkItems('due_soon', this)">Due Soon</button>
+              <button class="filter-chip" type="button" onclick="filterWorkItems('done', this)">Done</button>
+            </div>
+
+            <div class="work-card-list">
+              ${
+                sortedItems.length
+                  ? sortedItems
+                      .map(
+                        (item) => `
+                    <div
+                      class="work-item-filter-card"
+                      data-owner-id="${escapeHtml(item.owner_user_id || "")}"
+                      data-priority="${escapeHtml(item.priority || "")}"
+                      data-status="${escapeHtml(item.status || "")}"
+                      data-blocked="${isBlocked(item) ? "true" : "false"}"
+                      data-due-soon="${isDueSoon(item) ? "true" : "false"}"
+                    >
+                      ${cardHtml(item)}
+                    </div>
+                  `,
+                      )
+                      .join("")
+                  : `<div class="meta">No work items found.</div>`
+              }
+            </div>
+          </div>
+        </div>
+
+        <div id="workItemsLoading" class="loading-overlay">
+          <div class="loading-box">
+            <div style="font-size:20px; font-weight:900; margin-bottom:8px;">Opening this page</div>
+            <div class="meta" id="workItemsLoadingText">Please wait...</div>
+          </div>
+        </div>
+
+        <script>
+          const CURRENT_USER_ID = ${JSON.stringify(currentUserId)};
+
+          function showWorkItemsLoading(message) {
+            const overlay = document.getElementById("workItemsLoading");
+            const text = document.getElementById("workItemsLoadingText");
+
+            if (text) text.textContent = message || "Please wait...";
+            if (overlay) overlay.classList.add("open");
+          }
+
+          function hideWorkItemsLoading() {
+            const overlay = document.getElementById("workItemsLoading");
+            if (overlay) overlay.classList.remove("open");
+          }
+
+          async function patchWorkItem(id, payload, askConfirm) {
+            if (askConfirm && !confirm("Archive this work item? It will be hidden but not permanently deleted.")) {
+              return;
+            }
+
+            showWorkItemsLoading("Updating work item...");
+
+            try {
+              const res = await fetch("/api/client-work-items/" + id, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+              });
+
+              const json = await res.json();
+
+              if (!json.ok) {
+                alert(json.error || "Failed to update work item");
+                hideWorkItemsLoading();
+                return;
+              }
+
+              window.location.reload();
+            } catch (error) {
+              alert(error?.message || "Something went wrong");
+              hideWorkItemsLoading();
+            }
+          }
+
+          function filterWorkItems(filter, btn) {
+            document.querySelectorAll(".filter-chip").forEach((x) => x.classList.remove("active"));
+            if (btn) btn.classList.add("active");
+
+            document.querySelectorAll(".work-item-filter-card").forEach((card) => {
+              const ownerId = card.getAttribute("data-owner-id");
+              const priority = card.getAttribute("data-priority");
+              const status = card.getAttribute("data-status");
+              const blocked = card.getAttribute("data-blocked") === "true";
+              const dueSoon = card.getAttribute("data-due-soon") === "true";
+
+              let show = true;
+
+              if (filter === "mine") {
+                show = CURRENT_USER_ID && String(ownerId) === String(CURRENT_USER_ID);
+              } else if (filter === "high") {
+                show = priority === "high";
+              } else if (filter === "blocked") {
+                show = blocked;
+              } else if (filter === "due_soon") {
+                show = dueSoon;
+              } else if (filter === "done") {
+                show = status === "done";
+              } else {
+                show = true;
+              }
+
+              card.style.display = show ? "" : "none";
+            });
+          }
+        </script>
+      </body>
+    </html>
+  `;
+}
+
 function renderTopNav(active = "") {
   const items = [
     { href: "/dashboard", label: "Dashboard", key: "dashboard" },
@@ -3674,6 +4199,7 @@ function renderTopNav(active = "") {
     { href: "/bugs", label: "Bug Board", key: "bugs" },
     { href: "/reports", label: "Reports", key: "reports" },
     { href: "/clients", label: "Clients", key: "clients" },
+    { href: "/work-items", label: "Work Items", key: "work-items" },
     { href: "/account", label: "My Account", key: "account" },
     { href: "/logout", label: "Logout", key: "logout" },
   ];
@@ -15268,6 +15794,54 @@ function renderDashboardPage(data) {
     </html>
   `;
 }
+
+app.get("/work-items", requireDashboardAuth, async (req, res) => {
+  try {
+    const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+
+    const [workItemsResult, usersResult] = await Promise.all([
+      supabase
+        .from("client_work_items")
+        .select(
+          `
+          *,
+          clients(name)
+        `,
+        )
+        .eq("org_id", orgId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .order("updated_at", { ascending: false }),
+
+      supabase
+        .from("users")
+        .select("id, name")
+        .eq("org_id", orgId)
+        .eq("is_active", true)
+        .order("name", { ascending: true }),
+    ]);
+
+    if (workItemsResult.error) {
+      console.error("work items page lookup error:", workItemsResult.error);
+      return res.status(500).send("Failed to load work items");
+    }
+
+    if (usersResult.error) {
+      console.error("work items users lookup error:", usersResult.error);
+    }
+
+    return res.type("html").send(
+      renderWorkItemsPage({
+        workItems: workItemsResult.data || [],
+        users: usersResult.data || [],
+        currentUser: req.loggedInUser || null,
+      }),
+    );
+  } catch (error) {
+    console.error("GET /work-items fatal error:", error);
+    return res.status(500).send("Failed to load work items");
+  }
+});
 
 app.get("/health/live", (_req, res) => {
   return res.status(200).json({ ok: true, status: "live" });
