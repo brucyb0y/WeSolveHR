@@ -3308,10 +3308,11 @@ function renderClientWorkspacePage({
 
     const json = await res.json();
 
-    if (!json.ok) {
-      alert(json.error || "Failed to create work item");
-      return;
-    }
+if (!json.ok) {
+  alert("Create failed: " + (json.error || "Unknown error"));
+  console.error("Create work item failed:", json);
+  return;
+}
 
     window.location.reload();
   }
