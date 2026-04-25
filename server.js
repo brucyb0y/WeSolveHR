@@ -2635,6 +2635,9 @@ function renderNewClientPage({ users = [] }) {
             color: var(--text-strong);
             border-color: color-mix(in srgb, var(--primary) 55%, transparent);
           }
+          
+
+
 
           @media (max-width: 800px) {
             .grid {
@@ -2827,11 +2830,7 @@ function renderClientWorkspacePage({
           ${buildBasePageCss()}
           ${buildTopNavCss()}
 
-          .wrap {
-            max-width: 1600px;
-            margin: 0 auto;
-            padding: 24px 18px 36px;
-          }
+          .wrap { max-width: 1600px; margin: 0 auto; padding: 24px 18px 36px; }
 
           .topbar, .panel, .stat-card {
             background: linear-gradient(180deg, var(--panel), var(--panel-strong));
@@ -2841,137 +2840,91 @@ function renderClientWorkspacePage({
           }
 
           .topbar {
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-            gap:16px;
-            flex-wrap:wrap;
-            margin-bottom:20px;
-            padding:18px 20px;
+            display:flex; justify-content:space-between; align-items:center;
+            gap:16px; flex-wrap:wrap; margin-bottom:20px; padding:18px 20px;
           }
 
-          h1 {
-            margin:0;
-            font-size:30px;
-            letter-spacing:-0.04em;
-          }
-
-          .subtitle {
-            color:var(--muted);
-            margin-top:8px;
-            font-size:14px;
-          }
+          h1 { margin:0; font-size:30px; letter-spacing:-0.04em; }
+          .subtitle, .meta { color:var(--muted); font-size:13px; line-height:1.5; }
+          .subtitle { margin-top:8px; font-size:14px; }
 
           .eyebrow {
-            font-size:11px;
-            letter-spacing:0.16em;
-            text-transform:uppercase;
-            color:var(--primary);
-            font-weight:700;
-            margin-bottom:8px;
+            font-size:11px; letter-spacing:0.16em; text-transform:uppercase;
+            color:var(--primary); font-weight:700; margin-bottom:8px;
           }
 
           .btn {
-            display:inline-flex;
-            align-items:center;
-            text-decoration:none;
-            color:var(--text);
-            padding:10px 13px;
-            border-radius:12px;
-            background:rgba(255,255,255,0.05);
-            border:1px solid rgba(255,255,255,0.12);
-            font-weight:800;
+            display:inline-flex; align-items:center; text-decoration:none; color:var(--text);
+            padding:10px 13px; border-radius:12px; background:rgba(255,255,255,0.05);
+            border:1px solid rgba(255,255,255,0.12); font-weight:800; cursor:pointer;
           }
 
           .btn-primary {
-            background:var(--primary-soft);
-            color:var(--text-strong);
+            background:var(--primary-soft); color:var(--text-strong);
             border-color:color-mix(in srgb, var(--primary) 55%, transparent);
           }
 
-          .stats {
-            display:grid;
-            grid-template-columns:repeat(4, minmax(0, 1fr));
-            gap:12px;
-            margin-bottom:20px;
+          .stats, .grid-2 {
+            display:grid; grid-template-columns:repeat(4, minmax(0, 1fr));
+            gap:12px; margin-bottom:20px;
           }
 
-          .stat-card {
-            padding:14px;
-          }
+          .grid-2 { grid-template-columns:1fr 1fr; gap:16px; }
+
+          .stat-card, .panel { padding:18px; }
+          .panel { margin-bottom:16px; }
+          .panel h2 { margin:0 0 14px; font-size:18px; }
 
           .stat-label {
-            color:var(--muted);
-            font-size:12px;
-            text-transform:uppercase;
-            letter-spacing:0.08em;
-            font-weight:700;
+            color:var(--muted); font-size:12px; text-transform:uppercase;
+            letter-spacing:0.08em; font-weight:700;
           }
 
-          .stat-value {
-            margin-top:10px;
-            font-size:26px;
-            font-weight:800;
-          }
+          .stat-value { margin-top:10px; font-size:26px; font-weight:800; }
 
           .tabs {
-            display:flex;
-            flex-wrap:wrap;
-            gap:10px;
-            margin-bottom:18px;
+            display:flex; flex-wrap:wrap; gap:10px; margin-bottom:18px;
           }
 
           .tab {
-            padding:10px 14px;
-            border-radius:999px;
-            background:rgba(255,255,255,0.05);
-            border:1px solid rgba(255,255,255,0.10);
-            font-weight:800;
+            padding:10px 14px; border-radius:999px; background:rgba(255,255,255,0.05);
+            border:1px solid rgba(255,255,255,0.10); font-weight:800;
           }
 
-          .grid-2 {
-            display:grid;
-            grid-template-columns:1fr 1fr;
-            gap:16px;
+          .item { padding:12px 0; border-top:1px solid rgba(255,255,255,0.08); }
+          .item:first-child { border-top:0; }
+          .item-title { font-weight:800; margin-bottom:6px; }
+
+          .field {
+            display:flex; flex-direction:column; gap:8px; margin-bottom:14px;
           }
 
-          .panel {
-            padding:18px;
-            margin-bottom:16px;
+          label { font-size:13px; font-weight:800; }
+
+          input:not([type="checkbox"]), textarea {
+            width:100%; padding:12px 13px; border-radius:12px;
+            border:1px solid var(--line); background:rgba(255,255,255,0.04);
+            color:var(--text); font:inherit;
           }
 
-          .panel h2 {
-            margin:0 0 14px;
-            font-size:18px;
+          textarea { min-height:90px; resize:vertical; }
+
+          .check-row {
+            display:flex; align-items:center; gap:8px; margin-top:6px;
           }
 
-          .item {
-            padding:12px 0;
-            border-top:1px solid rgba(255,255,255,0.08);
+          .actions {
+            display:flex; justify-content:flex-end; margin-top:14px;
           }
 
-          .item:first-child {
-            border-top:0;
-          }
-
-          .item-title {
-            font-weight:800;
-            margin-bottom:6px;
-          }
-
-          .meta {
-            color:var(--muted);
-            font-size:13px;
-            line-height:1.5;
-          }
+          a { color: var(--primary); }
 
           @media (max-width: 900px) {
-            .stats, .grid-2 {
-              grid-template-columns:1fr;
-            }
+            .stats, .grid-2 { grid-template-columns:1fr; }
           }
         </style>
       </head>
+
       <body>
         ${renderTopNav("clients")}
 
@@ -2993,22 +2946,10 @@ function renderClientWorkspacePage({
           </div>
 
           <div class="stats">
-            <div class="stat-card">
-              <div class="stat-label">Services</div>
-              <div class="stat-value">${services.length}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Open Work</div>
-              <div class="stat-value">${workItems.length}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Actions Needed</div>
-              <div class="stat-value">${actions.length}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Contacts</div>
-              <div class="stat-value">${contacts.length}</div>
-            </div>
+            <div class="stat-card"><div class="stat-label">Services</div><div class="stat-value">${services.length}</div></div>
+            <div class="stat-card"><div class="stat-label">Open Work</div><div class="stat-value">${workItems.length}</div></div>
+            <div class="stat-card"><div class="stat-label">Actions Needed</div><div class="stat-value">${actions.length}</div></div>
+            <div class="stat-card"><div class="stat-label">Contacts</div><div class="stat-value">${contacts.length}</div></div>
           </div>
 
           <div class="tabs">
@@ -3121,6 +3062,60 @@ function renderClientWorkspacePage({
                       )
                       .join("")
                   : `<div class="meta">No actions yet.</div>`
+              }
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="panel">
+              <h2>Add Google Drive Link</h2>
+              <form method="POST" action="/api/clients/${client.id}/documents">
+                <div class="field">
+                  <label>Title</label>
+                  <input name="title" placeholder="Proposal, Contract, Scope Doc, Meeting Notes" />
+                </div>
+
+                <div class="field">
+                  <label>Google Drive / Docs Link</label>
+                  <input name="url" placeholder="Paste Google Drive or Google Docs link here" />
+                </div>
+
+                <div class="field">
+                  <label>Notes</label>
+                  <textarea name="notes" placeholder="Short note about this document"></textarea>
+                </div>
+
+                <label class="check-row">
+                  <input type="checkbox" name="is_client_visible" />
+                  Visible to client later
+                </label>
+
+                <div class="actions">
+                  <button class="btn btn-primary" type="submit">Save Google Drive Link</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="panel">
+              <h2>Google Drive Links</h2>
+              ${
+                documents.length
+                  ? documents
+                      .map(
+                        (d) => `
+                    <div class="item">
+                      <div class="item-title">
+                        <a href="${escapeHtml(d.url)}" target="_blank" rel="noopener noreferrer">
+                          ${escapeHtml(d.title)}
+                        </a>
+                      </div>
+                      <div class="meta">${escapeHtml(d.notes || "-")}</div>
+                      <div class="meta">Client visible: ${d.is_client_visible ? "Yes" : "No"}</div>
+                    </div>
+                  `,
+                      )
+                      .join("")
+                  : `<div class="meta">No Google Drive links added yet.</div>`
               }
             </div>
           </div>
@@ -17683,6 +17678,154 @@ app.get("/clients/new", requireDashboardAuth, async (req, res) => {
 
   res.type("html").send(renderNewClientPage({ users: users || [] }));
 });
+
+app.post(
+  "/api/clients/:id/work-items",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+      const actorUserId = req.loggedInUser?.id || null;
+      const clientId = Number(req.params.id);
+
+      const title = String(req.body.title || "").trim();
+      if (!clientId || !title)
+        return res.status(400).send("Client and title are required");
+
+      const { error } = await supabase.from("client_work_items").insert([
+        {
+          org_id: orgId,
+          client_id: clientId,
+          title,
+          description: req.body.description || null,
+          status: req.body.status || "open",
+          priority: req.body.priority || "medium",
+          due_date: req.body.due_date || null,
+          is_client_visible: req.body.is_client_visible === "on",
+          created_by_user_id: actorUserId,
+          updated_by_user_id: actorUserId,
+        },
+      ]);
+
+      if (error) throw error;
+      res.redirect(`/clients/${clientId}`);
+    } catch (error) {
+      console.error("add work item error:", error);
+      res.status(500).send("Failed to add work item");
+    }
+  },
+);
+
+app.post("/api/clients/:id/updates", requireDashboardAuth, async (req, res) => {
+  try {
+    const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+    const actorUserId = req.loggedInUser?.id || null;
+    const clientId = Number(req.params.id);
+
+    const updateText = String(req.body.update_text || "").trim();
+    if (!clientId || !updateText)
+      return res.status(400).send("Update text is required");
+
+    const { error } = await supabase.from("client_updates").insert([
+      {
+        org_id: orgId,
+        client_id: clientId,
+        title: req.body.title || null,
+        update_text: updateText,
+        update_type: req.body.update_type || "general",
+        is_client_visible: req.body.is_client_visible === "on",
+        created_by_user_id: actorUserId,
+      },
+    ]);
+
+    if (error) throw error;
+    res.redirect(`/clients/${clientId}`);
+  } catch (error) {
+    console.error("add update error:", error);
+    res.status(500).send("Failed to add update");
+  }
+});
+
+app.post("/api/clients/:id/actions", requireDashboardAuth, async (req, res) => {
+  try {
+    const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+    const actorUserId = req.loggedInUser?.id || null;
+    const clientId = Number(req.params.id);
+
+    const title = String(req.body.title || "").trim();
+    if (!clientId || !title)
+      return res.status(400).send("Action title is required");
+
+    const { error } = await supabase.from("client_actions").insert([
+      {
+        org_id: orgId,
+        client_id: clientId,
+        title,
+        description: req.body.description || null,
+        owner_type: req.body.owner_type || "internal",
+        status: req.body.status || "open",
+        due_date: req.body.due_date || null,
+        is_client_visible: req.body.is_client_visible === "on",
+        created_by_user_id: actorUserId,
+        updated_by_user_id: actorUserId,
+      },
+    ]);
+
+    if (error) throw error;
+    res.redirect(`/clients/${clientId}`);
+  } catch (error) {
+    console.error("add action error:", error);
+    res.status(500).send("Failed to add action");
+  }
+});
+
+app.post(
+  "/api/clients/:id/documents",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+      const actorUserId = req.loggedInUser?.id || null;
+      const clientId = Number(req.params.id);
+
+      const title = String(req.body.title || "").trim();
+      const url = String(req.body.url || "").trim();
+
+      if (!clientId || !title || !url) {
+        return res
+          .status(400)
+          .send("Document title and Google Drive link are required");
+      }
+
+      if (
+        !url.startsWith("https://drive.google.com/") &&
+        !url.startsWith("https://docs.google.com/")
+      ) {
+        return res
+          .status(400)
+          .send("Please enter a valid Google Drive or Google Docs link");
+      }
+
+      const { error } = await supabase.from("client_documents").insert([
+        {
+          org_id: orgId,
+          client_id: clientId,
+          title,
+          url,
+          notes: req.body.notes || null,
+          is_client_visible: req.body.is_client_visible === "on",
+          created_by_user_id: actorUserId,
+        },
+      ]);
+
+      if (error) throw error;
+      res.redirect(`/clients/${clientId}`);
+    } catch (error) {
+      console.error("add google drive document error:", error);
+      res.status(500).send("Failed to add Google Drive link");
+    }
+  },
+);
 
 app.post("/api/clients", requireDashboardAuth, async (req, res) => {
   try {
