@@ -3158,16 +3158,23 @@ function renderClientWorkspacePage({
                     </a>
                     <div class="meta">${escapeHtml((w.description || "").slice(0, 80))}</div>
                   </td>
-                  <td>${escapeHtml(w.owner?.name || "-")}</td>
-                  <td><span class="badge badge-info">${escapeHtml(w.status || "todo")}</span></td>
+<td>${escapeHtml(users.find((u) => String(u.id) === String(w.owner_user_id))?.name || "-")}</td>
+<td><span class="badge badge-info">${escapeHtml(w.status || "todo")}</span></td>
                   <td>${escapeHtml(w.priority || "medium")}</td>
                   <td>${escapeHtml(w.due_date || "-")}</td>
                   <td>
-                    ${
-                      w.dependency
-                        ? `#${escapeHtml(w.dependency.id)} · ${escapeHtml(w.dependency.title)} (${escapeHtml(w.dependency.status)})`
-                        : "-"
-                    }
+${
+  w.dependency_work_item_id
+    ? (() => {
+        const dep = workItems.find(
+          (x) => String(x.id) === String(w.dependency_work_item_id),
+        );
+        return dep
+          ? `#${escapeHtml(dep.id)} · ${escapeHtml(dep.title)} (${escapeHtml(dep.status)})`
+          : `#${escapeHtml(w.dependency_work_item_id)}`;
+      })()
+    : "-"
+}
                   </td>
                   <td>${escapeHtml(w.updated_at ? formatDateTime(w.updated_at) : "-")}</td>
                   <td>
@@ -18650,13 +18657,7 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
 
       supabase
         .from("client_work_items")
-        .select(
-          `
-          *,
-          owner:users!client_work_items_owner_user_id_fkey(name),
-          dependency:client_work_items!client_work_items_dependency_work_item_id_fkey(id, title, status)
-        `,
-        )
+        .select("*")
         .eq("org_id", orgId)
         .eq("client_id", clientId)
         .eq("is_active", true)
