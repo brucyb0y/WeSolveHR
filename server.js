@@ -2832,6 +2832,7 @@ function renderClientWorkspacePage({
   actions = [],
   milestones = [],
   documents = [],
+  users = [],
 }) {
   return `
     <html>
@@ -2905,6 +2906,94 @@ function renderClientWorkspacePage({
             padding:10px 14px; border-radius:999px; background:rgba(255,255,255,0.05);
             border:1px solid rgba(255,255,255,0.10); font-weight:800;
           }
+          
+          .work-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.work-table th,
+.work-table td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  text-align: left;
+  vertical-align: top;
+  font-size: 13px;
+}
+
+.work-table th {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+.badge {
+  display:inline-flex;
+  padding:6px 9px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:800;
+}
+
+.badge-info {
+  background: var(--info-soft);
+}
+
+.work-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 8, 20, 0.70);
+  backdrop-filter: blur(8px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 9999;
+}
+
+.work-modal.open {
+  display: flex;
+}
+
+.work-modal-card {
+  width: min(900px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: var(--shadow-soft);
+  padding: 18px;
+}
+
+.form-grid {
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.form-field {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  width:100%;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,0.04);
+  color:var(--text);
+  font:inherit;
+}
+
+.form-field textarea {
+  min-height:90px;
+}
 
           .item { padding:12px 0; border-top:1px solid rgba(255,255,255,0.08); }
           .item:first-child { border-top:0; }
@@ -3035,23 +3124,67 @@ function renderClientWorkspacePage({
           </div>
 
           <div class="grid-2">
-            <div class="panel">
-              <h2>Open Work Items</h2>
-              ${
-                workItems.length
-                  ? workItems
-                      .map(
-                        (w) => `
-                    <div class="item">
-                      <div class="item-title">${escapeHtml(w.title)}</div>
-                      <div class="meta">${escapeHtml(w.status)} · ${escapeHtml(w.priority)} · Due ${escapeHtml(w.due_date || "-")}</div>
-                    </div>
-                  `,
-                      )
-                      .join("")
-                  : `<div class="meta">No work items yet.</div>`
-              }
-            </div>
+<div class="panel">
+  <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
+    <h2 style="margin:0;">Work Items</h2>
+    <button class="btn btn-primary" type="button" onclick="openWorkItemModal()">+ Add Work Item</button>
+  </div>
+
+  ${
+    workItems.length
+      ? `
+        <div style="overflow-x:auto;">
+          <table class="work-table">
+            <thead>
+              <tr>
+                <th>Work</th>
+                <th>Owner</th>
+                <th>Status</th>
+                <th>Priority</th>
+                <th>Due</th>
+                <th>Depends On</th>
+                <th>Last Updated</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${workItems
+                .map(
+                  (w) => `
+                <tr>
+                  <td>
+                    <a href="#" onclick="event.preventDefault(); openWorkItemDetail(${Number(w.id)})" style="font-weight:800;">
+                      ${escapeHtml(w.title)}
+                    </a>
+                    <div class="meta">${escapeHtml((w.description || "").slice(0, 80))}</div>
+                  </td>
+                  <td>${escapeHtml(w.owner?.name || "-")}</td>
+                  <td><span class="badge badge-info">${escapeHtml(w.status || "todo")}</span></td>
+                  <td>${escapeHtml(w.priority || "medium")}</td>
+                  <td>${escapeHtml(w.due_date || "-")}</td>
+                  <td>
+                    ${
+                      w.dependency
+                        ? `#${escapeHtml(w.dependency.id)} · ${escapeHtml(w.dependency.title)} (${escapeHtml(w.dependency.status)})`
+                        : "-"
+                    }
+                  </td>
+                  <td>${escapeHtml(w.updated_at ? formatDateTime(w.updated_at) : "-")}</td>
+                  <td>
+                    <button class="btn" type="button" onclick="updateWorkItemStatus(${Number(w.id)}, 'in_progress')">Start</button>
+                    <button class="btn" type="button" onclick="updateWorkItemStatus(${Number(w.id)}, 'done')">Done</button>
+                  </td>
+                </tr>
+              `,
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      `
+      : `<div class="meta">No work items yet. Add the first work item for this client.</div>`
+  }
+</div>
 
             <div class="panel">
               <h2>Actions Needed</h2>
@@ -3071,7 +3204,174 @@ function renderClientWorkspacePage({
               }
             </div>
           </div>
+          
+          <div id="workItemModal" class="work-modal" onclick="closeWorkItemModal(event)">
+  <div class="work-modal-card" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
+      <div style="font-size:22px; font-weight:800;">Add Work Item</div>
+      <button class="btn" type="button" onclick="closeWorkItemModal()">Close</button>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-field">
+        <label>Title</label>
+        <input id="workTitle" placeholder="Example: Build landing page" />
+      </div>
+
+      <div class="form-field">
+        <label>Owner</label>
+        <select id="workOwner">
+          <option value="">Select owner</option>
+          ${users.map((u) => `<option value="${u.id}">${escapeHtml(u.name)}</option>`).join("")}
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>Priority</label>
+        <select id="workPriority">
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>Due Date</label>
+        <input id="workDueDate" type="date" />
+      </div>
+
+      <div class="form-field">
+        <label>Depends On</label>
+        <select id="workDependency">
+          <option value="">No dependency</option>
+          ${workItems.map((w) => `<option value="${w.id}">#${w.id} · ${escapeHtml(w.title)}</option>`).join("")}
+        </select>
+      </div>
+
+      <div class="form-field" style="grid-column:1 / -1;">
+        <label>Description</label>
+        <textarea id="workDescription" placeholder="Add details, expected outcome, blockers, etc."></textarea>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+      <button class="btn" type="button" onclick="closeWorkItemModal()">Cancel</button>
+      <button class="btn btn-primary" type="button" onclick="createWorkItem(${Number(client.id)})">Create Work Item</button>
+    </div>
+  </div>
+</div>
+
+<div id="workItemDetailModal" class="work-modal" onclick="closeWorkItemDetail(event)">
+  <div class="work-modal-card" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
+      <div id="workItemDetailTitle" style="font-size:22px; font-weight:800;">Work Item</div>
+      <button class="btn" type="button" onclick="closeWorkItemDetail()">Close</button>
+    </div>
+    <div id="workItemDetailBody" class="meta">Loading...</div>
+  </div>
+</div>
         </div>
+        
+        <script>
+  function openWorkItemModal() {
+    document.getElementById("workItemModal").classList.add("open");
+  }
+
+  function closeWorkItemModal(event) {
+    if (event && event.target && event.target.id !== "workItemModal") return;
+    document.getElementById("workItemModal").classList.remove("open");
+  }
+
+  async function createWorkItem(clientId) {
+    const title = document.getElementById("workTitle").value.trim();
+
+    if (!title) {
+      alert("Title is required");
+      return;
+    }
+
+    const payload = {
+      client_id: clientId,
+      title,
+      description: document.getElementById("workDescription").value.trim(),
+      owner_user_id: document.getElementById("workOwner").value || null,
+      priority: document.getElementById("workPriority").value,
+      due_date: document.getElementById("workDueDate").value || null,
+      dependency_work_item_id: document.getElementById("workDependency").value || null
+    };
+
+    const res = await fetch("/api/client-work-items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const json = await res.json();
+
+    if (!json.ok) {
+      alert(json.error || "Failed to create work item");
+      return;
+    }
+
+    window.location.reload();
+  }
+
+  async function updateWorkItemStatus(id, status) {
+    const res = await fetch("/api/client-work-items/" + id, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status })
+    });
+
+    const json = await res.json();
+
+    if (!json.ok) {
+      alert(json.error || "Failed to update work item");
+      return;
+    }
+
+    window.location.reload();
+  }
+
+  async function openWorkItemDetail(id) {
+    const modal = document.getElementById("workItemDetailModal");
+    const title = document.getElementById("workItemDetailTitle");
+    const body = document.getElementById("workItemDetailBody");
+
+    title.textContent = "Work Item #" + id;
+    body.innerHTML = "Loading...";
+    modal.classList.add("open");
+
+    const res = await fetch("/api/client-work-items/" + id);
+    const json = await res.json();
+
+    if (!json.ok) {
+      body.innerHTML = json.error || "Failed to load work item";
+      return;
+    }
+
+    const w = json.data;
+
+    title.textContent = "#" + w.id + " — " + w.title;
+
+    body.innerHTML =
+      "<div><strong>Status:</strong> " + escapeHtmlClient(w.status || "-") + "</div>" +
+      "<div><strong>Priority:</strong> " + escapeHtmlClient(w.priority || "-") + "</div>" +
+      "<div><strong>Owner:</strong> " + escapeHtmlClient(w.owner?.name || "-") + "</div>" +
+      "<div><strong>Due Date:</strong> " + escapeHtmlClient(w.due_date || "-") + "</div>" +
+      "<div><strong>Depends On:</strong> " + escapeHtmlClient(w.dependency ? ("#" + w.dependency.id + " · " + w.dependency.title + " (" + w.dependency.status + ")") : "-") + "</div>" +
+      "<div><strong>Created:</strong> " + escapeHtmlClient(w.created_at || "-") + "</div>" +
+      "<div><strong>Last Updated:</strong> " + escapeHtmlClient(w.updated_at || "-") + "</div>" +
+      "<hr style='border-color:rgba(255,255,255,0.1); margin:14px 0;' />" +
+      "<div><strong>Description:</strong></div>" +
+      "<div style='white-space:pre-wrap; margin-top:8px;'>" + escapeHtmlClient(w.description || "-") + "</div>";
+  }
+
+  function closeWorkItemDetail(event) {
+    if (event && event.target && event.target.id !== "workItemDetailModal") return;
+    document.getElementById("workItemDetailModal").classList.remove("open");
+  }
+</script>
       </body>
     </html>
   `;
@@ -17614,6 +17914,50 @@ app.get("/clients", requireDashboardAuth, async (req, res) => {
   }
 });
 
+app.get(
+  "/api/client-work-items/:id",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+      const id = Number(req.params.id);
+
+      if (!id) {
+        return sendApiError(res, 400, "Invalid work item id");
+      }
+
+      const { data, error } = await supabase
+        .from("client_work_items")
+        .select(
+          `
+        *,
+        owner:users!client_work_items_owner_user_id_fkey(name),
+        dependency:client_work_items!client_work_items_dependency_work_item_id_fkey(id, title, status)
+      `,
+        )
+        .eq("org_id", orgId)
+        .eq("id", id)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (error) {
+        console.error("get client work item error:", error);
+        return sendApiError(res, 500, "Failed to load work item");
+      }
+
+      if (!data) {
+        return sendApiError(res, 404, "Work item not found");
+      }
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("GET /api/client-work-items/:id fatal error:", error);
+      return sendApiError(res, 500, "Failed to load work item");
+    }
+  },
+);
+
 app.get("/clients/new", requireDashboardAuth, async (req, res) => {
   const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
 
@@ -17631,42 +17975,72 @@ app.get("/clients/new", requireDashboardAuth, async (req, res) => {
   res.type("html").send(renderNewClientPage({ users: users || [] }));
 });
 
-app.post(
-  "/api/clients/:id/work-items",
-  requireDashboardAuth,
-  async (req, res) => {
-    try {
-      const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
-      const actorUserId = req.loggedInUser?.id || null;
-      const clientId = Number(req.params.id);
+app.post("/api/client-work-items", requireDashboardAuth, async (req, res) => {
+  try {
+    const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+    const actorUserId = req.loggedInUser?.id || null;
+    const body = req.body || {};
 
-      const title = String(req.body.title || "").trim();
-      if (!clientId || !title)
-        return res.status(400).send("Client and title are required");
+    const clientId = Number(body.client_id);
+    const title = String(body.title || "").trim();
 
-      const { error } = await supabase.from("client_work_items").insert([
-        {
-          org_id: orgId,
-          client_id: clientId,
-          title,
-          description: req.body.description || null,
-          status: req.body.status || "open",
-          priority: req.body.priority || "medium",
-          due_date: req.body.due_date || null,
-          is_client_visible: req.body.is_client_visible === "on",
-          created_by_user_id: actorUserId,
-          updated_by_user_id: actorUserId,
-        },
-      ]);
-
-      if (error) throw error;
-      res.redirect(`/clients/${clientId}`);
-    } catch (error) {
-      console.error("add work item error:", error);
-      res.status(500).send("Failed to add work item");
+    if (!clientId) {
+      return sendApiError(res, 400, "Client is required");
     }
-  },
-);
+
+    if (!title) {
+      return sendApiError(res, 400, "Title is required");
+    }
+
+    if (!["low", "medium", "high"].includes(body.priority || "medium")) {
+      return sendApiError(res, 400, "Invalid priority");
+    }
+
+    const row = {
+      org_id: orgId,
+      client_id: clientId,
+      title,
+      description: body.description || null,
+      owner_user_id: body.owner_user_id ? Number(body.owner_user_id) : null,
+      dependency_work_item_id: body.dependency_work_item_id
+        ? Number(body.dependency_work_item_id)
+        : null,
+      priority: body.priority || "medium",
+      status: "todo",
+      due_date: body.due_date || null,
+      is_active: true,
+      created_by_user_id: actorUserId,
+      last_updated_by_user_id: actorUserId,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from("client_work_items")
+      .insert([row])
+      .select("*")
+      .maybeSingle();
+
+    if (error) {
+      console.error("create client work item error:", error);
+      return sendApiError(res, 500, "Failed to create work item");
+    }
+
+    await insertClientActivityLog({
+      orgId,
+      clientId,
+      actorUserId,
+      action: "work_item_created",
+      entityType: "client_work_items",
+      entityId: data.id,
+      newValue: data,
+    });
+
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("POST /api/client-work-items fatal error:", error);
+    return sendApiError(res, 500, "Failed to create work item");
+  }
+});
 
 app.post("/api/clients/:id/updates", requireDashboardAuth, async (req, res) => {
   try {
@@ -17775,6 +18149,104 @@ app.post(
     } catch (error) {
       console.error("add google drive document error:", error);
       res.status(500).send("Failed to add Google Drive link");
+    }
+  },
+);
+
+app.patch(
+  "/api/client-work-items/:id",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+      const actorUserId = req.loggedInUser?.id || null;
+      const id = Number(req.params.id);
+      const body = req.body || {};
+
+      if (!id) {
+        return sendApiError(res, 400, "Invalid work item id");
+      }
+
+      const allowedStatuses = ["todo", "in_progress", "done"];
+
+      if (body.status && !allowedStatuses.includes(body.status)) {
+        return sendApiError(res, 400, "Invalid status");
+      }
+
+      const { data: existing, error: existingError } = await supabase
+        .from("client_work_items")
+        .select("*")
+        .eq("org_id", orgId)
+        .eq("id", id)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (existingError) {
+        console.error("existing work item lookup error:", existingError);
+        return sendApiError(res, 500, "Failed to load existing work item");
+      }
+
+      if (!existing) {
+        return sendApiError(res, 404, "Work item not found");
+      }
+
+      if (body.status === "done" && existing.dependency_work_item_id) {
+        const { data: dependency } = await supabase
+          .from("client_work_items")
+          .select("id, title, status")
+          .eq("org_id", orgId)
+          .eq("id", existing.dependency_work_item_id)
+          .maybeSingle();
+
+        if (dependency && dependency.status !== "done") {
+          return sendApiError(
+            res,
+            400,
+            `Cannot mark done yet. Dependency is still not done: ${dependency.title}`,
+          );
+        }
+      }
+
+      const patch = {
+        updated_at: new Date().toISOString(),
+        last_updated_by_user_id: actorUserId,
+      };
+
+      if (body.status) {
+        patch.status = body.status;
+        patch.completed_at =
+          body.status === "done" ? new Date().toISOString() : null;
+      }
+
+      const { data, error } = await supabase
+        .from("client_work_items")
+        .update(patch)
+        .eq("org_id", orgId)
+        .eq("id", id)
+        .select("*")
+        .maybeSingle();
+
+      if (error) {
+        console.error("update work item error:", error);
+        return sendApiError(res, 500, "Failed to update work item");
+      }
+
+      await insertClientActivityLog({
+        orgId,
+        clientId: existing.client_id,
+        actorUserId,
+        action: "work_item_updated",
+        entityType: "client_work_items",
+        entityId: id,
+        oldValue: existing,
+        newValue: data,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("PATCH /api/client-work-items/:id fatal error:", error);
+      return sendApiError(res, 500, "Failed to update work item");
     }
   },
 );
@@ -17950,6 +18422,7 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
       return res.status(400).send("Invalid client id");
     }
 
+    // 1) Load main client
     const { data: client, error: clientError } = await supabase
       .from("clients")
       .select(
@@ -17974,6 +18447,7 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
       return res.status(404).send("Client not found");
     }
 
+    // 2) Load all client workspace related data
     const [
       contactsResult,
       servicesResult,
@@ -17982,6 +18456,7 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
       actionsResult,
       milestonesResult,
       documentsResult,
+      usersResult,
     ] = await Promise.all([
       supabase
         .from("client_contacts")
@@ -17990,19 +18465,31 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
         .eq("is_active", true)
         .is("deleted_at", null)
         .order("is_primary", { ascending: false }),
+
       supabase
         .from("client_services")
         .select("services(name)")
         .eq("client_id", clientId)
         .eq("is_active", true)
         .is("deleted_at", null),
+
       supabase
         .from("client_work_items")
-        .select("*")
+        .select(
+          `
+          *,
+          owner:users!client_work_items_owner_user_id_fkey(name),
+          dependency:client_work_items!client_work_items_dependency_work_item_id_fkey(id, title, status)
+        `,
+        )
+        .eq("org_id", orgId)
         .eq("client_id", clientId)
         .eq("is_active", true)
         .is("deleted_at", null)
-        .order("created_at", { ascending: false }),
+        .order("status", { ascending: true })
+        .order("priority", { ascending: false })
+        .order("due_date", { ascending: true }),
+
       supabase
         .from("client_updates")
         .select("*")
@@ -18011,6 +18498,7 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(5),
+
       supabase
         .from("client_actions")
         .select("*")
@@ -18018,6 +18506,7 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
         .eq("is_active", true)
         .is("deleted_at", null)
         .order("created_at", { ascending: false }),
+
       supabase
         .from("client_milestones")
         .select("*")
@@ -18025,6 +18514,7 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
         .eq("is_active", true)
         .is("deleted_at", null)
         .order("created_at", { ascending: false }),
+
       supabase
         .from("client_documents")
         .select("*")
@@ -18032,19 +18522,47 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
         .eq("is_active", true)
         .is("deleted_at", null)
         .order("created_at", { ascending: false }),
+
+      supabase
+        .from("users")
+        .select("id, name")
+        .eq("org_id", orgId)
+        .eq("is_active", true)
+        .order("name", { ascending: true }),
     ]);
 
+    // 3) Optional error logging
+    if (contactsResult.error)
+      console.error("contactsResult error:", contactsResult.error);
+    if (servicesResult.error)
+      console.error("servicesResult error:", servicesResult.error);
+    if (workItemsResult.error)
+      console.error("workItemsResult error:", workItemsResult.error);
+    if (updatesResult.error)
+      console.error("updatesResult error:", updatesResult.error);
+    if (actionsResult.error)
+      console.error("actionsResult error:", actionsResult.error);
+    if (milestonesResult.error)
+      console.error("milestonesResult error:", milestonesResult.error);
+    if (documentsResult.error)
+      console.error("documentsResult error:", documentsResult.error);
+    if (usersResult.error)
+      console.error("usersResult error:", usersResult.error);
+
+    // 4) Prepare clean client object for UI
     const decoratedClient = {
       ...client,
       account_manager_name: client.account_manager?.name || "",
       project_manager_name: client.project_manager?.name || "",
     };
 
+    // 5) Clean services array
     const services = (servicesResult.data || [])
       .map((row) => row.services)
       .filter(Boolean);
 
-    res.type("html").send(
+    // 6) Render page
+    return res.type("html").send(
       renderClientWorkspacePage({
         client: decoratedClient,
         contacts: contactsResult.data || [],
@@ -18054,11 +18572,12 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
         actions: actionsResult.data || [],
         milestones: milestonesResult.data || [],
         documents: documentsResult.data || [],
+        users: usersResult.data || [],
       }),
     );
   } catch (error) {
     console.error("GET /clients/:id fatal error:", error);
-    res.status(500).send("Failed to load client workspace");
+    return res.status(500).send("Failed to load client workspace");
   }
 });
 
