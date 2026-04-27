@@ -21393,15 +21393,341 @@ app.get("/clients/:id/edit", requireDashboardAuth, async (req, res) => {
 });
 
 app.get("/clients/:id/reset", requireDashboardAuth, async (req, res) => {
+  const clientId = Number(req.params.id);
+
   res.type("html").send(`
     <html>
-      <body style="font-family:sans-serif;">
-        <h1>Reset Client</h1>
-        <p>Reset/archive page comes in next phase.</p>
-        <a href="/clients/${escapeHtml(req.params.id)}">Back to client</a>
+      <head>
+        <title>Reset Client | WeSolveHR</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+          ${buildTopNavCss()}
+
+          .wrap {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 24px 18px 36px;
+          }
+
+          .panel {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+            padding: 22px;
+          }
+
+          h1 {
+            margin: 0 0 10px;
+            font-size: 30px;
+          }
+
+          .muted {
+            color: var(--muted);
+            line-height: 1.6;
+          }
+
+          .danger-box {
+            margin-top: 18px;
+            padding: 16px;
+            border-radius: 16px;
+            border: 1px solid rgba(239,107,115,0.35);
+            background: rgba(239,107,115,0.12);
+          }
+
+          .check-list {
+            margin-top: 16px;
+            display: grid;
+            gap: 10px;
+          }
+
+          label {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            color: var(--text);
+            font-weight: 700;
+          }
+
+          input[type="checkbox"] {
+            margin-top: 3px;
+          }
+
+          .actions {
+            margin-top: 22px;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+          }
+
+          .btn {
+            display: inline-flex;
+            align-items: center;
+            text-decoration: none;
+            color: var(--text);
+            padding: 11px 14px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.12);
+            font-weight: 800;
+            cursor: pointer;
+            font: inherit;
+          }
+
+          .btn-danger {
+            background: var(--danger-soft);
+            color: var(--text-strong);
+            border-color: rgba(239,107,115,0.45);
+          }
+
+          .confirm-input {
+            width: 100%;
+            margin-top: 14px;
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(255,255,255,0.04);
+            color: var(--text);
+            font: inherit;
+          }
+        </style>
+      </head>
+
+      <body>
+        ${renderTopNav("clients")}
+
+        <div class="wrap">
+          <div class="panel">
+            <h1>Reset Client Workspace</h1>
+            <div class="muted">
+              This will archive workspace data for this client. It will not delete the client, Google Drive folder, contacts, services, or client view token.
+            </div>
+
+            <div class="danger-box">
+              <strong>Important:</strong> This is meant for cleaning a test/demo client workspace.
+              Existing work items, updates, actions, contributors, milestones, documents, and activity logs will be hidden/archived.
+            </div>
+
+            <form method="POST" action="/clients/${clientId}/reset">
+              <div class="check-list">
+                <label>
+                  <input type="checkbox" name="reset_work_items" checked />
+                  Archive work items
+                </label>
+
+                <label>
+                  <input type="checkbox" name="reset_updates" checked />
+                  Archive updates
+                </label>
+
+                <label>
+                  <input type="checkbox" name="reset_actions" checked />
+                  Archive actions
+                </label>
+
+                <label>
+                  <input type="checkbox" name="reset_contributors" checked />
+                  Archive contributors
+                </label>
+
+                <label>
+                  <input type="checkbox" name="reset_milestones" checked />
+                  Archive milestones
+                </label>
+
+                <label>
+                  <input type="checkbox" name="reset_documents" checked />
+                  Archive document records
+                </label>
+
+                <label>
+                  <input type="checkbox" name="reset_activity_logs" checked />
+                  Archive activity logs
+                </label>
+              </div>
+
+              <input
+                class="confirm-input"
+                name="confirm_text"
+                placeholder="Type RESET to confirm"
+              />
+
+              <div class="actions">
+                <a class="btn" href="/clients/${clientId}">Cancel</a>
+                <button class="btn btn-danger" type="submit">Reset Selected Data</button>
+              </div>
+            </form>
+          </div>
+        </div>
       </body>
     </html>
   `);
+});
+
+app.post("/clients/:id/reset", requireDashboardAuth, async (req, res) => {
+  try {
+    const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+    const actorUserId = req.loggedInUser?.id || null;
+    const clientId = Number(req.params.id);
+    const body = req.body || {};
+    const now = new Date().toISOString();
+
+    if (!clientId) {
+      return res.status(400).send("Invalid client id");
+    }
+
+    if (String(body.confirm_text || "").trim() !== "RESET") {
+      return res.status(400).send("Please type RESET to confirm.");
+    }
+
+    const { data: client, error: clientError } = await supabase
+      .from("clients")
+      .select("id, org_id")
+      .eq("org_id", orgId)
+      .eq("id", clientId)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (clientError) throw clientError;
+
+    if (!client) {
+      return res.status(404).send("Client not found");
+    }
+
+    const resetSummary = {};
+
+    if (body.reset_work_items === "on") {
+      const { data, error } = await supabase
+        .from("client_work_items")
+        .update({
+          is_active: false,
+          deleted_at: now,
+          updated_at: now,
+        })
+        .eq("org_id", orgId)
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .select("id");
+
+      if (error) throw error;
+      resetSummary.work_items = data?.length || 0;
+    }
+
+    if (body.reset_updates === "on") {
+      const { data, error } = await supabase
+        .from("client_updates")
+        .update({
+          is_active: false,
+          archived_at: now,
+          updated_at: now,
+        })
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .select("id");
+
+      if (error) throw error;
+      resetSummary.updates = data?.length || 0;
+    }
+
+    if (body.reset_actions === "on") {
+      const { data, error } = await supabase
+        .from("client_actions")
+        .update({
+          archived: true,
+          status: "Archived",
+          updated_at: now,
+        })
+        .eq("client_id", clientId)
+        .eq("archived", false)
+        .select("id");
+
+      if (error) throw error;
+      resetSummary.actions = data?.length || 0;
+    }
+
+    if (body.reset_contributors === "on") {
+      const { data, error } = await supabase
+        .from("client_contributors")
+        .update({
+          archived: true,
+          status: "Inactive",
+          updated_at: now,
+        })
+        .eq("client_id", clientId)
+        .eq("archived", false)
+        .select("id");
+
+      if (error) throw error;
+      resetSummary.contributors = data?.length || 0;
+    }
+
+    if (body.reset_milestones === "on") {
+      const { data, error } = await supabase
+        .from("client_milestones")
+        .update({
+          is_active: false,
+          deleted_at: now,
+          updated_at: now,
+        })
+        .eq("org_id", orgId)
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .select("id");
+
+      if (error) throw error;
+      resetSummary.milestones = data?.length || 0;
+    }
+
+    if (body.reset_documents === "on") {
+      const { data, error } = await supabase
+        .from("client_documents")
+        .update({
+          is_active: false,
+          deleted_at: now,
+          updated_at: now,
+        })
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .select("id");
+
+      if (error) throw error;
+      resetSummary.documents = data?.length || 0;
+    }
+
+    if (body.reset_activity_logs === "on") {
+      const { data, error } = await supabase
+        .from("client_activity_logs")
+        .delete()
+        .eq("org_id", orgId)
+        .eq("client_id", clientId)
+        .select("id");
+
+      if (error) throw error;
+      resetSummary.activity_logs = data?.length || 0;
+    }
+
+    await insertClientActivityLog({
+      orgId,
+      clientId,
+      actorUserId,
+      action: "client_workspace_reset",
+      entityType: "clients",
+      entityId: clientId,
+      newValue: resetSummary,
+    });
+
+    return res.redirect(`/clients/${clientId}?tab=overview`);
+  } catch (error) {
+    console.error("POST /clients/:id/reset error:", error);
+    return res
+      .status(500)
+      .send(
+        `Failed to reset client: ${escapeHtml(error?.message || String(error))}`,
+      );
+  }
 });
 
 app.get("/dashboard", requireDashboardAuth, async (req, res) => {
