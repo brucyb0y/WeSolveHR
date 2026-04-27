@@ -2981,24 +2981,60 @@ function renderClientWorkspacePage({
 
           .stat-value { margin-top:10px; font-size:26px; font-weight:800; }
 
-          .tabs {
-            display:flex; flex-wrap:wrap; gap:10px; margin-bottom:18px;
-          }
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0;
+  margin-bottom: 18px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px;
+  padding: 6px;
+  position: sticky;
+  top: 84px;
+  z-index: 20;
+  backdrop-filter: blur(14px);
+}
 
 .tab {
-  padding:10px 14px;
-  border-radius:999px;
-  background:rgba(255,255,255,0.05);
-  border:1px solid rgba(255,255,255,0.10);
-  font-weight:800;
-  text-decoration:none;
-  color:var(--text);
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 9px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  color: var(--muted);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: var(--text-strong);
+  background: rgba(255,255,255,0.045);
 }
 
 .tab.active {
-  background:var(--primary-soft);
-  border-color:color-mix(in srgb, var(--primary) 55%, transparent);
-  color:var(--text-strong);
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  color: var(--text-strong);
+}
+
+@media (max-width: 1100px) {
+  .tabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    top: 0;
+    position: relative;
+  }
+}
+
+@media (max-width: 700px) {
+  .tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
           
           .work-table {
@@ -3066,6 +3102,84 @@ function renderClientWorkspacePage({
   color: var(--text);
   font-size: 12px;
   font-weight: 800;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.section-subtitle {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.standard-list {
+  display: grid;
+  gap: 12px;
+}
+
+.standard-card {
+  padding: 15px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.035);
+}
+
+.standard-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.standard-card-title {
+  font-size: 16px;
+  font-weight: 900;
+  margin-bottom: 5px;
+}
+
+.standard-card-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 14px;
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 12px;
+}
+
+.standard-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+@media (max-width: 1000px) {
+  .standard-card-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .section-head,
+  .standard-card-top {
+    flex-direction: column;
+  }
+
+  .standard-card-meta {
+    grid-template-columns: 1fr;
+  }
 }
 
 .work-card-list {
@@ -4465,6 +4579,12 @@ function renderClientViewOnlyPage({
   const doneWorkItems = workItems.filter((w) => w.status === "done");
   const clientActions = actions.filter((a) => a.owner_type === "Client");
 
+  const serviceNames =
+    services
+      .map((s) => s.name)
+      .filter(Boolean)
+      .join(", ") || "-";
+
   return `
     <html>
       <head>
@@ -4474,7 +4594,7 @@ function renderClientViewOnlyPage({
           ${buildBasePageCss()}
 
           .wrap {
-            max-width: 1200px;
+            max-width: 1280px;
             margin: 0 auto;
             padding: 28px 18px 42px;
           }
@@ -4487,8 +4607,13 @@ function renderClientViewOnlyPage({
           }
 
           .topbar {
-            padding: 20px;
+            padding: 22px;
             margin-bottom: 18px;
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+            flex-wrap: wrap;
           }
 
           .eyebrow {
@@ -4507,7 +4632,7 @@ function renderClientViewOnlyPage({
           }
 
           h2 {
-            margin: 0 0 14px;
+            margin: 0;
             font-size: 18px;
           }
 
@@ -4542,23 +4667,83 @@ function renderClientViewOnlyPage({
             font-weight: 900;
           }
 
+          .client-view-tabs {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 0;
+            margin-bottom: 18px;
+            background: rgba(255,255,255,0.035);
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 16px;
+            padding: 6px;
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            backdrop-filter: blur(14px);
+          }
+
+          .client-view-tab {
+            min-height: 42px;
+            border-radius: 12px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--muted);
+            font: inherit;
+            font-size: 13px;
+            font-weight: 900;
+            cursor: pointer;
+          }
+
+          .client-view-tab.active {
+            background: var(--primary-soft);
+            border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+            color: var(--text-strong);
+          }
+
           .panel {
             padding: 18px;
             margin-bottom: 16px;
           }
 
-          .item {
-            padding: 12px 0;
-            border-top: 1px solid rgba(255,255,255,0.08);
+          .panel-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 14px;
           }
 
-          .item:first-child {
-            border-top: 0;
+          .table-wrap {
+            overflow-x: auto;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
           }
 
-          .item-title {
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 820px;
+          }
+
+          th, td {
+            padding: 13px 14px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            text-align: left;
+            vertical-align: top;
+            font-size: 13px;
+          }
+
+          th {
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 11px;
             font-weight: 900;
-            margin-bottom: 6px;
+            background: rgba(255,255,255,0.035);
+          }
+
+          tr:last-child td {
+            border-bottom: 0;
           }
 
           .badge {
@@ -4569,7 +4754,15 @@ function renderClientViewOnlyPage({
             color: var(--text);
             font-size: 12px;
             font-weight: 800;
-            margin-left: 6px;
+            white-space: nowrap;
+          }
+
+          .tab-panel {
+            display: none;
+          }
+
+          .tab-panel.active {
+            display: block;
           }
 
           a {
@@ -4577,9 +4770,14 @@ function renderClientViewOnlyPage({
             font-weight: 800;
           }
 
-          @media (max-width: 800px) {
+          @media (max-width: 850px) {
             .stats {
               grid-template-columns: 1fr 1fr;
+            }
+
+            .client-view-tabs {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              position: relative;
             }
           }
         </style>
@@ -4588,11 +4786,17 @@ function renderClientViewOnlyPage({
       <body>
         <div class="wrap">
           <div class="topbar">
-            <div class="eyebrow">Client Project View</div>
-            <h1>${escapeHtml(client.name || "-")}</h1>
-            <div class="subtitle">
-              ${escapeHtml(client.company_name || "")}
+            <div>
+              <div class="eyebrow">Client Project View</div>
+              <h1>${escapeHtml(client.name || "-")}</h1>
+              <div class="subtitle">${escapeHtml(client.company_name || "")}</div>
             </div>
+
+            ${
+              client.google_drive_folder_url
+                ? `<a href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">Open Google Drive Folder</a>`
+                : ""
+            }
           </div>
 
           <div class="stats">
@@ -4614,108 +4818,238 @@ function renderClientViewOnlyPage({
             </div>
           </div>
 
-          <div class="panel">
-            <h2>Overview</h2>
-            <div class="meta">${escapeHtml(client.description || "Project progress and updates.")}</div>
-            <div class="meta" style="margin-top:10px;">
-              <strong>Status:</strong> ${escapeHtml(client.status || "-")}
+          <div class="client-view-tabs">
+            <button class="client-view-tab active" onclick="showClientViewTab('overview', this)">Overview</button>
+            <button class="client-view-tab" onclick="showClientViewTab('work', this)">Work Progress</button>
+            <button class="client-view-tab" onclick="showClientViewTab('updates', this)">Updates</button>
+            <button class="client-view-tab" onclick="showClientViewTab('actions', this)">Actions Needed</button>
+            <button class="client-view-tab" onclick="showClientViewTab('documents', this)">Documents</button>
+          </div>
+
+          <div id="clientViewTab-overview" class="tab-panel active">
+            <div class="panel">
+              <div class="panel-head">
+                <h2>Overview</h2>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <tbody>
+                    <tr>
+                      <th>Client</th>
+                      <td>${escapeHtml(client.name || "-")}</td>
+                    </tr>
+                    <tr>
+                      <th>Company</th>
+                      <td>${escapeHtml(client.company_name || "-")}</td>
+                    </tr>
+                    <tr>
+                      <th>Status</th>
+                      <td><span class="badge">${escapeHtml(client.status || "-")}</span></td>
+                    </tr>
+                    <tr>
+                      <th>Services</th>
+                      <td>${escapeHtml(serviceNames)}</td>
+                    </tr>
+                    <tr>
+                      <th>Description</th>
+                      <td>${escapeHtml(client.description || "Project progress and updates.")}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-            ${
-              client.google_drive_folder_url
-                ? `<div class="meta" style="margin-top:10px;"><strong>Shared Drive:</strong> <a href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">Open Google Drive Folder</a></div>`
-                : ""
-            }
           </div>
 
-          <div class="panel">
-            <h2>Work Progress</h2>
-            ${
-              workItems.length
-                ? workItems
-                    .map(
-                      (w) => `
-                  <div class="item">
-                    <div class="item-title">
-                      ${escapeHtml(w.title || "Work item")}
-                      <span class="badge">${escapeHtml(w.status || "todo")}</span>
-                    </div>
-                    <div class="meta">${escapeHtml(w.description || "")}</div>
-                    <div class="meta">
-                      Due: ${escapeHtml(w.due_date || "-")}
-                    </div>
-                  </div>
-                `,
-                    )
-                    .join("")
-                : `<div class="meta">No work items shared yet.</div>`
-            }
+          <div id="clientViewTab-work" class="tab-panel">
+            <div class="panel">
+              <div class="panel-head">
+                <h2>Work Progress</h2>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Work Item</th>
+                      <th>Status</th>
+                      <th>Priority</th>
+                      <th>Due Date</th>
+                      <th>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${
+                      workItems.length
+                        ? workItems
+                            .map(
+                              (w) => `
+                          <tr>
+                            <td><strong>${escapeHtml(w.title || "Work item")}</strong></td>
+                            <td><span class="badge">${escapeHtml(w.status || "todo")}</span></td>
+                            <td>${escapeHtml(w.priority || "-")}</td>
+                            <td>${escapeHtml(w.due_date || "-")}</td>
+                            <td>${escapeHtml(w.description || "-")}</td>
+                          </tr>
+                        `,
+                            )
+                            .join("")
+                        : `<tr><td colspan="5" class="meta">No work items shared yet.</td></tr>`
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
-          <div class="panel">
-            <h2>Latest Updates</h2>
-            ${
-              updates.length
-                ? updates
-                    .map(
-                      (u) => `
-                  <div class="item">
-                    <div class="item-title">${escapeHtml(u.title || "Update")}</div>
-                    <div class="meta">${escapeHtml(u.update_text || "")}</div>
-                    <div class="meta">${escapeHtml(u.created_at ? formatDateTime(u.created_at) : "-")}</div>
-                  </div>
-                `,
-                    )
-                    .join("")
-                : `<div class="meta">No client-visible updates yet.</div>`
-            }
+          <div id="clientViewTab-updates" class="tab-panel">
+            <div class="panel">
+              <div class="panel-head">
+                <h2>Latest Updates</h2>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Title</th>
+                      <th>Type</th>
+                      <th>Update</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${
+                      updates.length
+                        ? updates
+                            .map(
+                              (u) => `
+                          <tr>
+                            <td>${escapeHtml(u.created_at ? formatDateTime(u.created_at) : "-")}</td>
+                            <td><strong>${escapeHtml(u.title || "Update")}</strong></td>
+                            <td>${escapeHtml(u.update_type || "-")}</td>
+                            <td>${escapeHtml(u.update_text || "")}</td>
+                          </tr>
+                        `,
+                            )
+                            .join("")
+                        : `<tr><td colspan="4" class="meta">No client-visible updates yet.</td></tr>`
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
-          <div class="panel">
-            <h2>Actions Needed From Client</h2>
-            ${
-              clientActions.length
-                ? clientActions
-                    .map(
-                      (a) => `
-                  <div class="item">
-                    <div class="item-title">
-                      ${escapeHtml(a.title || "Action")}
-                      <span class="badge">${escapeHtml(a.priority || "Medium")}</span>
-                    </div>
-                    <div class="meta">${escapeHtml(a.notes || "")}</div>
-                    <div class="meta">Due: ${escapeHtml(a.due_date || "-")} · Status: ${escapeHtml(a.status || "Open")}</div>
-                  </div>
-                `,
-                    )
-                    .join("")
-                : `<div class="meta">No client actions pending.</div>`
-            }
+          <div id="clientViewTab-actions" class="tab-panel">
+            <div class="panel">
+              <div class="panel-head">
+                <h2>Actions Needed From Client</h2>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Action</th>
+                      <th>Status</th>
+                      <th>Priority</th>
+                      <th>Due Date</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${
+                      clientActions.length
+                        ? clientActions
+                            .map(
+                              (a) => `
+                          <tr>
+                            <td><strong>${escapeHtml(a.title || "Action")}</strong></td>
+                            <td><span class="badge">${escapeHtml(a.status || "Open")}</span></td>
+                            <td>${escapeHtml(a.priority || "Medium")}</td>
+                            <td>${escapeHtml(a.due_date || "-")}</td>
+                            <td>${escapeHtml(a.notes || "-")}</td>
+                          </tr>
+                        `,
+                            )
+                            .join("")
+                        : `<tr><td colspan="5" class="meta">No client actions pending.</td></tr>`
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
-          <div class="panel">
-            <h2>Documents</h2>
-            ${
-              client.google_drive_folder_url
-                ? `<div class="meta"><a href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">Open Google Drive Folder</a></div>`
-                : `<div class="meta">No shared Drive folder available.</div>`
-            }
+          <div id="clientViewTab-documents" class="tab-panel">
+            <div class="panel">
+              <div class="panel-head">
+                <h2>Documents</h2>
+              </div>
 
-            ${
-              documents.length
-                ? documents
-                    .map(
-                      (d) => `
-                  <div class="item">
-                    <div class="item-title">${escapeHtml(d.title || d.name || "Document")}</div>
-                    ${d.url ? `<div class="meta"><a href="${escapeHtml(d.url)}" target="_blank" rel="noopener noreferrer">Open</a></div>` : ""}
-                  </div>
-                `,
-                    )
-                    .join("")
-                : ""
-            }
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Document</th>
+                      <th>Link</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${
+                      client.google_drive_folder_url
+                        ? `
+                          <tr>
+                            <td><strong>Main Google Drive Folder</strong></td>
+                            <td><a href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">Open Folder</a></td>
+                          </tr>
+                        `
+                        : ""
+                    }
+
+                    ${
+                      documents.length
+                        ? documents
+                            .map(
+                              (d) => `
+                          <tr>
+                            <td><strong>${escapeHtml(d.title || d.name || "Document")}</strong></td>
+                            <td>${d.url ? `<a href="${escapeHtml(d.url)}" target="_blank" rel="noopener noreferrer">Open</a>` : "-"}</td>
+                          </tr>
+                        `,
+                            )
+                            .join("")
+                        : ""
+                    }
+
+                    ${
+                      !client.google_drive_folder_url && !documents.length
+                        ? `<tr><td colspan="2" class="meta">No shared documents available.</td></tr>`
+                        : ""
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
+
+        <script>
+          function showClientViewTab(key, btn) {
+            document.querySelectorAll(".tab-panel").forEach(function(panel) {
+              panel.classList.remove("active");
+            });
+
+            document.querySelectorAll(".client-view-tab").forEach(function(tab) {
+              tab.classList.remove("active");
+            });
+
+            const panel = document.getElementById("clientViewTab-" + key);
+            if (panel) panel.classList.add("active");
+            if (btn) btn.classList.add("active");
+          }
+        </script>
       </body>
     </html>
   `;
