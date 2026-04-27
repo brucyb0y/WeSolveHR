@@ -2834,6 +2834,7 @@ function renderClientWorkspacePage({
   documents = [],
   users = [],
   selectedTab = "overview",
+  activityLogs = [],
 }) {
   const activeTab = [
     "overview",
@@ -2854,6 +2855,64 @@ function renderClientWorkspacePage({
       ${label}
     </a>
   `;
+
+  const getUserName = (userId) =>
+    users.find((u) => String(u.id) === String(userId))?.name || "-";
+
+  const getWorkItemTitle = (workItemId) =>
+    workItems.find((w) => String(w.id) === String(workItemId))?.title || "";
+
+  const manualUpdateEvents = updates.map((u) => ({
+    type: "manual_update",
+    at: u.created_at,
+    title: u.title || "Client update",
+    text: u.update_text || "",
+    by: getUserName(u.created_by_user_id),
+    relatedWorkItemTitle: u.related_work_item_id
+      ? getWorkItemTitle(u.related_work_item_id)
+      : "",
+  }));
+
+  const activityEvents = activityLogs.map((log) => {
+    const actionLabel = String(log.action || "").replaceAll("_", " ");
+    const newValue = log.new_value || {};
+    const oldValue = log.old_value || {};
+
+    let text = actionLabel;
+
+    if (log.action === "work_item_created") {
+      text = `Created work item: ${newValue.title || "-"}`;
+    }
+
+    if (log.action === "work_item_updated") {
+      if (oldValue.status !== newValue.status) {
+        text = `Status changed: ${oldValue.status || "-"} → ${newValue.status || "-"}`;
+      } else {
+        text = `Updated work item: ${newValue.title || "-"}`;
+      }
+    }
+
+    if (log.action === "work_item_archived") {
+      text = `Archived work item: ${oldValue.title || newValue.title || "-"}`;
+    }
+
+    return {
+      type: "activity",
+      at: log.created_at,
+      title: actionLabel,
+      text,
+      by: getUserName(log.actor_user_id),
+      relatedWorkItemTitle:
+        log.entity_type === "client_work_items"
+          ? getWorkItemTitle(log.entity_id)
+          : "",
+    };
+  });
+
+  const timelineEvents = [...manualUpdateEvents, ...activityEvents]
+    .filter((x) => x.at)
+    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+
   return `
     <html>
       <head>
@@ -3063,15 +3122,13 @@ function renderClientWorkspacePage({
 }
 
 .work-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(3, 8, 20, 0.70);
-  backdrop-filter: blur(8px);
   display: none;
-  align-items: center;
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
   justify-content: center;
-  padding: 18px;
-  z-index: 9999;
+  align-items: center;
 }
 
 .work-modal.open {
@@ -3184,6 +3241,14 @@ ${
           <div class="meta"><strong>Slug:</strong> ${escapeHtml(client.slug || "-")}</div>
           <div class="meta"><strong>Account Manager:</strong> ${escapeHtml(client.account_manager_name || "-")}</div>
           <div class="meta"><strong>Project Manager:</strong> ${escapeHtml(client.project_manager_name || "-")}</div>
+          <div class="meta">
+  <strong>Last Activity:</strong>
+  ${
+    timelineEvents.length
+      ? `${escapeHtml(formatDateTime(timelineEvents[0].at))} · ${escapeHtml(timelineEvents[0].text)}`
+      : "-"
+  }
+</div>
           <div class="meta">
             <strong>Google Drive Folder:</strong>
             ${
@@ -3357,22 +3422,44 @@ ${
   activeTab === "updates"
     ? `
       <div class="panel">
-        <h2>Updates</h2>
-        ${
-          updates.length
-            ? updates
-                .map(
-                  (u) => `
-              <div class="item">
-                <div class="item-title">${escapeHtml(u.title || "Update")}</div>
-                <div class="meta">${escapeHtml(u.update_text || "")}</div>
-                <div class="meta">${escapeHtml(u.created_at ? formatDateTime(u.created_at) : "-")}</div>
-              </div>
-            `,
-                )
-                .join("")
-            : `<div class="meta">No updates yet.</div>`
-        }
+        <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
+          <div>
+            <h2 style="margin:0;">Updates / Progress Timeline</h2>
+            <div class="meta">Manual client updates + automatic work-item activity.</div>
+          </div>
+          <button class="btn btn-primary" type="button" onclick="openClientUpdateModal()">+ Add Update</button>
+        </div>
+
+        <div class="work-summary-chips">
+          <span class="summary-chip">Manual Updates ${updates.length}</span>
+          <span class="summary-chip">Activity Logs ${activityLogs.length}</span>
+          <span class="summary-chip">Timeline ${timelineEvents.length}</span>
+        </div>
+
+        <div style="margin-top:16px;">
+          ${
+            timelineEvents.length
+              ? timelineEvents
+                  .map(
+                    (event) => `
+                <div class="item">
+                  <div class="item-title">
+                    ${escapeHtml(event.title)}
+                    ${event.relatedWorkItemTitle ? ` · ${escapeHtml(event.relatedWorkItemTitle)}` : ""}
+                  </div>
+                  <div class="meta">${escapeHtml(event.text)}</div>
+                  <div class="meta">
+                    ${escapeHtml(event.at ? formatDateTime(event.at) : "-")}
+                    · by ${escapeHtml(event.by || "-")}
+                    · ${escapeHtml(event.type === "manual_update" ? "Manual update" : "System activity")}
+                  </div>
+                </div>
+              `,
+                  )
+                  .join("")
+              : `<div class="meta">No updates or activity yet.</div>`
+          }
+        </div>
       </div>
     `
     : ""
@@ -3491,8 +3578,8 @@ ${
     `
     : ""
 }
-          
-          <div id="workItemModal" class="work-modal" onclick="closeWorkItemModal(event)">
+
+<div id="workItemModal" class="work-modal" onclick="closeWorkItemModal(event)">
   <div class="work-modal-card" onclick="event.stopPropagation()">
     <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
       <div style="font-size:22px; font-weight:800;">Add Work Item</div>
@@ -3557,7 +3644,60 @@ ${
     <div id="workItemDetailBody" class="meta">Loading...</div>
   </div>
 </div>
-        </div>
+
+<div id="clientUpdateModal" class="work-modal" onclick="closeClientUpdateModal(event)">
+  <div class="work-modal-card" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
+      <div style="font-size:22px; font-weight:800;">Add Client Update</div>
+      <button class="btn" type="button" onclick="closeClientUpdateModal()">Close</button>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-field">
+        <label>Title</label>
+        <input id="clientUpdateTitle" placeholder="Example: Weekly progress update" />
+      </div>
+
+      <div class="form-field">
+        <label>Related Work Item</label>
+        <select id="clientUpdateWorkItem">
+          <option value="">No related work item</option>
+          ${workItems.map((w) => `<option value="${w.id}">#${w.id} · ${escapeHtml(w.title)}</option>`).join("")}
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>Update Type</label>
+        <select id="clientUpdateType">
+          <option value="general">General</option>
+          <option value="progress">Progress</option>
+          <option value="blocker">Blocker</option>
+          <option value="client_call">Client Call</option>
+          <option value="delivery">Delivery</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>Visibility</label>
+        <select id="clientUpdateVisibility">
+          <option value="internal">Internal only</option>
+          <option value="client">Client visible later</option>
+        </select>
+      </div>
+
+      <div class="form-field" style="grid-column:1 / -1;">
+        <label>Update</label>
+        <textarea id="clientUpdateText" placeholder="Write what happened, what changed, next step, blocker, etc."></textarea>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+      <button class="btn" type="button" onclick="closeClientUpdateModal()">Cancel</button>
+      <button class="btn btn-primary" type="button" onclick="createClientUpdate(${Number(client.id)})">Save Update</button>
+    </div>
+  </div>
+</div>
+
         
 <script>
   const WORK_ITEM_USERS = ${JSON.stringify(users.map((u) => ({ id: u.id, name: u.name })))};
@@ -3591,9 +3731,12 @@ ${
     modal.classList.add("open");
   }
 
-  function openWorkItemModal() {
-    document.getElementById("workItemModal").classList.add("open");
-  }
+function openWorkItemModal() {
+  const form = document.getElementById("workItemForm");
+  form.reset(); // resets everything automatically
+
+  document.getElementById("workItemModal").classList.add("open");
+}
 
   function closeWorkItemModal(event) {
     if (event && event.target && event.target.id !== "workItemModal") return;
@@ -3819,536 +3962,12 @@ ${
     window.location.reload();
   }
 
-  function closeWorkItemDetail(event) {
-    if (event && event.target && event.target.id !== "workItemDetailModal") return;
-    document.getElementById("workItemDetailModal").classList.remove("open");
+function closeWorkItemDetail(e) {
+  if (!e || e.target.id === "workItemDetailModal") {
+    document.getElementById("workItemDetailModal").style.display = "none";
   }
-</script>
-      </body>
-    </html>
-  `;
 }
-
-function renderWorkItemsPage({
-  workItems = [],
-  users = [],
-  currentUser = null,
-} = {}) {
-  const currentUserId = currentUser?.id || null;
-
-  const ownerNameFor = (item) =>
-    users.find((u) => String(u.id) === String(item.owner_user_id))?.name || "-";
-
-  const clientNameFor = (item) => item.clients?.name || item.client_name || "-";
-
-  const dependencyFor = (item) => {
-    if (!item.dependency_work_item_id) return null;
-    return (
-      workItems.find(
-        (w) => String(w.id) === String(item.dependency_work_item_id),
-      ) || null
-    );
-  };
-
-  const isBlocked = (item) => {
-    const dep = dependencyFor(item);
-    return dep && dep.status !== "done";
-  };
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const isDueToday = (item) => {
-    if (!item.due_date) return false;
-    const d = new Date(item.due_date + "T00:00:00");
-    return d.getTime() === today.getTime();
-  };
-
-  const isDueSoon = (item) => {
-    if (!item.due_date) return false;
-    const d = new Date(item.due_date + "T00:00:00");
-    const diffDays = Math.round(
-      (d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
-    );
-    return diffDays >= 0 && diffDays <= 2;
-  };
-
-  const myItems = currentUserId
-    ? workItems.filter((w) => String(w.owner_user_id) === String(currentUserId))
-    : [];
-
-  const sortedItems = [...workItems].sort((a, b) => {
-    const blockedA = isBlocked(a) ? 1 : 0;
-    const blockedB = isBlocked(b) ? 1 : 0;
-    if (blockedA !== blockedB) return blockedB - blockedA;
-
-    const priorityWeight = { high: 3, medium: 2, low: 1 };
-    const pa = priorityWeight[a.priority] || 0;
-    const pb = priorityWeight[b.priority] || 0;
-    if (pa !== pb) return pb - pa;
-
-    const da = a.due_date
-      ? new Date(a.due_date).getTime()
-      : Number.MAX_SAFE_INTEGER;
-    const db = b.due_date
-      ? new Date(b.due_date).getTime()
-      : Number.MAX_SAFE_INTEGER;
-    return da - db;
-  });
-
-  const cardHtml = (item) => {
-    const dep = dependencyFor(item);
-    const blocked = isBlocked(item);
-
-    const statusClass =
-      item.status === "done"
-        ? "badge badge-ok"
-        : item.status === "in_progress"
-          ? "badge badge-info"
-          : blocked
-            ? "badge badge-warn"
-            : "badge badge-muted";
-
-    const dueClass = isDueToday(item)
-      ? "badge badge-danger"
-      : isDueSoon(item)
-        ? "badge badge-warn"
-        : "badge badge-muted";
-
-    const dependencyText = dep
-      ? blocked
-        ? `Blocked by #${escapeHtml(dep.id)} · ${escapeHtml(dep.title)}`
-        : `Dependency complete: #${escapeHtml(dep.id)} · ${escapeHtml(dep.title)}`
-      : "No dependency";
-
-    return `
-      <div class="work-card">
-        <div class="work-card-top">
-          <div>
-            <div class="work-card-title">${escapeHtml(item.title || "Untitled")}</div>
-            <div class="meta">Client: <a href="/clients/${Number(item.client_id)}">${escapeHtml(clientNameFor(item))}</a></div>
-            <div class="meta">${escapeHtml(item.description || "No description")}</div>
-          </div>
-
-          <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
-            <span class="${statusClass}">
-              ${blocked && item.status !== "done" ? "blocked" : escapeHtml(item.status || "todo")}
-            </span>
-            <span class="badge badge-muted">${escapeHtml(item.priority || "medium")}</span>
-            <span class="${dueClass}">Due ${escapeHtml(item.due_date || "-")}</span>
-          </div>
-        </div>
-
-        <div class="work-card-meta">
-          <div><strong>Owner:</strong> ${escapeHtml(ownerNameFor(item))}</div>
-          <div><strong>Depends:</strong> ${dependencyText}</div>
-          <div><strong>Last updated:</strong> ${escapeHtml(item.updated_at ? formatDateTime(item.updated_at) : "-")}</div>
-          <div><strong>Created:</strong> ${escapeHtml(item.created_at ? formatDateTime(item.created_at) : "-")}</div>
-        </div>
-
-        <div class="work-card-actions">
-          <a class="btn" href="/clients/${Number(item.client_id)}">Open Client</a>
-          <button class="btn" type="button" onclick="patchWorkItem(${Number(item.id)}, { status: 'in_progress' })">Start</button>
-          <button class="btn" type="button" onclick="patchWorkItem(${Number(item.id)}, { status: 'done' })">Done</button>
-          <button class="btn" type="button" onclick="patchWorkItem(${Number(item.id)}, { archive: true }, true)">Archive</button>
-        </div>
-      </div>
-    `;
-  };
-
-  return `
-    <html>
-      <head>
-        <title>Work Items | WeSolveHR</title>
-        <style>
-          ${buildThemeCss()}
-          ${buildBasePageCss()}
-          ${buildTopNavCss()}
-
-          .wrap {
-            max-width: 1600px;
-            margin: 0 auto;
-            padding: 24px 18px 36px;
-          }
-
-          .topbar, .panel, .stat-card {
-            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
-            border: 1px solid var(--line);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-soft);
-          }
-
-          .topbar {
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-            gap:16px;
-            flex-wrap:wrap;
-            margin-bottom:20px;
-            padding:18px 20px;
-          }
-
-          .eyebrow {
-            font-size:11px;
-            letter-spacing:0.16em;
-            text-transform:uppercase;
-            color:var(--primary);
-            font-weight:700;
-            margin-bottom:8px;
-          }
-
-          h1 {
-            margin:0;
-            font-size:30px;
-            letter-spacing:-0.04em;
-          }
-
-          .subtitle, .meta {
-            color:var(--muted);
-            font-size:13px;
-            line-height:1.5;
-          }
-
-          .subtitle {
-            margin-top:8px;
-            font-size:14px;
-          }
-
-          .stats {
-            display:grid;
-            grid-template-columns:repeat(4, minmax(0, 1fr));
-            gap:12px;
-            margin-bottom:20px;
-          }
-
-          .stat-card {
-            padding:16px;
-          }
-
-          .stat-label {
-            color:var(--muted);
-            font-size:12px;
-            text-transform:uppercase;
-            letter-spacing:0.08em;
-            font-weight:800;
-          }
-
-          .stat-value {
-            margin-top:10px;
-            font-size:28px;
-            font-weight:900;
-          }
-
-          .panel {
-            padding:18px;
-            margin-bottom:16px;
-          }
-
-          .filter-row {
-            display:flex;
-            gap:10px;
-            flex-wrap:wrap;
-            margin-bottom:16px;
-          }
-
-          .filter-chip {
-            padding:10px 14px;
-            border-radius:999px;
-            border:1px solid rgba(255,255,255,0.10);
-            background:rgba(255,255,255,0.05);
-            color:var(--text);
-            font-weight:800;
-            cursor:pointer;
-          }
-
-          .filter-chip.active {
-            background:var(--primary-soft);
-            border-color:color-mix(in srgb, var(--primary) 55%, transparent);
-          }
-
-          .work-card-list {
-            display:grid;
-            gap:12px;
-          }
-
-          .work-card {
-            padding:14px;
-            border-radius:16px;
-            border:1px solid rgba(255,255,255,0.10);
-            background:rgba(255,255,255,0.035);
-          }
-
-          .work-card.hidden {
-            display:none;
-          }
-
-          .work-card-top {
-            display:flex;
-            justify-content:space-between;
-            gap:14px;
-            align-items:flex-start;
-            margin-bottom:12px;
-          }
-
-          .work-card-title {
-            font-size:17px;
-            font-weight:900;
-            margin-bottom:6px;
-          }
-
-          .work-card-meta {
-            display:grid;
-            grid-template-columns:repeat(2, minmax(0, 1fr));
-            gap:8px 14px;
-            color:var(--muted);
-            font-size:13px;
-            margin-top:10px;
-          }
-
-          .work-card-actions {
-            display:flex;
-            gap:8px;
-            flex-wrap:wrap;
-            margin-top:14px;
-          }
-
-          .btn {
-            display:inline-flex;
-            align-items:center;
-            text-decoration:none;
-            color:var(--text);
-            padding:10px 13px;
-            border-radius:12px;
-            background:rgba(255,255,255,0.05);
-            border:1px solid rgba(255,255,255,0.12);
-            font-weight:800;
-            cursor:pointer;
-          }
-
-          .badge {
-            display:inline-flex;
-            padding:6px 9px;
-            border-radius:999px;
-            font-size:12px;
-            font-weight:800;
-          }
-
-          .badge-ok {
-            background:var(--success-soft);
-            color:var(--text-strong);
-          }
-
-          .badge-info {
-            background:var(--info-soft);
-            color:var(--text-strong);
-          }
-
-          .badge-warn {
-            background:var(--accent-soft);
-            color:var(--text-strong);
-          }
-
-          .badge-danger {
-            background:var(--danger-soft);
-            color:var(--text-strong);
-          }
-
-          .badge-muted {
-            background:rgba(255,255,255,0.08);
-            color:var(--text);
-          }
-
-          .loading-overlay {
-            position:fixed;
-            inset:0;
-            background:rgba(3, 8, 20, 0.70);
-            backdrop-filter:blur(8px);
-            display:none;
-            align-items:center;
-            justify-content:center;
-            padding:18px;
-            z-index:9999;
-          }
-
-          .loading-overlay.open {
-            display:flex;
-          }
-
-          .loading-box {
-            width:min(420px, 100%);
-            border-radius:22px;
-            border:1px solid var(--line);
-            background:linear-gradient(180deg, var(--panel), var(--panel-strong));
-            box-shadow:var(--shadow-soft);
-            padding:22px;
-            text-align:center;
-          }
-
-          @media (max-width:900px) {
-            .stats {
-              grid-template-columns:1fr;
-            }
-
-            .work-card-top {
-              flex-direction:column;
-            }
-
-            .work-card-meta {
-              grid-template-columns:1fr;
-            }
-          }
-        </style>
-      </head>
-
-      <body>
-        ${renderTopNav("work-items")}
-
-        <div class="wrap">
-          <div class="topbar">
-            <div>
-              <div class="eyebrow">Execution View</div>
-              <h1>Work Items</h1>
-              <div class="subtitle">All client work across the company, sorted by blockers, priority, and due date.</div>
-            </div>
-          </div>
-
-          <div class="stats">
-            <div class="stat-card">
-              <div class="stat-label">Total Open</div>
-              <div class="stat-value">${workItems.filter((w) => w.status !== "done").length}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">My Work</div>
-              <div class="stat-value">${myItems.filter((w) => w.status !== "done").length}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Blocked</div>
-              <div class="stat-value">${workItems.filter((w) => isBlocked(w)).length}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-label">Due Today</div>
-              <div class="stat-value">${workItems.filter((w) => isDueToday(w)).length}</div>
-            </div>
-          </div>
-
-          <div class="panel">
-            <div class="filter-row">
-              <button class="filter-chip active" type="button" onclick="filterWorkItems('all', this)">All</button>
-              <button class="filter-chip" type="button" onclick="filterWorkItems('mine', this)">My Work</button>
-              <button class="filter-chip" type="button" onclick="filterWorkItems('high', this)">High Priority</button>
-              <button class="filter-chip" type="button" onclick="filterWorkItems('blocked', this)">Blocked</button>
-              <button class="filter-chip" type="button" onclick="filterWorkItems('due_soon', this)">Due Soon</button>
-              <button class="filter-chip" type="button" onclick="filterWorkItems('done', this)">Done</button>
-            </div>
-
-            <div class="work-card-list">
-              ${
-                sortedItems.length
-                  ? sortedItems
-                      .map(
-                        (item) => `
-                    <div
-                      class="work-item-filter-card"
-                      data-owner-id="${escapeHtml(item.owner_user_id || "")}"
-                      data-priority="${escapeHtml(item.priority || "")}"
-                      data-status="${escapeHtml(item.status || "")}"
-                      data-blocked="${isBlocked(item) ? "true" : "false"}"
-                      data-due-soon="${isDueSoon(item) ? "true" : "false"}"
-                    >
-                      ${cardHtml(item)}
-                    </div>
-                  `,
-                      )
-                      .join("")
-                  : `<div class="meta">No work items found.</div>`
-              }
-            </div>
-          </div>
-        </div>
-
-        <div id="workItemsLoading" class="loading-overlay">
-          <div class="loading-box">
-            <div style="font-size:20px; font-weight:900; margin-bottom:8px;">Opening this page</div>
-            <div class="meta" id="workItemsLoadingText">Please wait...</div>
-          </div>
-        </div>
-
-        <script>
-          const CURRENT_USER_ID = ${JSON.stringify(currentUserId)};
-
-          function showWorkItemsLoading(message) {
-            const overlay = document.getElementById("workItemsLoading");
-            const text = document.getElementById("workItemsLoadingText");
-
-            if (text) text.textContent = message || "Please wait...";
-            if (overlay) overlay.classList.add("open");
-          }
-
-          function hideWorkItemsLoading() {
-            const overlay = document.getElementById("workItemsLoading");
-            if (overlay) overlay.classList.remove("open");
-          }
-
-          async function patchWorkItem(id, payload, askConfirm) {
-            if (askConfirm && !confirm("Archive this work item? It will be hidden but not permanently deleted.")) {
-              return;
-            }
-
-            showWorkItemsLoading("Updating work item...");
-
-            try {
-              const res = await fetch("/api/client-work-items/" + id, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-              });
-
-              const json = await res.json();
-
-              if (!json.ok) {
-                alert(json.error || "Failed to update work item");
-                hideWorkItemsLoading();
-                return;
-              }
-
-              window.location.reload();
-            } catch (error) {
-              alert(error?.message || "Something went wrong");
-              hideWorkItemsLoading();
-            }
-          }
-
-          function filterWorkItems(filter, btn) {
-            document.querySelectorAll(".filter-chip").forEach((x) => x.classList.remove("active"));
-            if (btn) btn.classList.add("active");
-
-            document.querySelectorAll(".work-item-filter-card").forEach((card) => {
-              const ownerId = card.getAttribute("data-owner-id");
-              const priority = card.getAttribute("data-priority");
-              const status = card.getAttribute("data-status");
-              const blocked = card.getAttribute("data-blocked") === "true";
-              const dueSoon = card.getAttribute("data-due-soon") === "true";
-
-              let show = true;
-
-              if (filter === "mine") {
-                show = CURRENT_USER_ID && String(ownerId) === String(CURRENT_USER_ID);
-              } else if (filter === "high") {
-                show = priority === "high";
-              } else if (filter === "blocked") {
-                show = blocked;
-              } else if (filter === "due_soon") {
-                show = dueSoon;
-              } else if (filter === "done") {
-                show = status === "done";
-              } else {
-                show = true;
-              }
-
-              card.style.display = show ? "" : "none";
-            });
-          }
-        </script>
+</script>
       </body>
     </html>
   `;
@@ -19018,28 +18637,58 @@ app.post("/api/clients/:id/updates", requireDashboardAuth, async (req, res) => {
     const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
     const actorUserId = req.loggedInUser?.id || null;
     const clientId = Number(req.params.id);
+    const body = req.body || {};
 
-    const updateText = String(req.body.update_text || "").trim();
-    if (!clientId || !updateText)
-      return res.status(400).send("Update text is required");
+    const updateText = String(body.update_text || "").trim();
 
-    const { error } = await supabase.from("client_updates").insert([
-      {
-        org_id: orgId,
-        client_id: clientId,
-        title: req.body.title || null,
-        update_text: updateText,
-        update_type: req.body.update_type || "general",
-        is_client_visible: req.body.is_client_visible === "on",
-        created_by_user_id: actorUserId,
-      },
-    ]);
+    if (!clientId) {
+      return sendApiError(res, 400, "Invalid client id");
+    }
 
-    if (error) throw error;
-    res.redirect(`/clients/${clientId}`);
+    if (!updateText) {
+      return sendApiError(res, 400, "Update text is required");
+    }
+
+    const row = {
+      org_id: orgId,
+      client_id: clientId,
+      title: body.title || null,
+      update_text: updateText,
+      update_type: body.update_type || "general",
+      related_work_item_id: body.related_work_item_id
+        ? Number(body.related_work_item_id)
+        : null,
+      is_client_visible: body.is_client_visible === true,
+      is_active: true,
+      created_by_user_id: actorUserId,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from("client_updates")
+      .insert([row])
+      .select("*")
+      .maybeSingle();
+
+    if (error) {
+      console.error("add client update error:", error);
+      return sendApiError(res, 500, "Failed to save update");
+    }
+
+    await insertClientActivityLog({
+      orgId,
+      clientId,
+      actorUserId,
+      action: "client_update_created",
+      entityType: "client_updates",
+      entityId: data.id,
+      newValue: data,
+    });
+
+    return sendApiSuccess(res, data);
   } catch (error) {
-    console.error("add update error:", error);
-    res.status(500).send("Failed to add update");
+    console.error("POST /api/clients/:id/updates fatal error:", error);
+    return sendApiError(res, 500, "Failed to save update");
   }
 });
 
@@ -19530,6 +19179,7 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
       milestonesResult,
       documentsResult,
       usersResult,
+      activityLogsResult,
     ] = await Promise.all([
       supabase
         .from("client_contacts")
@@ -19596,6 +19246,14 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
         .eq("org_id", orgId)
         .eq("is_active", true)
         .order("name", { ascending: true }),
+
+      supabase
+        .from("client_activity_logs")
+        .select("*")
+        .eq("org_id", orgId)
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false })
+        .limit(50),
     ]);
 
     // 3) Optional error logging
@@ -19615,6 +19273,8 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
       console.error("documentsResult error:", documentsResult.error);
     if (usersResult.error)
       console.error("usersResult error:", usersResult.error);
+    if (activityLogsResult.error)
+      console.error("activityLogsResult error:", activityLogsResult.error);
 
     // 4) Prepare clean client object for UI
     const decoratedClient = {
@@ -19641,6 +19301,7 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
         documents: documentsResult.data || [],
         users: usersResult.data || [],
         selectedTab,
+        activityLogs: activityLogsResult.data || [],
       }),
     );
   } catch (error) {
