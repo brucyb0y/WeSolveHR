@@ -2865,7 +2865,8 @@ function renderClientWorkspacePage({
 
   const getWorkItemTitle = (workItemId) =>
     workItems.find((w) => String(w.id) === String(workItemId))?.title || "";
-
+  const getMilestoneTitle = (milestoneId) =>
+    milestones.find((m) => String(m.id) === String(milestoneId))?.title || "";
   const manualUpdateEvents = updates.map((u) => ({
     type: "manual_update",
     at: u.created_at,
@@ -3517,6 +3518,7 @@ ${
                         <div><strong>Owner:</strong> ${escapeHtml(ownerName)}</div>
                         <div><strong>Due:</strong> ${escapeHtml(w.due_date || "-")}</div>
                         <div><strong>Depends:</strong> ${dependencyText}</div>
+                        <div><strong>Milestone:</strong> ${escapeHtml(w.milestone_id ? getMilestoneTitle(w.milestone_id) : "-")}</div>
                         <div><strong>Last updated:</strong> ${escapeHtml(w.updated_at ? formatDateTime(w.updated_at) : "-")}</div>
                       </div>
 
@@ -3692,21 +3694,53 @@ ${
   activeTab === "milestones"
     ? `
       <div class="panel">
-        <h2>Milestones</h2>
-        ${
-          milestones.length
-            ? milestones
-                .map(
-                  (m) => `
-              <div class="item">
-                <div class="item-title">${escapeHtml(m.title || "Milestone")}</div>
-                <div class="meta">${escapeHtml(m.status || "-")} · ${escapeHtml(m.due_date || "-")}</div>
-              </div>
-            `,
-                )
-                .join("")
-            : `<div class="meta">No milestones yet.</div>`
-        }
+        <div class="section-head">
+          <div>
+            <h2 class="section-title">Milestones</h2>
+            <div class="section-subtitle">Project checkpoints connected to work items.</div>
+          </div>
+          <button class="btn btn-primary" type="button" onclick="openMilestoneModal()">+ Add Milestone</button>
+        </div>
+
+        <div class="standard-list">
+          ${
+            milestones.length
+              ? milestones
+                  .map((m) => {
+                    const linkedCount = workItems.filter(
+                      (w) => String(w.milestone_id || "") === String(m.id),
+                    ).length;
+
+                    return `
+                    <div class="standard-card">
+                      <div class="standard-card-top">
+                        <div>
+                          <div class="standard-card-title">${escapeHtml(m.title || "Milestone")}</div>
+                          <div class="meta">${escapeHtml(m.notes || "")}</div>
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                          <span class="badge badge-info">${escapeHtml(m.status || "planned")}</span>
+                          <span class="badge badge-muted">${linkedCount} work items</span>
+                        </div>
+                      </div>
+
+                      <div class="standard-card-meta">
+                        <div><strong>Due:</strong> ${escapeHtml(m.due_date || "-")}</div>
+                        <div><strong>Updated:</strong> ${escapeHtml(m.updated_at ? formatDateTime(m.updated_at) : "-")}</div>
+                      </div>
+
+                      <div class="standard-card-actions">
+                        <button class="btn" type="button" onclick="openMilestoneEditModal(${Number(m.id)})">Edit</button>
+                        <button class="btn" type="button" onclick="closeMilestone(${Number(m.id)})">Close</button>
+                        <button class="btn" type="button" onclick="archiveMilestone(${Number(m.id)})">Archive</button>
+                      </div>
+                    </div>
+                  `;
+                  })
+                  .join("")
+              : `<div class="meta">No milestones yet.</div>`
+          }
+        </div>
       </div>
     `
     : ""
@@ -3744,6 +3778,48 @@ ${
     `
     : ""
 }
+</div>
+<div id="milestoneModal" class="work-modal" onclick="closeMilestoneModal(event)">
+  <div class="work-modal-card" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
+      <div id="milestoneModalTitle" style="font-size:22px; font-weight:800;">Add Milestone</div>
+      <button class="btn" type="button" onclick="closeMilestoneModal()">Close</button>
+    </div>
+
+    <input id="milestoneId" type="hidden" />
+
+    <div class="form-grid">
+      <div class="form-field">
+        <label>Title</label>
+        <input id="milestoneTitle" placeholder="Example: MVP Launch" />
+      </div>
+
+      <div class="form-field">
+        <label>Due Date</label>
+        <input id="milestoneDueDate" type="date" />
+      </div>
+
+      <div class="form-field">
+        <label>Status</label>
+        <select id="milestoneStatus">
+          <option value="planned">Planned</option>
+          <option value="in_progress">In Progress</option>
+          <option value="done">Done</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+
+      <div class="form-field" style="grid-column:1 / -1;">
+        <label>Notes</label>
+        <textarea id="milestoneNotes"></textarea>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+      <button class="btn" type="button" onclick="closeMilestoneModal()">Cancel</button>
+      <button class="btn btn-primary" type="button" onclick="saveMilestone()">Save Milestone</button>
+    </div>
+  </div>
 </div>
 <div id="workItemModal" class="work-modal" onclick="closeWorkItemModal(event)">
   <div class="work-modal-card" onclick="event.stopPropagation()">
@@ -3787,6 +3863,14 @@ ${
           ${workItems.map((w) => `<option value="${w.id}">#${w.id} · ${escapeHtml(w.title)}</option>`).join("")}
         </select>
       </div>
+      
+      <div class="form-field">
+  <label>Milestone</label>
+  <select id="workMilestone">
+    <option value="">No milestone</option>
+    ${milestones.map((m) => `<option value="${m.id}">${escapeHtml(m.title)}</option>`).join("")}
+  </select>
+</div>
 
       <div class="form-field" style="grid-column:1 / -1;">
         <label>Description</label>
@@ -4007,13 +4091,14 @@ ${
         
 <script>
   const WORK_ITEM_USERS = ${JSON.stringify(users.map((u) => ({ id: u.id, name: u.name })))};
-  const WORK_ITEMS = ${JSON.stringify(
+const WORK_ITEMS = ${JSON.stringify(
     workItems.map((w) => ({
       id: w.id,
       title: w.title,
       status: w.status,
       owner_user_id: w.owner_user_id,
       dependency_work_item_id: w.dependency_work_item_id,
+      milestone_id: w.milestone_id,
       priority: w.priority,
       due_date: w.due_date,
       description: w.description,
@@ -4025,6 +4110,7 @@ ${
   const CLIENT_ACTIONS = ${JSON.stringify(actions)};
 const CLIENT_CONTRIBUTORS = ${JSON.stringify(contributors)};
 const CLIENT_ID = ${Number(client.id)};
+const CLIENT_MILESTONES = ${JSON.stringify(milestones)};
 
 async function generateClientViewLink() {
   const res = await fetch("/api/clients/" + CLIENT_ID + "/client-view-link", {
@@ -4047,6 +4133,115 @@ async function generateClientViewLink() {
   } catch (e) {
     prompt("Copy this client view link:", url);
   }
+}
+
+
+function openMilestoneModal() {
+  document.getElementById("milestoneModalTitle").textContent = "Add Milestone";
+  document.getElementById("milestoneId").value = "";
+  document.getElementById("milestoneTitle").value = "";
+  document.getElementById("milestoneDueDate").value = "";
+  document.getElementById("milestoneStatus").value = "planned";
+  document.getElementById("milestoneNotes").value = "";
+  document.getElementById("milestoneModal").classList.add("open");
+}
+
+function openMilestoneEditModal(id) {
+  const milestone = CLIENT_MILESTONES.find(function(m) {
+    return Number(m.id) === Number(id);
+  });
+
+  if (!milestone) {
+    alert("Milestone not found");
+    return;
+  }
+
+  document.getElementById("milestoneModalTitle").textContent = "Edit Milestone";
+  document.getElementById("milestoneId").value = milestone.id;
+  document.getElementById("milestoneTitle").value = milestone.title || "";
+  document.getElementById("milestoneDueDate").value = milestone.due_date || "";
+  document.getElementById("milestoneStatus").value = milestone.status || "planned";
+  document.getElementById("milestoneNotes").value = milestone.notes || "";
+  document.getElementById("milestoneModal").classList.add("open");
+}
+
+function closeMilestoneModal(event) {
+  if (event && event.target && event.target.id !== "milestoneModal") return;
+  document.getElementById("milestoneModal").classList.remove("open");
+}
+
+async function saveMilestone() {
+  const id = document.getElementById("milestoneId").value;
+
+  const payload = {
+    title: document.getElementById("milestoneTitle").value.trim(),
+    due_date: document.getElementById("milestoneDueDate").value || null,
+    status: document.getElementById("milestoneStatus").value,
+    notes: document.getElementById("milestoneNotes").value.trim()
+  };
+
+  if (!payload.title) {
+    alert("Milestone title is required");
+    return;
+  }
+
+  const url = id
+    ? "/api/clients/" + CLIENT_ID + "/milestones/" + id
+    : "/api/clients/" + CLIENT_ID + "/milestones";
+
+  const method = id ? "PUT" : "POST";
+
+  const res = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    alert(json.error || "Failed to save milestone");
+    return;
+  }
+
+  window.location.reload();
+}
+
+async function closeMilestone(id) {
+  if (!confirm("Close this milestone?")) return;
+
+  const res = await fetch("/api/clients/" + CLIENT_ID + "/milestones/" + id, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "closed" })
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    alert(json.error || "Failed to close milestone");
+    return;
+  }
+
+  window.location.reload();
+}
+
+async function archiveMilestone(id) {
+  if (!confirm("Archive this milestone? Work items will remain, but the milestone will be hidden.")) return;
+
+  const res = await fetch("/api/clients/" + CLIENT_ID + "/milestones/" + id + "/archive", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    alert(json.error || "Failed to archive milestone");
+    return;
+  }
+
+  window.location.reload();
 }
 
 function openActionModal() {
@@ -4342,15 +4537,16 @@ function openWorkItemModal() {
 
     showLoadingModal("Creating work item...");
 
-    const payload = {
-      client_id: clientId,
-      title,
-      description: document.getElementById("workDescription").value.trim(),
-      owner_user_id: document.getElementById("workOwner").value || null,
-      priority: document.getElementById("workPriority").value,
-      due_date: document.getElementById("workDueDate").value || null,
-      dependency_work_item_id: document.getElementById("workDependency").value || null
-    };
+const payload = {
+  client_id: clientId,
+  title,
+  description: document.getElementById("workDescription").value.trim(),
+  owner_user_id: document.getElementById("workOwner").value || null,
+  priority: document.getElementById("workPriority").value,
+  due_date: document.getElementById("workDueDate").value || null,
+  dependency_work_item_id: document.getElementById("workDependency").value || null,
+  milestone_id: document.getElementById("workMilestone").value || null
+};
 
     const res = await fetch("/api/client-work-items", {
       method: "POST",
@@ -4444,6 +4640,14 @@ function openWorkItemModal() {
           '>#' + item.id + ' · ' + escapeHtmlClient(item.title) + ' (' + escapeHtmlClient(item.status || "todo") + ')</option>';
       })
       .join("");
+      
+      const milestoneOptions = ${JSON.stringify(
+        milestones.map((m) => ({ id: m.id, title: m.title })),
+      )}.map(function(m) {
+  return '<option value="' + m.id + '" ' +
+    (String(w.milestone_id || "") === String(m.id) ? "selected" : "") +
+    '>' + escapeHtmlClient(m.title) + '</option>';
+}).join("");
 
     document.getElementById("workItemDetailTitle").textContent =
       "#" + w.id + " — Edit Work Item";
@@ -4494,6 +4698,14 @@ function openWorkItemModal() {
             dependencyOptions +
           '</select>' +
         '</div>' +
+        
+        '<div class="form-field">' +
+  '<label>Milestone</label>' +
+  '<select id="editWorkMilestone">' +
+    '<option value="">No milestone</option>' +
+    milestoneOptions +
+  '</select>' +
+'</div>' +
 
         '<div class="form-field" style="grid-column:1 / -1;">' +
           '<label>Description</label>' +
@@ -4524,15 +4736,17 @@ function openWorkItemModal() {
 
     showLoadingModal("Saving work item changes...");
 
-    const payload = {
-      title,
-      status: document.getElementById("editWorkStatus").value,
-      priority: document.getElementById("editWorkPriority").value,
-      owner_user_id: document.getElementById("editWorkOwner").value || null,
-      due_date: document.getElementById("editWorkDueDate").value || null,
-      dependency_work_item_id: document.getElementById("editWorkDependency").value || null,
-      description: document.getElementById("editWorkDescription").value.trim()
-    };
+
+const payload = {
+  title,
+  status: document.getElementById("editWorkStatus").value,
+  priority: document.getElementById("editWorkPriority").value,
+  owner_user_id: document.getElementById("editWorkOwner").value || null,
+  due_date: document.getElementById("editWorkDueDate").value || null,
+  dependency_work_item_id: document.getElementById("editWorkDependency").value || null,
+  milestone_id: document.getElementById("editWorkMilestone").value || null,
+  description: document.getElementById("editWorkDescription").value.trim()
+};
 
     const res = await fetch("/api/client-work-items/" + id, {
       method: "PATCH",
@@ -16705,6 +16919,164 @@ app.put(
 );
 
 app.post(
+  "/api/clients/:clientId/milestones",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+      const actorUserId = req.loggedInUser?.id || null;
+      const clientId = Number(req.params.clientId);
+
+      const title = String(req.body.title || "").trim();
+
+      if (!clientId || !title) {
+        return sendApiError(res, 400, "Milestone title is required");
+      }
+
+      const row = {
+        org_id: orgId,
+        client_id: clientId,
+        title,
+        due_date: req.body.due_date || null,
+        status: req.body.status || "planned",
+        notes: req.body.notes || null,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from("client_milestones")
+        .insert([row])
+        .select("*")
+        .maybeSingle();
+
+      if (error) throw error;
+
+      await insertClientActivityLog({
+        orgId,
+        clientId,
+        actorUserId,
+        action: "milestone_created",
+        entityType: "client_milestones",
+        entityId: data.id,
+        newValue: data,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("Create milestone error:", error);
+      return sendApiError(res, 500, "Failed to create milestone");
+    }
+  },
+);
+
+app.put(
+  "/api/clients/:clientId/milestones/:milestoneId",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+      const actorUserId = req.loggedInUser?.id || null;
+      const clientId = Number(req.params.clientId);
+      const milestoneId = Number(req.params.milestoneId);
+
+      const payload = {
+        updated_at: new Date().toISOString(),
+      };
+
+      if (req.body.title !== undefined)
+        payload.title = String(req.body.title || "").trim();
+      if (req.body.due_date !== undefined)
+        payload.due_date = req.body.due_date || null;
+      if (req.body.status !== undefined)
+        payload.status = req.body.status || "planned";
+      if (req.body.notes !== undefined) payload.notes = req.body.notes || null;
+
+      if (payload.title !== undefined && !payload.title) {
+        return sendApiError(res, 400, "Milestone title is required");
+      }
+
+      const { data, error } = await supabase
+        .from("client_milestones")
+        .update(payload)
+        .eq("id", milestoneId)
+        .eq("client_id", clientId)
+        .eq("org_id", orgId)
+        .select("*")
+        .maybeSingle();
+
+      if (error) throw error;
+
+      await insertClientActivityLog({
+        orgId,
+        clientId,
+        actorUserId,
+        action: "milestone_updated",
+        entityType: "client_milestones",
+        entityId: milestoneId,
+        newValue: data,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("Update milestone error:", error);
+      return sendApiError(res, 500, "Failed to update milestone");
+    }
+  },
+);
+
+app.post(
+  "/api/clients/:clientId/milestones/:milestoneId/archive",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+      const actorUserId = req.loggedInUser?.id || null;
+      const clientId = Number(req.params.clientId);
+      const milestoneId = Number(req.params.milestoneId);
+
+      const { data, error } = await supabase
+        .from("client_milestones")
+        .update({
+          is_active: false,
+          deleted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", milestoneId)
+        .eq("client_id", clientId)
+        .eq("org_id", orgId)
+        .select("*")
+        .maybeSingle();
+
+      if (error) throw error;
+
+      await supabase
+        .from("client_work_items")
+        .update({
+          milestone_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("client_id", clientId)
+        .eq("milestone_id", milestoneId);
+
+      await insertClientActivityLog({
+        orgId,
+        clientId,
+        actorUserId,
+        action: "milestone_archived",
+        entityType: "client_milestones",
+        entityId: milestoneId,
+        oldValue: data,
+      });
+
+      return sendApiSuccess(res, true);
+    } catch (error) {
+      console.error("Archive milestone error:", error);
+      return sendApiError(res, 500, "Failed to archive milestone");
+    }
+  },
+);
+app.post(
   "/api/clients/:clientId/updates/:updateId/archive",
   requireDashboardAuth,
   async (req, res) => {
@@ -20081,6 +20453,7 @@ app.post("/api/client-work-items", requireDashboardAuth, async (req, res) => {
       dependency_work_item_id: body.dependency_work_item_id
         ? Number(body.dependency_work_item_id)
         : null,
+      milestone_id: body.milestone_id ? Number(body.milestone_id) : null,
       priority: body.priority || "medium",
       status: "todo",
       due_date: body.due_date || null,
@@ -20364,6 +20737,13 @@ app.patch(
           ? null
           : Number(body.dependency_work_item_id);
 
+      const milestoneId =
+        body.milestone_id === "" ||
+        body.milestone_id === undefined ||
+        body.milestone_id === null
+          ? null
+          : Number(body.milestone_id);
+
       if (dependencyId && dependencyId === id) {
         return sendApiError(res, 400, "A work item cannot depend on itself");
       }
@@ -20438,6 +20818,10 @@ app.patch(
 
       if (body.dependency_work_item_id !== undefined) {
         patch.dependency_work_item_id = dependencyId;
+      }
+
+      if (body.milestone_id !== undefined) {
+        patch.milestone_id = milestoneId;
       }
 
       if (body.status !== undefined) {
