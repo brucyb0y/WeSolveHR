@@ -2830,6 +2830,7 @@ function renderClientWorkspacePage({
   workItems = [],
   updates = [],
   actions = [],
+  contributors = [],
   milestones = [],
   documents = [],
   users = [],
@@ -2841,11 +2842,9 @@ function renderClientWorkspacePage({
     "work",
     "updates",
     "actions",
+    "contributors",
     "milestones",
     "documents",
-    "team",
-    "billing",
-    "internal",
   ].includes(selectedTab)
     ? selectedTab
     : "overview";
@@ -3223,11 +3222,9 @@ function renderClientWorkspacePage({
   ${tabLink("work", "Work Items")}
   ${tabLink("updates", "Updates")}
   ${tabLink("actions", "Actions Needed")}
+  ${tabLink("contributors", "Contributors")}
   ${tabLink("milestones", "Milestones")}
   ${tabLink("documents", "Documents")}
-  ${tabLink("team", "Team / Contractors")}
-  ${tabLink("billing", "Billing")}
-  ${tabLink("internal", "Internal Ops")}
 </div>
 
 ${
@@ -3469,20 +3466,99 @@ ${
   activeTab === "actions"
     ? `
       <div class="panel">
-        <h2>Actions Needed</h2>
+        <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
+          <div>
+            <h2 style="margin:0;">Actions Needed</h2>
+            <div class="meta">Track simple client or WeSolve follow-ups.</div>
+          </div>
+          <button class="btn btn-primary" type="button" onclick="openActionModal()">+ Add Action</button>
+        </div>
+
         ${
           actions.length
             ? actions
                 .map(
                   (a) => `
-              <div class="item">
-                <div class="item-title">${escapeHtml(a.title)}</div>
-                <div class="meta">${escapeHtml(a.owner_type)} · ${escapeHtml(a.status)} · Due ${escapeHtml(a.due_date || "-")}</div>
+              <div class="work-card">
+                <div class="work-card-top">
+                  <div>
+                    <div class="work-card-title">${escapeHtml(a.title)}</div>
+                    <div class="meta">${escapeHtml(a.notes || "")}</div>
+                  </div>
+                  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <span class="badge badge-info">${escapeHtml(a.status || "Open")}</span>
+                    <span class="badge badge-muted">${escapeHtml(a.priority || "Medium")}</span>
+                  </div>
+                </div>
+
+                <div class="work-card-meta">
+                  <div><strong>Owner:</strong> ${escapeHtml(a.owner_type || "-")} ${a.owner_name ? "· " + escapeHtml(a.owner_name) : ""}</div>
+                  <div><strong>Due:</strong> ${escapeHtml(a.due_date || "-")}</div>
+                  <div><strong>Updated:</strong> ${escapeHtml(a.updated_at ? formatDateTime(a.updated_at) : "-")}</div>
+                </div>
+
+                <div class="work-card-actions">
+                  <button class="btn" type="button" onclick="openActionEditModal(${Number(a.id)})">Edit</button>
+                  <button class="btn" type="button" onclick="archiveAction(${Number(a.id)})">Archive</button>
+                </div>
               </div>
             `,
                 )
                 .join("")
             : `<div class="meta">No actions yet.</div>`
+        }
+      </div>
+    `
+    : ""
+}
+
+${
+  activeTab === "contributors"
+    ? `
+      <div class="panel">
+        <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
+          <div>
+            <h2 style="margin:0;">Contributors</h2>
+            <div class="meta">Internal team, contractors, and client contacts. No attendance required.</div>
+          </div>
+          <button class="btn btn-primary" type="button" onclick="openContributorModal()">+ Add Contributor</button>
+        </div>
+
+        ${
+          contributors.length
+            ? contributors
+                .map(
+                  (p) => `
+              <div class="work-card">
+                <div class="work-card-top">
+                  <div>
+                    <div class="work-card-title">${escapeHtml(p.name)}</div>
+                    <div class="meta">${escapeHtml(p.role || "-")}</div>
+                  </div>
+                  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <span class="badge badge-info">${escapeHtml(p.person_type || "-")}</span>
+                    <span class="badge badge-muted">${escapeHtml(p.status || "Active")}</span>
+                  </div>
+                </div>
+
+                <div class="work-card-meta">
+                  <div><strong>Email:</strong> ${escapeHtml(p.email || "-")}</div>
+                  <div><strong>Phone:</strong> ${escapeHtml(p.phone || "-")}</div>
+                  <div><strong>Can update work:</strong> ${p.can_update_work ? "Yes" : "No"}</div>
+                  <div><strong>Can view client dashboard:</strong> ${p.can_view_client_dashboard ? "Yes" : "No"}</div>
+                </div>
+
+                ${p.notes ? `<div class="meta" style="margin-top:10px;">${escapeHtml(p.notes)}</div>` : ""}
+
+                <div class="work-card-actions">
+                  <button class="btn" type="button" onclick="openContributorEditModal(${Number(p.id)})">Edit</button>
+                  <button class="btn" type="button" onclick="archiveContributor(${Number(p.id)})">Archive</button>
+                </div>
+              </div>
+            `,
+                )
+                .join("")
+            : `<div class="meta">No contributors yet.</div>`
         }
       </div>
     `
@@ -3541,39 +3617,6 @@ ${
                 .join("")
             : `<div class="meta">No separate documents tracked. Use the Google Drive folder.</div>`
         }
-      </div>
-    `
-    : ""
-}
-
-${
-  activeTab === "team"
-    ? `
-      <div class="panel">
-        <h2>Team / Contractors</h2>
-        <div class="meta">Coming soon. Later this can show assigned internal team members and contractors for this client.</div>
-      </div>
-    `
-    : ""
-}
-
-${
-  activeTab === "billing"
-    ? `
-      <div class="panel">
-        <h2>Billing</h2>
-        <div class="meta">Coming soon. Later this can show invoices, payment status, retainers, and billing notes.</div>
-      </div>
-    `
-    : ""
-}
-
-${
-  activeTab === "internal"
-    ? `
-      <div class="panel">
-        <h2>Internal Ops</h2>
-        <div class="meta">Coming soon. Later this can show internal notes, risks, escalation status, and delivery health.</div>
       </div>
     `
     : ""
@@ -3698,6 +3741,146 @@ ${
   </div>
 </div>
 
+<div id="actionModal" class="work-modal" onclick="closeActionModal(event)">
+  <div class="work-modal-card" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
+      <div id="actionModalTitle" style="font-size:22px; font-weight:800;">Add Action</div>
+      <button class="btn" type="button" onclick="closeActionModal()">Close</button>
+    </div>
+
+    <input id="actionId" type="hidden" />
+
+    <div class="form-grid">
+      <div class="form-field">
+        <label>Title</label>
+        <input id="actionTitle" placeholder="Need logo from client" />
+      </div>
+
+      <div class="form-field">
+        <label>Owner Type</label>
+        <select id="actionOwnerType">
+          <option value="WeSolve">WeSolve</option>
+          <option value="Client">Client</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>Owner Name</label>
+        <input id="actionOwnerName" placeholder="Aj / Malikah / Client" />
+      </div>
+
+      <div class="form-field">
+        <label>Due Date</label>
+        <input id="actionDueDate" type="date" />
+      </div>
+
+      <div class="form-field">
+        <label>Status</label>
+        <select id="actionStatus">
+          <option>Open</option>
+          <option>In Progress</option>
+          <option>Waiting</option>
+          <option>Done</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>Priority</label>
+        <select id="actionPriority">
+          <option>Low</option>
+          <option selected>Medium</option>
+          <option>High</option>
+          <option>Urgent</option>
+        </select>
+      </div>
+
+      <div class="form-field" style="grid-column:1 / -1;">
+        <label>Notes</label>
+        <textarea id="actionNotes"></textarea>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+      <button class="btn" type="button" onclick="closeActionModal()">Cancel</button>
+      <button class="btn btn-primary" type="button" onclick="saveAction()">Save Action</button>
+    </div>
+  </div>
+</div>
+
+<div id="contributorModal" class="work-modal" onclick="closeContributorModal(event)">
+  <div class="work-modal-card" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
+      <div id="contributorModalTitle" style="font-size:22px; font-weight:800;">Add Contributor</div>
+      <button class="btn" type="button" onclick="closeContributorModal()">Close</button>
+    </div>
+
+    <input id="contributorId" type="hidden" />
+
+    <div class="form-grid">
+      <div class="form-field">
+        <label>Person Type</label>
+        <select id="contributorPersonType">
+          <option>Internal</option>
+          <option selected>Contractor</option>
+          <option>Client</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>Name</label>
+        <input id="contributorName" placeholder="Name" />
+      </div>
+
+      <div class="form-field">
+        <label>Email</label>
+        <input id="contributorEmail" placeholder="email@example.com" />
+      </div>
+
+      <div class="form-field">
+        <label>Phone</label>
+        <input id="contributorPhone" placeholder="+91..." />
+      </div>
+
+      <div class="form-field">
+        <label>Role</label>
+        <input id="contributorRole" placeholder="Developer / Designer / Client Contact" />
+      </div>
+
+      <div class="form-field">
+        <label>Status</label>
+        <select id="contributorStatus">
+          <option>Active</option>
+          <option>Inactive</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label>
+          <input id="contributorCanUpdateWork" type="checkbox" style="width:auto;" />
+          Can update work
+        </label>
+      </div>
+
+      <div class="form-field">
+        <label>
+          <input id="contributorCanViewClientDashboard" type="checkbox" style="width:auto;" />
+          Can view client dashboard
+        </label>
+      </div>
+
+      <div class="form-field" style="grid-column:1 / -1;">
+        <label>Notes</label>
+        <textarea id="contributorNotes"></textarea>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+      <button class="btn" type="button" onclick="closeContributorModal()">Cancel</button>
+      <button class="btn btn-primary" type="button" onclick="saveContributor()">Save Contributor</button>
+    </div>
+  </div>
+</div>
+
         
 <script>
   const WORK_ITEM_USERS = ${JSON.stringify(users.map((u) => ({ id: u.id, name: u.name })))};
@@ -3715,6 +3898,213 @@ ${
       updated_at: w.updated_at,
     })),
   )};
+  
+  const CLIENT_ACTIONS = ${JSON.stringify(actions)};
+const CLIENT_CONTRIBUTORS = ${JSON.stringify(contributors)};
+const CLIENT_ID = ${Number(client.id)};
+
+
+function openActionModal() {
+  document.getElementById("actionModalTitle").textContent = "Add Action";
+  document.getElementById("actionId").value = "";
+  document.getElementById("actionTitle").value = "";
+  document.getElementById("actionOwnerType").value = "WeSolve";
+  document.getElementById("actionOwnerName").value = "";
+  document.getElementById("actionDueDate").value = "";
+  document.getElementById("actionStatus").value = "Open";
+  document.getElementById("actionPriority").value = "Medium";
+  document.getElementById("actionNotes").value = "";
+  document.getElementById("actionModal").classList.add("open");
+}
+
+function openActionEditModal(id) {
+  const action = CLIENT_ACTIONS.find(function(a) {
+    return Number(a.id) === Number(id);
+  });
+
+  if (!action) {
+    alert("Action not found");
+    return;
+  }
+
+  document.getElementById("actionModalTitle").textContent = "Edit Action";
+  document.getElementById("actionId").value = action.id;
+  document.getElementById("actionTitle").value = action.title || "";
+  document.getElementById("actionOwnerType").value = action.owner_type || "WeSolve";
+  document.getElementById("actionOwnerName").value = action.owner_name || "";
+  document.getElementById("actionDueDate").value = action.due_date || "";
+  document.getElementById("actionStatus").value = action.status || "Open";
+  document.getElementById("actionPriority").value = action.priority || "Medium";
+  document.getElementById("actionNotes").value = action.notes || "";
+  document.getElementById("actionModal").classList.add("open");
+}
+
+function closeActionModal(event) {
+  if (event && event.target && event.target.id !== "actionModal") return;
+  document.getElementById("actionModal").classList.remove("open");
+}
+
+async function saveAction() {
+  const id = document.getElementById("actionId").value;
+
+  const payload = {
+    title: document.getElementById("actionTitle").value.trim(),
+    owner_type: document.getElementById("actionOwnerType").value,
+    owner_name: document.getElementById("actionOwnerName").value.trim(),
+    due_date: document.getElementById("actionDueDate").value || null,
+    status: document.getElementById("actionStatus").value,
+    priority: document.getElementById("actionPriority").value,
+    notes: document.getElementById("actionNotes").value.trim()
+  };
+
+  if (!payload.title) {
+    alert("Action title is required");
+    return;
+  }
+
+  const url = id
+    ? "/api/clients/" + CLIENT_ID + "/actions/" + id
+    : "/api/clients/" + CLIENT_ID + "/actions";
+
+  const method = id ? "PUT" : "POST";
+
+  const res = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const json = await res.json();
+
+  if (!json.success && !json.ok) {
+    alert(json.error || "Failed to save action");
+    return;
+  }
+
+  window.location.reload();
+}
+
+async function archiveAction(id) {
+  if (!confirm("Archive this action?")) return;
+
+  const res = await fetch("/api/clients/" + CLIENT_ID + "/actions/" + id + "/archive", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  });
+
+  const json = await res.json();
+
+  if (!json.success && !json.ok) {
+    alert(json.error || "Failed to archive action");
+    return;
+  }
+
+  window.location.reload();
+}
+
+function openContributorModal() {
+  document.getElementById("contributorModalTitle").textContent = "Add Contributor";
+  document.getElementById("contributorId").value = "";
+  document.getElementById("contributorPersonType").value = "Contractor";
+  document.getElementById("contributorName").value = "";
+  document.getElementById("contributorEmail").value = "";
+  document.getElementById("contributorPhone").value = "";
+  document.getElementById("contributorRole").value = "";
+  document.getElementById("contributorStatus").value = "Active";
+  document.getElementById("contributorCanUpdateWork").checked = true;
+  document.getElementById("contributorCanViewClientDashboard").checked = false;
+  document.getElementById("contributorNotes").value = "";
+  document.getElementById("contributorModal").classList.add("open");
+}
+
+function openContributorEditModal(id) {
+  const person = CLIENT_CONTRIBUTORS.find(function(p) {
+    return Number(p.id) === Number(id);
+  });
+
+  if (!person) {
+    alert("Contributor not found");
+    return;
+  }
+
+  document.getElementById("contributorModalTitle").textContent = "Edit Contributor";
+  document.getElementById("contributorId").value = person.id;
+  document.getElementById("contributorPersonType").value = person.person_type || "Contractor";
+  document.getElementById("contributorName").value = person.name || "";
+  document.getElementById("contributorEmail").value = person.email || "";
+  document.getElementById("contributorPhone").value = person.phone || "";
+  document.getElementById("contributorRole").value = person.role || "";
+  document.getElementById("contributorStatus").value = person.status || "Active";
+  document.getElementById("contributorCanUpdateWork").checked = !!person.can_update_work;
+  document.getElementById("contributorCanViewClientDashboard").checked = !!person.can_view_client_dashboard;
+  document.getElementById("contributorNotes").value = person.notes || "";
+  document.getElementById("contributorModal").classList.add("open");
+}
+
+function closeContributorModal(event) {
+  if (event && event.target && event.target.id !== "contributorModal") return;
+  document.getElementById("contributorModal").classList.remove("open");
+}
+
+async function saveContributor() {
+  const id = document.getElementById("contributorId").value;
+
+  const payload = {
+    person_type: document.getElementById("contributorPersonType").value,
+    name: document.getElementById("contributorName").value.trim(),
+    email: document.getElementById("contributorEmail").value.trim(),
+    phone: document.getElementById("contributorPhone").value.trim(),
+    role: document.getElementById("contributorRole").value.trim(),
+    status: document.getElementById("contributorStatus").value,
+    can_update_work: document.getElementById("contributorCanUpdateWork").checked,
+    can_view_client_dashboard: document.getElementById("contributorCanViewClientDashboard").checked,
+    notes: document.getElementById("contributorNotes").value.trim()
+  };
+
+  if (!payload.name || !payload.role) {
+    alert("Name and role are required");
+    return;
+  }
+
+  const url = id
+    ? "/api/clients/" + CLIENT_ID + "/contributors/" + id
+    : "/api/clients/" + CLIENT_ID + "/contributors";
+
+  const method = id ? "PUT" : "POST";
+
+  const res = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const json = await res.json();
+
+  if (!json.success && !json.ok) {
+    alert(json.error || "Failed to save contributor");
+    return;
+  }
+
+  window.location.reload();
+}
+
+async function archiveContributor(id) {
+  if (!confirm("Archive this contributor?")) return;
+
+  const res = await fetch("/api/clients/" + CLIENT_ID + "/contributors/" + id + "/archive", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  });
+
+  const json = await res.json();
+
+  if (!json.success && !json.ok) {
+    alert(json.error || "Failed to archive contributor");
+    return;
+  }
+
+  window.location.reload();
+}
 
   function showLoadingModal(message) {
     const modal = document.getElementById("workItemDetailModal");
@@ -3732,8 +4122,12 @@ ${
   }
 
 function openWorkItemModal() {
-  const form = document.getElementById("workItemForm");
-  form.reset(); // resets everything automatically
+  document.getElementById("workTitle").value = "";
+  document.getElementById("workOwner").value = "";
+  document.getElementById("workPriority").value = "medium";
+  document.getElementById("workDueDate").value = "";
+  document.getElementById("workDependency").value = "";
+  document.getElementById("workDescription").value = "";
 
   document.getElementById("workItemModal").classList.add("open");
 }
@@ -3964,9 +4358,18 @@ function openWorkItemModal() {
 
 function closeWorkItemDetail(e) {
   if (!e || e.target.id === "workItemDetailModal") {
-    document.getElementById("workItemDetailModal").style.display = "none";
+    document.getElementById("workItemDetailModal").classList.remove("open");
   }
 }
+
+document.addEventListener("keydown", function(event) {
+  if (event.key === "Escape") {
+    document.querySelectorAll(".work-modal.open").forEach(function(modal) {
+      modal.classList.remove("open");
+    });
+  }
+});
+
 </script>
       </body>
     </html>
@@ -15577,6 +15980,406 @@ function renderDashboardPage(data) {
   `;
 }
 
+// =====================================================
+// PHASE 6: CLIENT UPDATES - EDIT / ARCHIVE
+// =====================================================
+
+app.put(
+  "/api/clients/:clientId/updates/:updateId",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const { clientId, updateId } = req.params;
+      const { update_text, related_work_item_id } = req.body;
+
+      if (!update_text) {
+        return res.status(400).json({
+          success: false,
+          error: "Update text is required",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("client_updates")
+        .update({
+          update_text,
+          related_work_item_id: related_work_item_id || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", updateId)
+        .eq("client_id", clientId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      res.json({ success: true, update: data });
+    } catch (err) {
+      console.error("Edit update failed:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
+app.post(
+  "/api/clients/:clientId/updates/:updateId/archive",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const { clientId, updateId } = req.params;
+
+      const { error } = await supabase
+        .from("client_updates")
+        .update({
+          is_active: false,
+          archived_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", updateId)
+        .eq("client_id", clientId);
+
+      if (error) throw error;
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Archive update failed:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
+// =====================================================
+// PHASE 7: ACTIONS NEEDED
+// =====================================================
+
+app.get(
+  "/api/clients/:clientId/actions",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const { clientId } = req.params;
+
+      const { data, error } = await supabase
+        .from("client_actions")
+        .select("*")
+        .eq("client_id", clientId)
+        .eq("archived", false)
+        .order("due_date", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      res.json({ success: true, actions: data || [] });
+    } catch (err) {
+      console.error("Load actions failed:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
+app.post(
+  "/api/clients/:clientId/actions",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const { clientId } = req.params;
+
+      const {
+        title,
+        owner_type,
+        owner_name,
+        due_date,
+        status,
+        priority,
+        notes,
+      } = req.body;
+
+      if (!title || !owner_type) {
+        return res.status(400).json({
+          success: false,
+          error: "Title and owner type are required",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("client_actions")
+        .insert({
+          client_id: clientId,
+          title,
+          owner_type,
+          owner_name: owner_name || null,
+          due_date: due_date || null,
+          status: status || "Open",
+          priority: priority || "Medium",
+          notes: notes || null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await supabase.from("client_updates").insert({
+        client_id: clientId,
+        update_text: `Action created: ${title}`,
+        update_type: "action",
+      });
+
+      res.json({ success: true, action: data });
+    } catch (err) {
+      console.error("Create action failed:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
+app.put(
+  "/api/clients/:clientId/actions/:actionId",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const { clientId, actionId } = req.params;
+
+      const payload = {
+        title: req.body.title,
+        owner_type: req.body.owner_type,
+        owner_name: req.body.owner_name || null,
+        due_date: req.body.due_date || null,
+        status: req.body.status || "Open",
+        priority: req.body.priority || "Medium",
+        notes: req.body.notes || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from("client_actions")
+        .update(payload)
+        .eq("id", actionId)
+        .eq("client_id", clientId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await supabase.from("client_updates").insert({
+        client_id: clientId,
+        update_text: `Action updated: ${data.title}`,
+        update_type: "action",
+      });
+
+      res.json({ success: true, action: data });
+    } catch (err) {
+      console.error("Update action failed:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
+app.post(
+  "/api/clients/:clientId/actions/:actionId/archive",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const { clientId, actionId } = req.params;
+
+      const { data, error } = await supabase
+        .from("client_actions")
+        .update({
+          archived: true,
+          status: "Archived",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", actionId)
+        .eq("client_id", clientId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await supabase.from("client_updates").insert({
+        client_id: clientId,
+        update_text: `Action archived: ${data.title}`,
+        update_type: "action",
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Archive action failed:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
+// =====================================================
+// PHASE 8: CONTRIBUTORS
+// Internal / Contractor / Client Contact
+// =====================================================
+
+app.get(
+  "/api/clients/:clientId/contributors",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const { clientId } = req.params;
+
+      const { data, error } = await supabase
+        .from("client_contributors")
+        .select("*")
+        .eq("client_id", clientId)
+        .eq("archived", false)
+        .order("person_type", { ascending: true })
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      res.json({ success: true, contributors: data || [] });
+    } catch (err) {
+      console.error("Load contributors failed:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
+app.post(
+  "/api/clients/:clientId/contributors",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const { clientId } = req.params;
+
+      const {
+        person_type,
+        user_id,
+        name,
+        email,
+        phone,
+        role,
+        can_update_work,
+        can_view_client_dashboard,
+        status,
+        notes,
+      } = req.body;
+
+      if (!person_type || !name || !role) {
+        return res.status(400).json({
+          success: false,
+          error: "Person type, name, and role are required",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("client_contributors")
+        .insert({
+          client_id: clientId,
+          person_type,
+          user_id: user_id || null,
+          name,
+          email: email || null,
+          phone: phone || null,
+          role,
+          can_update_work: !!can_update_work,
+          can_view_client_dashboard: !!can_view_client_dashboard,
+          status: status || "Active",
+          notes: notes || null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await supabase.from("client_updates").insert({
+        client_id: clientId,
+        update_text: `Contributor added: ${name} as ${role}`,
+        update_type: "contributor",
+      });
+
+      res.json({ success: true, contributor: data });
+    } catch (err) {
+      console.error("Create contributor failed:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
+app.put(
+  "/api/clients/:clientId/contributors/:contributorId",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const { clientId, contributorId } = req.params;
+
+      const payload = {
+        person_type: req.body.person_type,
+        user_id: req.body.user_id || null,
+        name: req.body.name,
+        email: req.body.email || null,
+        phone: req.body.phone || null,
+        role: req.body.role,
+        can_update_work: !!req.body.can_update_work,
+        can_view_client_dashboard: !!req.body.can_view_client_dashboard,
+        status: req.body.status || "Active",
+        notes: req.body.notes || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from("client_contributors")
+        .update(payload)
+        .eq("id", contributorId)
+        .eq("client_id", clientId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await supabase.from("client_updates").insert({
+        client_id: clientId,
+        update_text: `Contributor updated: ${data.name}`,
+        update_type: "contributor",
+      });
+
+      res.json({ success: true, contributor: data });
+    } catch (err) {
+      console.error("Update contributor failed:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
+app.post(
+  "/api/clients/:clientId/contributors/:contributorId/archive",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const { clientId, contributorId } = req.params;
+
+      const { data, error } = await supabase
+        .from("client_contributors")
+        .update({
+          archived: true,
+          status: "Inactive",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", contributorId)
+        .eq("client_id", clientId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await supabase.from("client_updates").insert({
+        client_id: clientId,
+        update_text: `Contributor archived: ${data.name}`,
+        update_type: "contributor",
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Archive contributor failed:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  },
+);
+
 app.get("/health/live", (_req, res) => {
   return res.status(200).json({ ok: true, status: "live" });
 });
@@ -18697,31 +19500,51 @@ app.post("/api/clients/:id/actions", requireDashboardAuth, async (req, res) => {
     const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
     const actorUserId = req.loggedInUser?.id || null;
     const clientId = Number(req.params.id);
+    const body = req.body || {};
 
-    const title = String(req.body.title || "").trim();
-    if (!clientId || !title)
-      return res.status(400).send("Action title is required");
+    const title = String(body.title || "").trim();
 
-    const { error } = await supabase.from("client_actions").insert([
-      {
-        org_id: orgId,
-        client_id: clientId,
-        title,
-        description: req.body.description || null,
-        owner_type: req.body.owner_type || "internal",
-        status: req.body.status || "open",
-        due_date: req.body.due_date || null,
-        is_client_visible: req.body.is_client_visible === "on",
-        created_by_user_id: actorUserId,
-        updated_by_user_id: actorUserId,
-      },
-    ]);
+    if (!clientId || !title) {
+      return sendApiError(res, 400, "Action title is required");
+    }
+
+    const row = {
+      org_id: orgId,
+      client_id: clientId,
+      title,
+      owner_type: body.owner_type || "WeSolve",
+      owner_name: body.owner_name || null,
+      due_date: body.due_date || null,
+      status: body.status || "Open",
+      priority: body.priority || "Medium",
+      notes: body.notes || null,
+      archived: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from("client_actions")
+      .insert([row])
+      .select("*")
+      .maybeSingle();
 
     if (error) throw error;
-    res.redirect(`/clients/${clientId}`);
+
+    await insertClientActivityLog({
+      orgId,
+      clientId,
+      actorUserId,
+      action: "client_action_created",
+      entityType: "client_actions",
+      entityId: data.id,
+      newValue: data,
+    });
+
+    return sendApiSuccess(res, data);
   } catch (error) {
-    console.error("add action error:", error);
-    res.status(500).send("Failed to add action");
+    console.error("create action error:", error);
+    return sendApiError(res, 500, "Failed to create action");
   }
 });
 
@@ -19160,6 +19983,13 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
       .is("deleted_at", null)
       .maybeSingle();
 
+    const contributorsResult = await supabase
+      .from("client_contributors")
+      .select("*")
+      .eq("client_id", clientId)
+      .eq("archived", false)
+      .order("created_at", { ascending: false });
+
     if (clientError) {
       console.error("client workspace lookup error:", clientError);
       return res.status(500).send("Failed to load client");
@@ -19220,8 +20050,7 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
         .from("client_actions")
         .select("*")
         .eq("client_id", clientId)
-        .eq("is_active", true)
-        .is("deleted_at", null)
+        .eq("archived", false)
         .order("created_at", { ascending: false }),
 
       supabase
@@ -19297,6 +20126,7 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
         workItems: workItemsResult.data || [],
         updates: updatesResult.data || [],
         actions: actionsResult.data || [],
+        contributors: contributorsResult.data || [],
         milestones: milestonesResult.data || [],
         documents: documentsResult.data || [],
         users: usersResult.data || [],
