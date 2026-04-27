@@ -21687,7 +21687,6 @@ app.post("/clients/:id/reset", requireDashboardAuth, async (req, res) => {
         .update({
           is_active: false,
           deleted_at: now,
-          updated_at: now,
         })
         .eq("client_id", clientId)
         .eq("is_active", true)
