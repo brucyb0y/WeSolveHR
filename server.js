@@ -2971,7 +2971,14 @@ function renderClientWorkspacePage({
           }
 
           .stat-card, .panel { padding:18px; }
-          .panel { margin-bottom:16px; }
+          .panel {
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.tab-content-wrap {
+  width: 100%;
+}
           .panel h2 { margin:0 0 14px; font-size:18px; }
 
           .stat-label {
@@ -2982,22 +2989,19 @@ function renderClientWorkspacePage({
           .stat-value { margin-top:10px; font-size:26px; font-weight:800; }
 
 .tabs {
+  width: 100%;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 0;
-  margin-bottom: 18px;
+  margin: 0 0 18px;
   background: rgba(255,255,255,0.035);
   border: 1px solid rgba(255,255,255,0.10);
   border-radius: 16px;
   padding: 6px;
-  position: sticky;
-  top: 84px;
-  z-index: 20;
-  backdrop-filter: blur(14px);
 }
 
 .tab {
-  min-height: 42px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3026,8 +3030,6 @@ function renderClientWorkspacePage({
 @media (max-width: 1100px) {
   .tabs {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    top: 0;
-    position: relative;
   }
 }
 
@@ -3328,6 +3330,7 @@ function renderClientWorkspacePage({
   <a class="btn btn-primary" href="/clients/${client.id}/edit">Edit Client</a>
   <a class="btn" href="/clients/${client.id}/reset">Reset</a>
 </div>
+</div>
 
           <div class="stats">
             <div class="stat-card"><div class="stat-label">Services</div><div class="stat-value">${services.length}</div></div>
@@ -3345,6 +3348,7 @@ function renderClientWorkspacePage({
   ${tabLink("milestones", "Milestones")}
   ${tabLink("documents", "Documents")}
 </div>
+<div class="tab-content-wrap">
 
 ${
   activeTab === "overview"
@@ -3740,7 +3744,7 @@ ${
     `
     : ""
 }
-
+</div>
 <div id="workItemModal" class="work-modal" onclick="closeWorkItemModal(event)">
   <div class="work-modal-card" onclick="event.stopPropagation()">
     <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
