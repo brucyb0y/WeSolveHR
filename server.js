@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import bcrypt from "bcrypt";
 import session from "express-session";
+import crypto from "crypto";
 
 dotenv.config();
 
@@ -1537,6 +1538,10 @@ function getPostLoginRedirectPath(user) {
 
 function isManagerOrAdmin(user) {
   return user?.role === "admin" || user?.role === "manager";
+}
+
+function generateClientViewToken() {
+  return crypto.randomBytes(24).toString("hex");
 }
 
 function normalizeSlug(input) {
@@ -3198,17 +3203,17 @@ function renderClientWorkspacePage({
               </div>
             </div>
 
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-              <a class="btn" href="/clients">← Clients</a>
-              ${
-                client.google_drive_folder_url
-                  ? `<a class="btn" href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">📁 Open Drive</a>`
-                  : ""
-              }
-              <a class="btn btn-primary" href="/clients/${client.id}/edit">Edit Client</a>
-              <a class="btn" href="/clients/${client.id}/reset">Reset</a>
-            </div>
-          </div>
+<div style="display:flex; gap:10px; flex-wrap:wrap;">
+  <a class="btn" href="/clients">← Clients</a>
+  ${
+    client.google_drive_folder_url
+      ? `<a class="btn" href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">📁 Open Drive</a>`
+      : ""
+  }
+  <button class="btn" type="button" onclick="generateClientViewLink()">Generate Client Link</button>
+  <a class="btn btn-primary" href="/clients/${client.id}/edit">Edit Client</a>
+  <a class="btn" href="/clients/${client.id}/reset">Reset</a>
+</div>
 
           <div class="stats">
             <div class="stat-card"><div class="stat-label">Services</div><div class="stat-value">${services.length}</div></div>
@@ -3903,6 +3908,28 @@ ${
 const CLIENT_CONTRIBUTORS = ${JSON.stringify(contributors)};
 const CLIENT_ID = ${Number(client.id)};
 
+async function generateClientViewLink() {
+  const res = await fetch("/api/clients/" + CLIENT_ID + "/client-view-link", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    alert(json.error || "Failed to create client link");
+    return;
+  }
+
+  const url = json.data.url;
+
+  try {
+    await navigator.clipboard.writeText(url);
+    alert("Client view link copied:\\n" + url);
+  } catch (e) {
+    prompt("Copy this client view link:", url);
+  }
+}
 
 function openActionModal() {
   document.getElementById("actionModalTitle").textContent = "Add Action";
@@ -4120,6 +4147,56 @@ async function archiveContributor(id) {
 
     modal.classList.add("open");
   }
+  
+  function openClientUpdateModal() {
+  document.getElementById("clientUpdateTitle").value = "";
+  document.getElementById("clientUpdateWorkItem").value = "";
+  document.getElementById("clientUpdateType").value = "general";
+  document.getElementById("clientUpdateVisibility").value = "internal";
+  document.getElementById("clientUpdateText").value = "";
+
+  document.getElementById("clientUpdateModal").classList.add("open");
+}
+
+function closeClientUpdateModal(event) {
+  if (event && event.target && event.target.id !== "clientUpdateModal") return;
+  document.getElementById("clientUpdateModal").classList.remove("open");
+}
+
+async function createClientUpdate(clientId) {
+  const updateText = document.getElementById("clientUpdateText").value.trim();
+
+  if (!updateText) {
+    alert("Update text is required");
+    return;
+  }
+
+  const payload = {
+    title: document.getElementById("clientUpdateTitle").value.trim(),
+    update_text: updateText,
+    update_type: document.getElementById("clientUpdateType").value,
+    related_work_item_id: document.getElementById("clientUpdateWorkItem").value || null,
+    is_client_visible: document.getElementById("clientUpdateVisibility").value === "client"
+  };
+
+  showLoadingModal("Saving client update...");
+
+  const res = await fetch("/api/clients/" + clientId + "/updates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    alert(json.error || "Failed to save update");
+    closeWorkItemDetail();
+    return;
+  }
+
+  window.location.reload();
+}
 
 function openWorkItemModal() {
   document.getElementById("workTitle").value = "";
@@ -4371,6 +4448,274 @@ document.addEventListener("keydown", function(event) {
 });
 
 </script>
+      </body>
+    </html>
+  `;
+}
+
+function renderClientViewOnlyPage({
+  client,
+  services = [],
+  workItems = [],
+  updates = [],
+  actions = [],
+  documents = [],
+}) {
+  const openWorkItems = workItems.filter((w) => w.status !== "done");
+  const doneWorkItems = workItems.filter((w) => w.status === "done");
+  const clientActions = actions.filter((a) => a.owner_type === "Client");
+
+  return `
+    <html>
+      <head>
+        <title>${escapeHtml(client.name || "Client")} | Project View</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+
+          .wrap {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 28px 18px 42px;
+          }
+
+          .topbar, .panel, .stat-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+
+          .topbar {
+            padding: 20px;
+            margin-bottom: 18px;
+          }
+
+          .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--primary);
+            font-weight: 800;
+            margin-bottom: 8px;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 30px;
+            letter-spacing: -0.04em;
+          }
+
+          h2 {
+            margin: 0 0 14px;
+            font-size: 18px;
+          }
+
+          .subtitle, .meta {
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.55;
+          }
+
+          .stats {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+          }
+
+          .stat-card {
+            padding: 16px;
+          }
+
+          .stat-label {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 800;
+          }
+
+          .stat-value {
+            margin-top: 10px;
+            font-size: 28px;
+            font-weight: 900;
+          }
+
+          .panel {
+            padding: 18px;
+            margin-bottom: 16px;
+          }
+
+          .item {
+            padding: 12px 0;
+            border-top: 1px solid rgba(255,255,255,0.08);
+          }
+
+          .item:first-child {
+            border-top: 0;
+          }
+
+          .item-title {
+            font-weight: 900;
+            margin-bottom: 6px;
+          }
+
+          .badge {
+            display: inline-flex;
+            padding: 6px 9px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.08);
+            color: var(--text);
+            font-size: 12px;
+            font-weight: 800;
+            margin-left: 6px;
+          }
+
+          a {
+            color: var(--primary);
+            font-weight: 800;
+          }
+
+          @media (max-width: 800px) {
+            .stats {
+              grid-template-columns: 1fr 1fr;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        <div class="wrap">
+          <div class="topbar">
+            <div class="eyebrow">Client Project View</div>
+            <h1>${escapeHtml(client.name || "-")}</h1>
+            <div class="subtitle">
+              ${escapeHtml(client.company_name || "")}
+            </div>
+          </div>
+
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-label">Services</div>
+              <div class="stat-value">${services.length}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Open Work</div>
+              <div class="stat-value">${openWorkItems.length}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Completed</div>
+              <div class="stat-value">${doneWorkItems.length}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Client Actions</div>
+              <div class="stat-value">${clientActions.length}</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>Overview</h2>
+            <div class="meta">${escapeHtml(client.description || "Project progress and updates.")}</div>
+            <div class="meta" style="margin-top:10px;">
+              <strong>Status:</strong> ${escapeHtml(client.status || "-")}
+            </div>
+            ${
+              client.google_drive_folder_url
+                ? `<div class="meta" style="margin-top:10px;"><strong>Shared Drive:</strong> <a href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">Open Google Drive Folder</a></div>`
+                : ""
+            }
+          </div>
+
+          <div class="panel">
+            <h2>Work Progress</h2>
+            ${
+              workItems.length
+                ? workItems
+                    .map(
+                      (w) => `
+                  <div class="item">
+                    <div class="item-title">
+                      ${escapeHtml(w.title || "Work item")}
+                      <span class="badge">${escapeHtml(w.status || "todo")}</span>
+                    </div>
+                    <div class="meta">${escapeHtml(w.description || "")}</div>
+                    <div class="meta">
+                      Due: ${escapeHtml(w.due_date || "-")}
+                    </div>
+                  </div>
+                `,
+                    )
+                    .join("")
+                : `<div class="meta">No work items shared yet.</div>`
+            }
+          </div>
+
+          <div class="panel">
+            <h2>Latest Updates</h2>
+            ${
+              updates.length
+                ? updates
+                    .map(
+                      (u) => `
+                  <div class="item">
+                    <div class="item-title">${escapeHtml(u.title || "Update")}</div>
+                    <div class="meta">${escapeHtml(u.update_text || "")}</div>
+                    <div class="meta">${escapeHtml(u.created_at ? formatDateTime(u.created_at) : "-")}</div>
+                  </div>
+                `,
+                    )
+                    .join("")
+                : `<div class="meta">No client-visible updates yet.</div>`
+            }
+          </div>
+
+          <div class="panel">
+            <h2>Actions Needed From Client</h2>
+            ${
+              clientActions.length
+                ? clientActions
+                    .map(
+                      (a) => `
+                  <div class="item">
+                    <div class="item-title">
+                      ${escapeHtml(a.title || "Action")}
+                      <span class="badge">${escapeHtml(a.priority || "Medium")}</span>
+                    </div>
+                    <div class="meta">${escapeHtml(a.notes || "")}</div>
+                    <div class="meta">Due: ${escapeHtml(a.due_date || "-")} · Status: ${escapeHtml(a.status || "Open")}</div>
+                  </div>
+                `,
+                    )
+                    .join("")
+                : `<div class="meta">No client actions pending.</div>`
+            }
+          </div>
+
+          <div class="panel">
+            <h2>Documents</h2>
+            ${
+              client.google_drive_folder_url
+                ? `<div class="meta"><a href="${escapeHtml(client.google_drive_folder_url)}" target="_blank" rel="noopener noreferrer">Open Google Drive Folder</a></div>`
+                : `<div class="meta">No shared Drive folder available.</div>`
+            }
+
+            ${
+              documents.length
+                ? documents
+                    .map(
+                      (d) => `
+                  <div class="item">
+                    <div class="item-title">${escapeHtml(d.title || d.name || "Document")}</div>
+                    ${d.url ? `<div class="meta"><a href="${escapeHtml(d.url)}" target="_blank" rel="noopener noreferrer">Open</a></div>` : ""}
+                  </div>
+                `,
+                    )
+                    .join("")
+                : ""
+            }
+          </div>
+        </div>
       </body>
     </html>
   `;
@@ -19840,6 +20185,8 @@ app.post("/api/clients", requireDashboardAuth, async (req, res) => {
       project_manager_user_id: body.project_manager_user_id || null,
       created_by_user_id: actorUserId,
       updated_by_user_id: actorUserId,
+      client_view_token: generateClientViewToken(),
+      client_view_enabled: false,
     };
 
     const { data: client, error: clientError } = await supabase
@@ -20137,6 +20484,178 @@ app.get("/clients/:id", requireDashboardAuth, async (req, res) => {
   } catch (error) {
     console.error("GET /clients/:id fatal error:", error);
     return res.status(500).send("Failed to load client workspace");
+  }
+});
+
+app.post(
+  "/api/clients/:id/client-view-link",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+      const actorUserId = req.loggedInUser?.id || null;
+      const clientId = Number(req.params.id);
+
+      if (!clientId) {
+        return sendApiError(res, 400, "Invalid client id");
+      }
+
+      const { data: existingClient, error: loadError } = await supabase
+        .from("clients")
+        .select("id, org_id, client_view_token, client_view_enabled")
+        .eq("org_id", orgId)
+        .eq("id", clientId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (loadError) throw loadError;
+
+      if (!existingClient) {
+        return sendApiError(res, 404, "Client not found");
+      }
+
+      const token =
+        existingClient.client_view_token || generateClientViewToken();
+
+      const { data, error } = await supabase
+        .from("clients")
+        .update({
+          client_view_token: token,
+          client_view_enabled: true,
+          updated_by_user_id: actorUserId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("org_id", orgId)
+        .eq("id", clientId)
+        .select("id, client_view_token, client_view_enabled")
+        .maybeSingle();
+
+      if (error) throw error;
+
+      await insertClientActivityLog({
+        orgId,
+        clientId,
+        actorUserId,
+        action: "client_view_link_enabled",
+        entityType: "clients",
+        entityId: clientId,
+        newValue: data,
+      });
+
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      return sendApiSuccess(res, {
+        url: `${baseUrl}/client-view/${data.client_view_token}`,
+        token: data.client_view_token,
+      });
+    } catch (error) {
+      console.error("client view link error:", error);
+      return sendApiError(res, 500, "Failed to create client view link");
+    }
+  },
+);
+
+app.get("/client-view/:token", async (req, res) => {
+  try {
+    const token = String(req.params.token || "").trim();
+
+    if (!token) {
+      return res.status(404).send("Client view not found");
+    }
+
+    const { data: client, error: clientError } = await supabase
+      .from("clients")
+      .select("*")
+      .eq("client_view_token", token)
+      .eq("client_view_enabled", true)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (clientError) {
+      console.error("client view lookup error:", clientError);
+      return res.status(500).send("Failed to load client view");
+    }
+
+    if (!client) {
+      return res.status(404).send("Client view not found");
+    }
+
+    const clientId = client.id;
+    const orgId = client.org_id;
+
+    const [
+      servicesResult,
+      workItemsResult,
+      updatesResult,
+      actionsResult,
+      documentsResult,
+    ] = await Promise.all([
+      supabase
+        .from("client_services")
+        .select("services(name)")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .is("deleted_at", null),
+
+      supabase
+        .from("client_work_items")
+        .select(
+          "id, title, description, status, priority, due_date, updated_at",
+        )
+        .eq("org_id", orgId)
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .order("status", { ascending: true })
+        .order("due_date", { ascending: true }),
+
+      supabase
+        .from("client_updates")
+        .select("id, title, update_text, update_type, created_at")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .eq("is_client_visible", true)
+        .order("created_at", { ascending: false })
+        .limit(20),
+
+      supabase
+        .from("client_actions")
+        .select(
+          "id, title, owner_type, owner_name, due_date, status, priority, notes",
+        )
+        .eq("client_id", clientId)
+        .eq("owner_type", "Client")
+        .eq("archived", false)
+        .order("due_date", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: false }),
+
+      supabase
+        .from("client_documents")
+        .select("id, title, name, url")
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    const services = (servicesResult.data || [])
+      .map((row) => row.services)
+      .filter(Boolean);
+
+    return res.type("html").send(
+      renderClientViewOnlyPage({
+        client,
+        services,
+        workItems: workItemsResult.data || [],
+        updates: updatesResult.data || [],
+        actions: actionsResult.data || [],
+        documents: documentsResult.data || [],
+      }),
+    );
+  } catch (error) {
+    console.error("GET /client-view/:token fatal error:", error);
+    return res.status(500).send("Failed to load client view");
   }
 });
 
