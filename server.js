@@ -21406,7 +21406,7 @@ app.get("/clients/:id/edit", requireDashboardAuth, async (req, res) => {
     const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
     const clientId = Number(req.params.id);
 
-    const [clientResult, usersResult] = await Promise.all([
+    const [clientResult, usersResult, contactsResult] = await Promise.all([
       supabase
         .from("clients")
         .select("*")
@@ -21422,14 +21422,24 @@ app.get("/clients/:id/edit", requireDashboardAuth, async (req, res) => {
         .eq("org_id", orgId)
         .eq("is_active", true)
         .order("name", { ascending: true }),
+
+      supabase
+        .from("client_contacts")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("is_primary", { ascending: false })
+        .order("created_at", { ascending: true }),
     ]);
 
     if (clientResult.error) throw clientResult.error;
     if (usersResult.error) throw usersResult.error;
-
+    if (contactsResult.error) throw contactsResult.error;
     const client = clientResult.data;
     const users = usersResult.data || [];
-
+    const contacts = contactsResult.data || [];
+    const primaryContact = contacts[0] || {};
+    const secondContact = contacts[1] || {};
+    const thirdContact = contacts[2] || {};
     if (!client) {
       return res.status(404).send("Client not found");
     }
@@ -21666,7 +21676,79 @@ app.get("/clients/:id/edit", requireDashboardAuth, async (req, res) => {
                   <textarea name="description">${escapeHtml(client.description || "")}</textarea>
                 </div>
               </div>
+<div class="panel">
+  <h2>Client Contacts</h2>
 
+  <input type="hidden" name="contact_1_id" value="${escapeHtml(primaryContact.id || "")}" />
+  <input type="hidden" name="contact_2_id" value="${escapeHtml(secondContact.id || "")}" />
+  <input type="hidden" name="contact_3_id" value="${escapeHtml(thirdContact.id || "")}" />
+
+  <div class="grid">
+    <div class="field">
+      <label>Primary Contact Name</label>
+      <input name="contact_1_name" value="${escapeHtml(primaryContact.name || "")}" />
+    </div>
+
+    <div class="field">
+      <label>Primary Contact Email</label>
+      <input name="contact_1_email" value="${escapeHtml(primaryContact.email || "")}" />
+    </div>
+
+    <div class="field">
+      <label>Primary Contact Phone</label>
+      <input name="contact_1_phone" value="${escapeHtml(primaryContact.phone || "")}" />
+    </div>
+
+    <div class="field">
+      <label>Primary Contact Role</label>
+      <input name="contact_1_role" value="${escapeHtml(primaryContact.role || "")}" />
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:18px;">
+    <div class="field">
+      <label>Contact 2 Name</label>
+      <input name="contact_2_name" value="${escapeHtml(secondContact.name || "")}" />
+    </div>
+
+    <div class="field">
+      <label>Contact 2 Email</label>
+      <input name="contact_2_email" value="${escapeHtml(secondContact.email || "")}" />
+    </div>
+
+    <div class="field">
+      <label>Contact 2 Phone</label>
+      <input name="contact_2_phone" value="${escapeHtml(secondContact.phone || "")}" />
+    </div>
+
+    <div class="field">
+      <label>Contact 2 Role</label>
+      <input name="contact_2_role" value="${escapeHtml(secondContact.role || "")}" />
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:18px;">
+    <div class="field">
+      <label>Contact 3 Name</label>
+      <input name="contact_3_name" value="${escapeHtml(thirdContact.name || "")}" />
+    </div>
+
+    <div class="field">
+      <label>Contact 3 Email</label>
+      <input name="contact_3_email" value="${escapeHtml(thirdContact.email || "")}" />
+    </div>
+
+    <div class="field">
+      <label>Contact 3 Phone</label>
+      <input name="contact_3_phone" value="${escapeHtml(thirdContact.phone || "")}" />
+    </div>
+
+    <div class="field">
+      <label>Contact 3 Role</label>
+      <input name="contact_3_role" value="${escapeHtml(thirdContact.role || "")}" />
+    </div>
+  </div>
+</div>
               <div class="panel">
                 <div class="actions">
                   <a class="btn" href="/clients/${client.id}">Cancel</a>
@@ -21744,6 +21826,77 @@ app.post("/clients/:id/edit", requireDashboardAuth, async (req, res) => {
       .maybeSingle();
 
     if (error) throw error;
+
+    async function upsertContactFromBody(index, isPrimary = false) {
+      const contactId = body[`contact_${index}_id`]
+        ? Number(body[`contact_${index}_id`])
+        : null;
+
+      const contactName = String(body[`contact_${index}_name`] || "").trim();
+      const contactEmail = String(body[`contact_${index}_email`] || "").trim();
+      const contactPhone = String(body[`contact_${index}_phone`] || "").trim();
+      const contactRole = String(body[`contact_${index}_role`] || "").trim();
+
+      const hasAnyContactData =
+        contactName || contactEmail || contactPhone || contactRole;
+
+      if (!hasAnyContactData && !contactId) {
+        return null;
+      }
+
+      if (contactId && !hasAnyContactData) {
+        const { error: archiveError } = await supabase
+          .from("client_contacts")
+          .update({
+            is_active: false,
+            deleted_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", contactId)
+          .eq("client_id", clientId);
+
+        if (archiveError) throw archiveError;
+        return null;
+      }
+
+      const contactRow = {
+        org_id: orgId,
+        client_id: clientId,
+        name: contactName || "Unnamed Contact",
+        email: contactEmail || null,
+        phone: contactPhone || null,
+        role: contactRole || null,
+        is_primary: isPrimary,
+        is_active: true,
+      };
+
+      if (contactId) {
+        const { data: updatedContact, error: contactUpdateError } =
+          await supabase
+            .from("client_contacts")
+            .update(contactRow)
+            .eq("id", contactId)
+            .eq("client_id", clientId)
+            .select("*")
+            .maybeSingle();
+
+        if (contactUpdateError) throw contactUpdateError;
+        return updatedContact;
+      }
+
+      const { data: newContact, error: contactInsertError } = await supabase
+        .from("client_contacts")
+        .insert([contactRow])
+        .select("*")
+        .maybeSingle();
+
+      if (contactInsertError) throw contactInsertError;
+      return newContact;
+    }
+
+    await upsertContactFromBody(1, true);
+    await upsertContactFromBody(2, false);
+    await upsertContactFromBody(3, false);
 
     await insertClientActivityLog({
       orgId,
