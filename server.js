@@ -2015,6 +2015,52 @@ function buildTopNavCss() {
       .nav-links {
         justify-content: flex-start;
       }
+      
+      .actions-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.actions-menu summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 8px 11px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  font-weight: 800;
+  color: var(--text);
+}
+
+.actions-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.actions-menu-list {
+  position: absolute;
+  right: 0;
+  top: 38px;
+  min-width: 180px;
+  z-index: 30;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  padding: 8px;
+}
+
+.actions-menu-list a {
+  display: block;
+  padding: 10px 11px;
+  border-radius: 10px;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.actions-menu-list a:hover {
+  background: rgba(255,255,255,0.07);
+}
 
       .top-nav-status {
         justify-content: flex-start;
@@ -2277,10 +2323,16 @@ function renderClientsListPage({ clients = [], summary = {} } = {}) {
               <td>${escapeHtml(client.open_work_count || 0)}</td>
               <td>${escapeHtml(client.waiting_count || 0)}</td>
               <td>${escapeHtml(client.last_update_text || "-")}</td>
-              <td>
-                <a class="small-link" href="/clients/${client.id}">Open</a>
-                <a class="small-link" href="/clients/${client.id}/edit">Edit</a>
-              </td>
+<td>
+  <details class="actions-menu">
+    <summary>Actions</summary>
+    <div class="actions-menu-list">
+      <a href="/clients/${client.id}/edit">Edit Client</a>
+      <a href="/clients/${client.id}/reset">Reset Workspace</a>
+      <a href="/clients/${client.id}">Open Workspace</a>
+    </div>
+  </details>
+</td>
             </tr>
           `;
         })
