@@ -2015,48 +2015,7 @@ function buildTopNavCss() {
       .nav-links {
         justify-content: flex-start;
       }
-      
-      .action-kebab {
-  width: 36px;
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.06);
-  color: var(--text);
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-}
 
-.floating-actions-menu {
-  display: none;
-  position: fixed;
-  min-width: 180px;
-  z-index: 9999;
-  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: var(--shadow-soft);
-  padding: 8px;
-}
-
-.floating-actions-menu.open {
-  display: block;
-}
-
-.floating-actions-menu a {
-  display: block;
-  padding: 10px 11px;
-  border-radius: 10px;
-  color: var(--text);
-  text-decoration: none;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.floating-actions-menu a:hover {
-  background: rgba(255,255,255,0.07);
-}
 
       .top-nav-status {
         justify-content: flex-start;
@@ -2463,6 +2422,45 @@ function renderClientsListPage({ clients = [], summary = {} } = {}) {
             font-weight:800;
             text-decoration:none;
           }
+          
+                
+.action-kebab {
+  font-size: 18px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.floating-actions-menu {
+  display: none !important;   /* <-- important fix */
+  position: fixed;
+  min-width: 180px;
+  z-index: 9999;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  padding: 8px;
+}
+
+.floating-actions-menu.open {
+  display: block !important;
+}
+
+.floating-actions-menu a {
+  display: block;
+  padding: 10px 11px;
+  border-radius: 10px;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.floating-actions-menu a:hover {
+  background: rgba(255,255,255,0.07);
+}
 
           .badge {
             display:inline-flex;
