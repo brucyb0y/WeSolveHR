@@ -2016,32 +2016,23 @@ function buildTopNavCss() {
         justify-content: flex-start;
       }
       
-      .actions-menu {
-  position: relative;
-  display: inline-block;
-}
-
-.actions-menu summary {
-  list-style: none;
-  cursor: pointer;
-  padding: 8px 11px;
+      .action-kebab {
+  width: 36px;
+  height: 34px;
   border-radius: 10px;
-  background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.12);
-  font-weight: 800;
+  background: rgba(255,255,255,0.06);
   color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
 }
 
-.actions-menu summary::-webkit-details-marker {
+.floating-actions-menu {
   display: none;
-}
-
-.actions-menu-list {
-  position: absolute;
-  right: 0;
-  top: 38px;
+  position: fixed;
   min-width: 180px;
-  z-index: 30;
+  z-index: 9999;
   background: linear-gradient(180deg, var(--panel), var(--panel-strong));
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -2049,16 +2040,21 @@ function buildTopNavCss() {
   padding: 8px;
 }
 
-.actions-menu-list a {
+.floating-actions-menu.open {
+  display: block;
+}
+
+.floating-actions-menu a {
   display: block;
   padding: 10px 11px;
   border-radius: 10px;
   color: var(--text);
   text-decoration: none;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-.actions-menu-list a:hover {
+.floating-actions-menu a:hover {
   background: rgba(255,255,255,0.07);
 }
 
@@ -2324,14 +2320,13 @@ function renderClientsListPage({ clients = [], summary = {} } = {}) {
               <td>${escapeHtml(client.waiting_count || 0)}</td>
               <td>${escapeHtml(client.last_update_text || "-")}</td>
 <td>
-  <details class="actions-menu">
-    <summary>Actions</summary>
-    <div class="actions-menu-list">
-      <a href="/clients/${client.id}/edit">Edit Client</a>
-      <a href="/clients/${client.id}/reset">Reset Workspace</a>
-      <a href="/clients/${client.id}">Open Workspace</a>
-    </div>
-  </details>
+  <button class="action-kebab" type="button" onclick="toggleClientActionsMenu(event, ${Number(client.id)})">⋯</button>
+
+  <div id="clientActionsMenu-${Number(client.id)}" class="floating-actions-menu">
+    <a href="/clients/${client.id}/edit">Edit Client</a>
+    <a href="/clients/${client.id}/reset">Reset Workspace</a>
+    <a href="/clients/${client.id}">Open Workspace</a>
+  </div>
 </td>
             </tr>
           `;
@@ -2562,6 +2557,40 @@ function renderClientsListPage({ clients = [], summary = {} } = {}) {
             </table>
           </div>
         </div>
+        <script>
+  function toggleClientActionsMenu(event, clientId) {
+    event.stopPropagation();
+
+    document.querySelectorAll(".floating-actions-menu.open").forEach(function(menu) {
+      if (menu.id !== "clientActionsMenu-" + clientId) {
+        menu.classList.remove("open");
+      }
+    });
+
+    const menu = document.getElementById("clientActionsMenu-" + clientId);
+    if (!menu) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+
+    menu.style.top = rect.bottom + 6 + "px";
+    menu.style.left = Math.max(12, rect.right - 180) + "px";
+    menu.classList.toggle("open");
+  }
+
+  document.addEventListener("click", function() {
+    document.querySelectorAll(".floating-actions-menu.open").forEach(function(menu) {
+      menu.classList.remove("open");
+    });
+  });
+
+  document.addEventListener("keydown", function(event) {
+    if (event.key === "Escape") {
+      document.querySelectorAll(".floating-actions-menu.open").forEach(function(menu) {
+        menu.classList.remove("open");
+      });
+    }
+  });
+</script>
       </body>
     </html>
   `;
