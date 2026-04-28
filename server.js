@@ -21402,15 +21402,369 @@ app.get("/client-view/:token", async (req, res) => {
 });
 
 app.get("/clients/:id/edit", requireDashboardAuth, async (req, res) => {
-  res.type("html").send(`
-    <html>
-      <body style="font-family:sans-serif;">
-        <h1>Edit Client</h1>
-        <p>Edit page comes in next phase.</p>
-        <a href="/clients/${escapeHtml(req.params.id)}">Back to client</a>
-      </body>
-    </html>
-  `);
+  try {
+    const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+    const clientId = Number(req.params.id);
+
+    const [clientResult, usersResult] = await Promise.all([
+      supabase
+        .from("clients")
+        .select("*")
+        .eq("org_id", orgId)
+        .eq("id", clientId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .maybeSingle(),
+
+      supabase
+        .from("users")
+        .select("id, name")
+        .eq("org_id", orgId)
+        .eq("is_active", true)
+        .order("name", { ascending: true }),
+    ]);
+
+    if (clientResult.error) throw clientResult.error;
+    if (usersResult.error) throw usersResult.error;
+
+    const client = clientResult.data;
+    const users = usersResult.data || [];
+
+    if (!client) {
+      return res.status(404).send("Client not found");
+    }
+
+    res.type("html").send(`
+      <html>
+        <head>
+          <title>Edit Client | WeSolveHR</title>
+          <style>
+            ${buildThemeCss()}
+            ${buildBasePageCss()}
+            ${buildTopNavCss()}
+
+            .wrap {
+              max-width: 1200px;
+              margin: 0 auto;
+              padding: 24px 18px 36px;
+            }
+
+            .topbar, .panel {
+              background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+              border: 1px solid var(--line);
+              border-radius: var(--radius-lg);
+              box-shadow: var(--shadow-soft);
+            }
+
+            .topbar {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              gap: 16px;
+              flex-wrap: wrap;
+              margin-bottom: 20px;
+              padding: 18px 20px;
+            }
+
+            .panel {
+              padding: 20px;
+              margin-bottom: 16px;
+            }
+
+            .eyebrow {
+              font-size: 11px;
+              letter-spacing: 0.16em;
+              text-transform: uppercase;
+              color: var(--primary);
+              font-weight: 700;
+              margin-bottom: 8px;
+            }
+
+            h1 {
+              margin: 0;
+              font-size: 30px;
+              letter-spacing: -0.04em;
+            }
+
+            h2 {
+              margin: 0 0 14px;
+              font-size: 18px;
+            }
+
+            .subtitle {
+              color: var(--muted);
+              margin-top: 8px;
+              font-size: 14px;
+            }
+
+            .grid {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 14px;
+            }
+
+            .field {
+              display: flex;
+              flex-direction: column;
+              gap: 8px;
+            }
+
+            label {
+              font-size: 13px;
+              font-weight: 800;
+            }
+
+            input, select, textarea {
+              width: 100%;
+              padding: 12px 13px;
+              border-radius: 12px;
+              border: 1px solid var(--line);
+              background: rgba(255,255,255,0.04);
+              color: var(--text);
+              font: inherit;
+            }
+
+            textarea {
+              min-height: 100px;
+              resize: vertical;
+            }
+
+            .actions {
+              display: flex;
+              gap: 10px;
+              justify-content: flex-end;
+              margin-top: 18px;
+            }
+
+            .btn {
+              padding: 11px 14px;
+              border-radius: 12px;
+              border: 1px solid rgba(255,255,255,0.12);
+              color: var(--text);
+              background: rgba(255,255,255,0.05);
+              font-weight: 800;
+              text-decoration: none;
+              cursor: pointer;
+            }
+
+            .btn-primary {
+              background: var(--primary-soft);
+              color: var(--text-strong);
+              border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+            }
+
+            @media (max-width: 800px) {
+              .grid {
+                grid-template-columns: 1fr;
+              }
+            }
+          </style>
+        </head>
+
+        <body>
+          ${renderTopNav("clients")}
+
+          <div class="wrap">
+            <div class="topbar">
+              <div>
+                <div class="eyebrow">Edit Client</div>
+                <h1>${escapeHtml(client.name || "Client")}</h1>
+                <div class="subtitle">Update client basics, status, health, ownership, and Drive folder.</div>
+              </div>
+              <a class="btn" href="/clients/${client.id}">← Back to Client</a>
+            </div>
+
+            <form method="POST" action="/clients/${client.id}/edit">
+              <div class="panel">
+                <h2>Basic Info</h2>
+
+                <div class="grid">
+                  <div class="field">
+                    <label>Client Name</label>
+                    <input name="name" value="${escapeHtml(client.name || "")}" required />
+                  </div>
+
+                  <div class="field">
+                    <label>Company Name</label>
+                    <input name="company_name" value="${escapeHtml(client.company_name || "")}" />
+                  </div>
+
+                  <div class="field">
+                    <label>Slug</label>
+                    <input name="slug" value="${escapeHtml(client.slug || "")}" />
+                  </div>
+
+                  <div class="field">
+                    <label>Google Drive Folder Link</label>
+                    <input name="google_drive_folder_url" value="${escapeHtml(client.google_drive_folder_url || "")}" required />
+                  </div>
+
+                  <div class="field">
+                    <label>Status</label>
+                    <select name="status">
+                      <option value="active" ${client.status === "active" ? "selected" : ""}>Active</option>
+                      <option value="paused" ${client.status === "paused" ? "selected" : ""}>Paused</option>
+                      <option value="onboarding" ${client.status === "onboarding" ? "selected" : ""}>Onboarding</option>
+                      <option value="completed" ${client.status === "completed" ? "selected" : ""}>Completed</option>
+                      <option value="inactive" ${client.status === "inactive" ? "selected" : ""}>Inactive</option>
+                    </select>
+                  </div>
+
+                  <div class="field">
+                    <label>Health</label>
+                    <select name="health_status">
+                      <option value="healthy" ${client.health_status === "healthy" ? "selected" : ""}>Healthy</option>
+                      <option value="watch" ${client.health_status === "watch" ? "selected" : ""}>Watch</option>
+                      <option value="at_risk" ${client.health_status === "at_risk" ? "selected" : ""}>At Risk</option>
+                    </select>
+                  </div>
+
+                  <div class="field">
+                    <label>Start Date</label>
+                    <input type="date" name="start_date" value="${escapeHtml(client.start_date || "")}" />
+                  </div>
+
+                  <div class="field">
+                    <label>Account Manager</label>
+                    <select name="account_manager_user_id">
+                      <option value="">Select account manager</option>
+                      ${users
+                        .map(
+                          (u) =>
+                            `<option value="${u.id}" ${
+                              String(client.account_manager_user_id || "") ===
+                              String(u.id)
+                                ? "selected"
+                                : ""
+                            }>${escapeHtml(u.name)}</option>`,
+                        )
+                        .join("")}
+                    </select>
+                  </div>
+
+                  <div class="field">
+                    <label>Project Manager</label>
+                    <select name="project_manager_user_id">
+                      <option value="">Select project manager</option>
+                      ${users
+                        .map(
+                          (u) =>
+                            `<option value="${u.id}" ${
+                              String(client.project_manager_user_id || "") ===
+                              String(u.id)
+                                ? "selected"
+                                : ""
+                            }>${escapeHtml(u.name)}</option>`,
+                        )
+                        .join("")}
+                    </select>
+                  </div>
+                </div>
+
+                <div class="field" style="margin-top:14px;">
+                  <label>Description</label>
+                  <textarea name="description">${escapeHtml(client.description || "")}</textarea>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="actions">
+                  <a class="btn" href="/clients/${client.id}">Cancel</a>
+                  <button class="btn btn-primary" type="submit">Save Client</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error("GET /clients/:id/edit error:", error);
+    return res.status(500).send("Failed to load edit client page");
+  }
+});
+
+app.post("/clients/:id/edit", requireDashboardAuth, async (req, res) => {
+  try {
+    const orgId = req.loggedInUser?.org_id || DASHBOARD_ORG_ID;
+    const actorUserId = req.loggedInUser?.id || null;
+    const clientId = Number(req.params.id);
+    const body = req.body || {};
+
+    const name = String(body.name || "").trim();
+
+    if (!clientId) {
+      return res.status(400).send("Invalid client id");
+    }
+
+    if (!name) {
+      return res.status(400).send("Client name is required");
+    }
+
+    const oldResult = await supabase
+      .from("clients")
+      .select("*")
+      .eq("org_id", orgId)
+      .eq("id", clientId)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (oldResult.error) throw oldResult.error;
+
+    if (!oldResult.data) {
+      return res.status(404).send("Client not found");
+    }
+
+    const updateRow = {
+      name,
+      company_name: body.company_name || null,
+      slug: normalizeSlug(body.slug || name),
+      google_drive_folder_url: body.google_drive_folder_url || null,
+      status: body.status || "active",
+      health_status: body.health_status || "healthy",
+      start_date: body.start_date || null,
+      description: body.description || null,
+      account_manager_user_id: body.account_manager_user_id
+        ? Number(body.account_manager_user_id)
+        : null,
+      project_manager_user_id: body.project_manager_user_id
+        ? Number(body.project_manager_user_id)
+        : null,
+      updated_by_user_id: actorUserId,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from("clients")
+      .update(updateRow)
+      .eq("org_id", orgId)
+      .eq("id", clientId)
+      .select("*")
+      .maybeSingle();
+
+    if (error) throw error;
+
+    await insertClientActivityLog({
+      orgId,
+      clientId,
+      actorUserId,
+      action: "client_updated",
+      entityType: "clients",
+      entityId: clientId,
+      oldValue: oldResult.data,
+      newValue: data,
+    });
+
+    return res.redirect(`/clients/${clientId}`);
+  } catch (error) {
+    console.error("POST /clients/:id/edit error:", error);
+    return res
+      .status(500)
+      .send(
+        `Failed to update client: ${escapeHtml(error?.message || String(error))}`,
+      );
+  }
 });
 
 app.get("/clients/:id/reset", requireDashboardAuth, async (req, res) => {
