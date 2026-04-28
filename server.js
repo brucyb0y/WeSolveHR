@@ -2703,6 +2703,7 @@ function renderNewClientPage({ users = [] }) {
                     <option value="paused">Paused</option>
                     <option value="onboarding">Onboarding</option>
                     <option value="completed">Completed</option>
+                    <option value="inactive">Inactive</option>
                   </select>
                 </div>
 
@@ -16962,6 +16963,16 @@ app.post(
         newValue: data,
       });
 
+      await supabase
+        .from("clients")
+        .update({
+          status: "active",
+          updated_at: new Date().toISOString(),
+          updated_by_user_id: actorUserId,
+        })
+        .eq("org_id", orgId)
+        .eq("id", clientId);
+
       return sendApiSuccess(res, data);
     } catch (error) {
       console.error("Create milestone error:", error);
@@ -20484,6 +20495,16 @@ app.post("/api/client-work-items", requireDashboardAuth, async (req, res) => {
       newValue: data,
     });
 
+    await supabase
+      .from("clients")
+      .update({
+        status: "active",
+        updated_at: new Date().toISOString(),
+        updated_by_user_id: actorUserId,
+      })
+      .eq("org_id", orgId)
+      .eq("id", clientId);
+
     return sendApiSuccess(res, data);
   } catch (error) {
     console.error("POST /api/client-work-items fatal error:", error);
@@ -21718,7 +21739,7 @@ app.post("/clients/:id/reset", requireDashboardAuth, async (req, res) => {
       newValue: resetSummary,
     });
 
-    return res.redirect(`/clients/${clientId}?tab=overview`);
+    return res.redirect("/clients");
   } catch (error) {
     console.error("POST /clients/:id/reset error:", error);
     return res
