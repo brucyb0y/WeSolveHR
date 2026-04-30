@@ -7506,7 +7506,7 @@ You are cleaning and structuring a sales discovery call transcript.
 Return JSON only with EXACT structure:
 {
   "detected_language": "hindi|english|hinglish|unknown",
-  "cleaned_transcript": "Clean readable version in original meaning",
+  "cleaned_transcript": "Clean readable transcript preserving original meaning",
   "translated_text": "English translation if needed, else same as cleaned_transcript",
   "transcription_confidence": "low|medium|high",
   "conversation_rows": [
@@ -7524,19 +7524,20 @@ Return JSON only with EXACT structure:
   ]
 }
 
-Rules:
-- Do NOT invent details.
+CRITICAL RULES:
+- Do NOT summarize or infer anything in conversation_rows.
+- Do NOT add conclusions like "you mentioned..." unless those exact words were spoken.
+- Do NOT merge multiple questions into one.
+- Preserve original conversational structure as much as possible.
+- Split STRICTLY based on speaker turns.
+- Each conversation_rows item should represent exactly one speaker speaking.
+- If the same question appears twice, keep both.
+- If speaker is unclear, use "Unknown".
 - Keep names, phone numbers, locations, company names, machine names exactly if mentioned.
 - If unclear, write [unclear].
-- Split the call logically into speaker turns.
-- If speaker is unclear, use "Unknown".
-- Capture operational details: machines, breakdowns, spare parts, technicians, raw material sourcing, manpower, payment/money issues, production capacity, outsourcing, urgent requirements.
-- If the transcript looks incomplete or jumps abruptly, set transcription_confidence to "low".
-- Keep important_points factual and concise.
-- Keep pain_points specific.
-- Raw transcript may contain chunk timestamps like [00:00-02:00]. Preserve useful timing context in important points where helpful.
 - Pay special attention to later chunks. Do not ignore the end of the call.
 - Capture manpower issues, payment/money-stuck issues, raw material sourcing, urgent order capacity, spare parts, technician availability, machine breakdown frequency, and production dependency.
+- important_points and pain_points can be summarized, but conversation_rows must stay close to the call.
 `;
 
   const completion = await openai.chat.completions.create({
