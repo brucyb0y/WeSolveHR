@@ -15711,6 +15711,7 @@ async function uploadJoolianB2BExcel() {
   window.location.reload();
 }
 
+
           function getLeadPayloadFromForm() {
             return {
               phone: document.getElementById("leadPhone").value.trim(),
