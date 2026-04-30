@@ -15693,19 +15693,18 @@ async function uploadJoolianB2BExcel() {
   const json = await res.json();
 
   if (!json.ok) {
-    alert("Joolian B2B Excel import failed:\\n" + (json.error || JSON.stringify(json)));
+    alert("Joolian B2B Excel import failed: " + (json.error || JSON.stringify(json)));
     console.error("Joolian import failed:", json);
     return;
   }
 
   const d = json.data || {};
   alert(
-    "Joolian B2B import complete\\n" +
-    "Total: " + d.total + "\\n" +
-    "Inserted: " + d.inserted + "\\n" +
-    "Updated: " + d.updated + "\\n" +
-    "Skipped: " + d.skipped + "\\n" +
-    "Errors: " + (d.errors || []).length
+    "Joolian B2B import complete. Total: " + d.total +
+    ", Inserted: " + d.inserted +
+    ", Updated: " + d.updated +
+    ", Skipped: " + d.skipped +
+    ", Errors: " + (d.errors || []).length
   );
 
   window.location.reload();
@@ -16064,19 +16063,19 @@ window.transcribeLead = async function transcribeLead(id) {
     try {
       json = JSON.parse(text);
     } catch {
-      alert("Server returned non-JSON response:\n\n" + text.slice(0, 800));
+      alert("Server returned non-JSON response: " + text.slice(0, 800));
       return;
     }
 
     if (!json.ok) {
-      alert("Transcription failed:\n\n" + (json.error || JSON.stringify(json)));
+      alert("Transcription failed: " + (json.error || JSON.stringify(json)));
       return;
     }
 
     alert("Transcription completed.");
     window.location.reload();
   } catch (error) {
-    alert("Transcription request failed:\n\n" + (error?.message || error));
+    alert("Transcription request failed: " + (error?.message || error));
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -16084,7 +16083,6 @@ window.transcribeLead = async function transcribeLead(id) {
     }
   }
 };
-
 
 async function saveTranscript(id) {
   const translated = document.getElementById("translated-" + id)?.value || "";
