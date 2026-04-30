@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import twilio from "twilio";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
+import { toFile } from "openai/uploads";
 import bcrypt from "bcrypt";
 import session from "express-session";
 import crypto from "crypto";
@@ -151,6 +152,76 @@ function safeParseJson(text) {
     console.error("Failed to parse AI JSON:", cleaned);
     return null;
   }
+}
+
+async function getBusinessLeadsData(orgId, business, selectedTab = "leads") {
+  const normalizedBusiness = getBusinessCanonicalName(business);
+
+  const { data: voiceRows, error: voiceError } = await supabase
+    .from("lead_voice_uploads")
+    .select("*")
+    .eq("org_id", orgId)
+    .eq("business", normalizedBusiness)
+    .order("created_at", { ascending: false });
+
+  if (voiceError) {
+    console.error("getBusinessLeadsData voice error:", voiceError);
+    throw voiceError;
+  }
+
+  const tableName = getBusinessLeadTableName(normalizedBusiness);
+  let businessRows = [];
+
+  if (tableName) {
+    const { data, error } = await supabase
+      .from(tableName)
+      .select("*")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("getBusinessLeadsData business table error:", error);
+      throw error;
+    }
+
+    businessRows = data || [];
+  }
+
+  const voice = voiceRows || [];
+
+  const tabs = {
+    leads: voice.filter((x) =>
+      [
+        "pending_transcription",
+        "transcribing",
+        "pending_review",
+        "rejected",
+      ].includes(x.status),
+    ),
+    in_progress: businessRows.filter((x) => x.status === "in_progress"),
+    completed: businessRows.filter((x) => x.status === "completed"),
+  };
+
+  return {
+    business: normalizedBusiness,
+    selectedTab,
+    rows: tabs[selectedTab] || tabs.leads,
+    voiceRows: voice,
+    businessRows,
+    tableName,
+    counts: {
+      leads: tabs.leads.length,
+      in_progress: tabs.in_progress.length,
+      completed: tabs.completed.length,
+      total: voice.length + businessRows.length,
+      reviewed: voice.filter((x) => x.status === "reviewed").length,
+      pending_transcription: voice.filter(
+        (x) => x.status === "pending_transcription",
+      ).length,
+      pending_review: voice.filter((x) => x.status === "pending_review").length,
+      rejected: voice.filter((x) => x.status === "rejected").length,
+    },
+  };
 }
 
 function parseDeadlineCommand(text) {
@@ -7150,6 +7221,359 @@ async function canModifyTask(user, task) {
   return ownerIds.includes(user.id);
 }
 
+function getBusinessLeadTableName(business) {
+  const key = normalizeText(business);
+
+  const map = {
+    rasset: "rasset_leads",
+    joolian: "joolian_leads",
+    julian: "joolian_leads",
+    matrimonials: "matrimonials_leads",
+    matrimonial: "matrimonials_leads",
+  };
+
+  return map[key] || null;
+}
+
+function getBusinessCanonicalName(business) {
+  const key = normalizeText(business);
+
+  if (key === "julian") return "joolian";
+  if (key === "matrimonial") return "matrimonials";
+
+  return key;
+}
+
+function guessFilenameFromContentType(contentType) {
+  const value = String(contentType || "").toLowerCase();
+
+  if (value.includes("ogg")) return "lead-voice.ogg";
+  if (value.includes("mpeg") || value.includes("mp3")) return "lead-voice.mp3";
+  if (value.includes("mp4")) return "lead-voice.mp4";
+  if (value.includes("wav")) return "lead-voice.wav";
+  if (value.includes("amr")) return "lead-voice.amr";
+
+  return "lead-voice.ogg";
+}
+
+async function downloadTwilioMediaToBuffer(mediaUrl) {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+
+  if (!accountSid || !authToken) {
+    throw new Error("Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN");
+  }
+
+  const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+
+  const response = await fetch(mediaUrl, {
+    headers: {
+      Authorization: `Basic ${auth}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to download Twilio media: ${response.status}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+async function transcribeAudioBuffer({ buffer, contentType }) {
+  if (!openai) {
+    throw new Error("OpenAI client is not configured");
+  }
+
+  const fileName = guessFilenameFromContentType(contentType);
+
+  const transcription = await openai.audio.transcriptions.create({
+    model: "gpt-4o-mini-transcribe",
+    file: await toFile(buffer, fileName, {
+      type: contentType || "audio/ogg",
+    }),
+  });
+
+  return transcription.text || "";
+}
+
+async function cleanAndTranslateLeadTranscript(rawTranscript) {
+  if (!openai) {
+    throw new Error("OpenAI client is not configured");
+  }
+
+  const prompt = `
+You are cleaning a sales lead voice note.
+
+Return JSON only with:
+{
+  "detected_language": "hindi|english|hinglish|unknown",
+  "cleaned_transcript": "Clean readable version in the original meaning",
+  "translated_text": "English translation if needed, otherwise same as cleaned_transcript"
+}
+
+Rules:
+- Do not invent details.
+- Keep phone numbers, names, locations, company names exactly if mentioned.
+- If unclear, write [unclear].
+- Make it easy for a sales/admin person to review.
+`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: prompt },
+      { role: "user", content: rawTranscript || "" },
+    ],
+    response_format: { type: "json_object" },
+  });
+
+  const text = completion.choices?.[0]?.message?.content || "{}";
+  const parsed = safeParseJson(text) || {};
+
+  return {
+    detected_language: parsed.detected_language || "unknown",
+    cleaned_transcript: parsed.cleaned_transcript || rawTranscript || "",
+    translated_text:
+      parsed.translated_text ||
+      parsed.cleaned_transcript ||
+      rawTranscript ||
+      "",
+  };
+}
+
+async function transcribeLeadVoiceUploadById({ leadVoiceId, orgId }) {
+  const { data: lead, error: fetchError } = await supabase
+    .from("lead_voice_uploads")
+    .select("*")
+    .eq("id", leadVoiceId)
+    .eq("org_id", orgId)
+    .maybeSingle();
+
+  if (fetchError) throw fetchError;
+  if (!lead) throw new Error("Lead voice upload not found");
+
+  if (!lead.media_url) {
+    throw new Error("Lead voice upload has no media_url");
+  }
+
+  await supabase
+    .from("lead_voice_uploads")
+    .update({
+      status: "transcribing",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", leadVoiceId)
+    .eq("org_id", orgId);
+
+  const buffer = await downloadTwilioMediaToBuffer(lead.media_url);
+
+  const rawTranscript = await transcribeAudioBuffer({
+    buffer,
+    contentType: lead.media_content_type,
+  });
+
+  const cleaned = await cleanAndTranslateLeadTranscript(rawTranscript);
+
+  const { data: updated, error: updateError } = await supabase
+    .from("lead_voice_uploads")
+    .update({
+      raw_transcript: rawTranscript,
+      cleaned_transcript: cleaned.cleaned_transcript,
+      translated_text: cleaned.translated_text,
+      detected_language: cleaned.detected_language,
+      status: "pending_review",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", leadVoiceId)
+    .eq("org_id", orgId)
+    .select()
+    .single();
+
+  if (updateError) throw updateError;
+
+  return updated;
+}
+
+async function updateLeadVoiceTranscript({
+  leadVoiceId,
+  orgId,
+  cleanedTranscript,
+  translatedText,
+  reviewNotes,
+}) {
+  const { data, error } = await supabase
+    .from("lead_voice_uploads")
+    .update({
+      cleaned_transcript: cleanedTranscript,
+      translated_text: translatedText || cleanedTranscript,
+      review_notes: reviewNotes || null,
+      status: "pending_review",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", leadVoiceId)
+    .eq("org_id", orgId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function rejectLeadVoiceUpload({ leadVoiceId, orgId, userId, reason }) {
+  const { data, error } = await supabase
+    .from("lead_voice_uploads")
+    .update({
+      status: "rejected",
+      review_notes: reason || null,
+      reviewed_by_user_id: userId || null,
+      reviewed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", leadVoiceId)
+    .eq("org_id", orgId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function approveLeadVoiceUpload({ leadVoiceId, orgId, userId }) {
+  const { data: lead, error: fetchError } = await supabase
+    .from("lead_voice_uploads")
+    .select("*")
+    .eq("id", leadVoiceId)
+    .eq("org_id", orgId)
+    .maybeSingle();
+
+  if (fetchError) throw fetchError;
+  if (!lead) throw new Error("Lead voice upload not found");
+
+  const business = getBusinessCanonicalName(lead.business);
+  const tableName = getBusinessLeadTableName(business);
+
+  if (!tableName) {
+    throw new Error(
+      `No business lead table configured for business: ${lead.business}`,
+    );
+  }
+
+  const transcriptForLead =
+    lead.translated_text ||
+    lead.cleaned_transcript ||
+    lead.raw_transcript ||
+    "";
+
+  const { data: existingLead, error: existingError } = await supabase
+    .from(tableName)
+    .select("*")
+    .eq("org_id", orgId)
+    .eq("phone", lead.lead_phone)
+    .maybeSingle();
+
+  if (existingError) throw existingError;
+
+  let businessLead;
+
+  if (existingLead) {
+    const { data, error } = await supabase
+      .from(tableName)
+      .update({
+        source_voice_upload_id: lead.id,
+        latest_transcript: transcriptForLead,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", existingLead.id)
+      .eq("org_id", orgId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    businessLead = data;
+  } else {
+    const basePayload = {
+      org_id: orgId,
+      phone: lead.lead_phone,
+      source_voice_upload_id: lead.id,
+      latest_transcript: transcriptForLead,
+      status: "new",
+    };
+
+    if (tableName === "rasset_leads") {
+      basePayload.problem_summary = transcriptForLead;
+    }
+
+    if (tableName === "joolian_leads") {
+      basePayload.interest_summary = transcriptForLead;
+    }
+
+    if (tableName === "matrimonials_leads") {
+      basePayload.requirement_summary = transcriptForLead;
+    }
+
+    const { data, error } = await supabase
+      .from(tableName)
+      .insert([basePayload])
+      .select()
+      .single();
+
+    if (error) throw error;
+    businessLead = data;
+  }
+
+  const { data: updatedVoice, error: updateVoiceError } = await supabase
+    .from("lead_voice_uploads")
+    .update({
+      status: "reviewed",
+      reviewed_by_user_id: userId || null,
+      reviewed_at: new Date().toISOString(),
+      linked_table_name: tableName,
+      linked_lead_id: businessLead.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", leadVoiceId)
+    .eq("org_id", orgId)
+    .select()
+    .single();
+
+  if (updateVoiceError) throw updateVoiceError;
+
+  return {
+    voice: updatedVoice,
+    businessLead,
+    tableName,
+  };
+}
+
+async function updateBusinessLeadStatus({ business, leadId, orgId, status }) {
+  const tableName = getBusinessLeadTableName(business);
+
+  if (!tableName) {
+    throw new Error(
+      `No business lead table configured for business: ${business}`,
+    );
+  }
+
+  if (!["new", "in_progress", "completed"].includes(status)) {
+    throw new Error("Invalid status");
+  }
+
+  const { data, error } = await supabase
+    .from(tableName)
+    .update({
+      status,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", leadId)
+    .eq("org_id", orgId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 async function parseTaskWithAI(text) {
   if (!openai) return null;
 
@@ -13443,24 +13867,110 @@ function renderBusinessLeadsPage(data) {
     </a>
   `;
 
-  const rowsHtml = rows.length
-    ? rows
-        .map(
-          (lead) => `
-            <tr>
-              <td>${escapeHtml(formatDateTime(lead.created_at))}</td>
-              <td>${escapeHtml(lead.lead_phone)}</td>
-              <td>${escapeHtml(lead.sender_phone)}</td>
-              <td>${escapeHtml(lead.media_content_type || "-")}</td>
-              <td><span class="${badgeClass(lead.status)}">${escapeHtml(lead.status)}</span></td>
-              <td>
-                <a href="${escapeHtml(lead.media_url)}" target="_blank" rel="noopener noreferrer">Open Audio</a>
-              </td>
-            </tr>
-          `,
-        )
-        .join("")
-    : `<tr><td colspan="6" class="empty-cell">No leads in this tab.</td></tr>`;
+  const leadCardsHtml =
+    selectedTab === "leads"
+      ? rows.length
+        ? rows
+            .map(
+              (lead) => `
+                <div class="lead-card" id="lead-card-${Number(lead.id)}">
+                  <div class="lead-card-top">
+                    <div>
+                      <div class="lead-title">Voice Lead #${escapeHtml(lead.id)}</div>
+                      <div class="muted">
+                        ${escapeHtml(formatDateTime(lead.created_at))}
+                        · Phone: ${escapeHtml(lead.lead_phone)}
+                        · Uploaded by: ${escapeHtml(lead.sender_phone)}
+                      </div>
+                    </div>
+                    <span class="${badgeClass(lead.status)}">${escapeHtml(lead.status)}</span>
+                  </div>
+
+                  <div class="lead-actions">
+                    <a class="btn" href="${escapeHtml(lead.media_url)}" target="_blank" rel="noopener noreferrer">Play Audio</a>
+
+                    ${
+                      lead.status === "pending_transcription" ||
+                      lead.status === "transcribing"
+                        ? `<button class="btn btn-primary" type="button" onclick="transcribeLead(${Number(lead.id)})">Transcribe</button>`
+                        : ""
+                    }
+
+                    ${
+                      lead.status === "pending_review"
+                        ? `
+                          <button class="btn btn-primary" type="button" onclick="saveTranscript(${Number(lead.id)})">Save Transcript</button>
+                          <button class="btn btn-success" type="button" onclick="approveLead(${Number(lead.id)})">Approve Transcript</button>
+                          <button class="btn btn-danger" type="button" onclick="rejectLead(${Number(lead.id)})">Reject</button>
+                        `
+                        : ""
+                    }
+
+                    ${
+                      lead.status === "rejected"
+                        ? `<button class="btn btn-primary" type="button" onclick="saveTranscript(${Number(lead.id)})">Edit & Reopen Review</button>`
+                        : ""
+                    }
+                  </div>
+
+                  <div class="transcript-grid">
+                    <div class="form-field">
+                      <label>Original Transcript</label>
+                      <textarea readonly>${escapeHtml(lead.raw_transcript || "")}</textarea>
+                    </div>
+
+                    <div class="form-field">
+                      <label>Cleaned Transcript / Review Version</label>
+                      <textarea id="cleaned-${Number(lead.id)}">${escapeHtml(lead.cleaned_transcript || "")}</textarea>
+                    </div>
+
+                    <div class="form-field">
+                      <label>English Translation</label>
+                      <textarea id="translated-${Number(lead.id)}">${escapeHtml(lead.translated_text || "")}</textarea>
+                    </div>
+
+                    <div class="form-field">
+                      <label>Review Notes</label>
+                      <textarea id="notes-${Number(lead.id)}">${escapeHtml(lead.review_notes || "")}</textarea>
+                    </div>
+                  </div>
+
+                  ${
+                    lead.linked_table_name && lead.linked_lead_id
+                      ? `<div class="muted" style="margin-top:10px;">Linked to ${escapeHtml(lead.linked_table_name)} #${escapeHtml(lead.linked_lead_id)}</div>`
+                      : ""
+                  }
+                </div>
+              `,
+            )
+            .join("")
+        : `<div class="panel">No leads in this tab.</div>`
+      : "";
+
+  const businessRowsHtml =
+    selectedTab !== "leads"
+      ? rows.length
+        ? rows
+            .map(
+              (lead) => `
+                <tr>
+                  <td>${escapeHtml(lead.id)}</td>
+                  <td>${escapeHtml(lead.phone)}</td>
+                  <td>${escapeHtml(lead.status)}</td>
+                  <td>${escapeHtml(lead.latest_transcript || "-")}</td>
+                  <td>
+                    <select onchange="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, this.value)">
+                      <option value="new" ${lead.status === "new" ? "selected" : ""}>New</option>
+                      <option value="in_progress" ${lead.status === "in_progress" ? "selected" : ""}>In Progress</option>
+                      <option value="completed" ${lead.status === "completed" ? "selected" : ""}>Completed</option>
+                    </select>
+                  </td>
+                </tr>
+              `,
+            )
+            .join("")
+        : `<tr><td colspan="5" class="empty-cell">No business leads in this tab.</td></tr>`
+      : "";
 
   return `
     <html>
@@ -13472,7 +13982,7 @@ function renderBusinessLeadsPage(data) {
           ${buildTopNavCss()}
 
           .wrap { max-width: 1600px; margin: 0 auto; padding: 24px 18px 36px; }
-          .topbar, .panel, .stat-card {
+          .topbar, .panel, .stat-card, .lead-card {
             background: linear-gradient(180deg, var(--panel), var(--panel-strong));
             border: 1px solid var(--line);
             border-radius: var(--radius-lg);
@@ -13508,16 +14018,54 @@ function renderBusinessLeadsPage(data) {
           }
 
           .panel { padding:18px; }
+          .lead-list { display:grid; gap:14px; }
+          .lead-card { padding:16px; }
+          .lead-card-top {
+            display:flex; justify-content:space-between; gap:12px; align-items:flex-start;
+            margin-bottom:12px;
+          }
+          .lead-title { font-size:18px; font-weight:900; margin-bottom:6px; }
+          .lead-actions { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+          .transcript-grid {
+            display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px;
+          }
+          .form-field { display:flex; flex-direction:column; gap:8px; }
+          .form-field label { font-size:13px; font-weight:800; }
+          .form-field textarea {
+            width:100%; min-height:120px; padding:12px; border-radius:12px;
+            border:1px solid var(--line); background:rgba(255,255,255,0.04);
+            color:var(--text); font:inherit;
+          }
+
           table { width:100%; border-collapse:collapse; }
-          th, td { padding:12px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:left; font-size:14px; }
+          th, td { padding:12px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:left; font-size:14px; vertical-align:top; }
           th { color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; font-size:12px; }
+
           .btn {
             display:inline-flex; align-items:center; text-decoration:none; color:var(--text);
             padding:10px 13px; border-radius:12px; background:rgba(255,255,255,0.05);
-            border:1px solid rgba(255,255,255,0.12); font-weight:800;
+            border:1px solid rgba(255,255,255,0.12); font-weight:800; cursor:pointer;
           }
+          .btn-primary {
+            background:var(--primary-soft); color:var(--text-strong);
+            border-color:color-mix(in srgb, var(--primary) 55%, transparent);
+          }
+          .btn-success {
+            background:var(--success-soft); color:var(--text-strong);
+            border-color:color-mix(in srgb, var(--success) 55%, transparent);
+          }
+          .btn-danger {
+            background:var(--danger-soft); color:var(--text-strong);
+            border-color:color-mix(in srgb, var(--danger) 55%, transparent);
+          }
+
+          select {
+            padding:10px; border-radius:10px; border:1px solid var(--line);
+            background:rgba(255,255,255,0.04); color:var(--text);
+          }
+
           @media (max-width: 900px) {
-            .stats, .tabs { grid-template-columns:1fr; }
+            .stats, .tabs, .transcript-grid { grid-template-columns:1fr; }
             .panel { overflow-x:auto; }
           }
         </style>
@@ -13529,14 +14077,14 @@ function renderBusinessLeadsPage(data) {
             <div>
               <div class="eyebrow">Business Leads</div>
               <h1>${escapeHtml(business)} Leads</h1>
-              <div class="subtitle">Voice leads for ${escapeHtml(business)}.</div>
+              <div class="subtitle">Voice leads, transcript review, and business lead movement.</div>
             </div>
             <a class="btn" href="/leads">← Leads Overview</a>
           </div>
 
           <div class="stats">
             <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${counts.total || 0}</div></div>
-            <div class="stat-card"><div class="stat-label">Leads</div><div class="stat-value">${counts.leads || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">Needs Review</div><div class="stat-value">${counts.leads || 0}</div></div>
             <div class="stat-card"><div class="stat-label">In Progress</div><div class="stat-value">${counts.in_progress || 0}</div></div>
             <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value">${counts.completed || 0}</div></div>
           </div>
@@ -13547,22 +14095,135 @@ function renderBusinessLeadsPage(data) {
             ${tabLink("completed", "Completed", counts.completed)}
           </div>
 
-          <div class="panel">
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Lead Phone</th>
-                  <th>Uploaded By</th>
-                  <th>Media Type</th>
-                  <th>Status</th>
-                  <th>Audio</th>
-                </tr>
-              </thead>
-              <tbody>${rowsHtml}</tbody>
-            </table>
-          </div>
+          ${
+            selectedTab === "leads"
+              ? `<div class="lead-list">${leadCardsHtml}</div>`
+              : `
+                <div class="panel">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Phone</th>
+                        <th>Status</th>
+                        <th>Latest Transcript</th>
+                        <th>Move</th>
+                      </tr>
+                    </thead>
+                    <tbody>${businessRowsHtml}</tbody>
+                  </table>
+                </div>
+              `
+          }
         </div>
+
+        <script>
+          async function transcribeLead(id) {
+            if (!confirm("Transcribe this voice note now?")) return;
+
+            const res = await fetch("/api/leads/" + id + "/transcribe", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" }
+            });
+
+            const json = await res.json();
+
+            if (!json.ok) {
+              alert(json.error || "Failed to transcribe");
+              return;
+            }
+
+            alert("Transcription completed.");
+            window.location.reload();
+          }
+
+          async function saveTranscript(id) {
+            const cleaned = document.getElementById("cleaned-" + id)?.value || "";
+            const translated = document.getElementById("translated-" + id)?.value || "";
+            const notes = document.getElementById("notes-" + id)?.value || "";
+
+            if (!cleaned.trim()) {
+              alert("Cleaned transcript is required.");
+              return;
+            }
+
+            const res = await fetch("/api/leads/" + id + "/transcript", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                cleaned_transcript: cleaned,
+                translated_text: translated,
+                review_notes: notes
+              })
+            });
+
+            const json = await res.json();
+
+            if (!json.ok) {
+              alert(json.error || "Failed to save transcript");
+              return;
+            }
+
+            alert("Transcript saved.");
+            window.location.reload();
+          }
+
+          async function approveLead(id) {
+            if (!confirm("Approve this transcript and move/create business lead?")) return;
+
+            const res = await fetch("/api/leads/" + id + "/approve", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" }
+            });
+
+            const json = await res.json();
+
+            if (!json.ok) {
+              alert(json.error || "Failed to approve lead");
+              return;
+            }
+
+            alert("Lead approved and moved to business table.");
+            window.location.reload();
+          }
+
+          async function rejectLead(id) {
+            const reason = prompt("Reason for rejection?", "");
+
+            const res = await fetch("/api/leads/" + id + "/reject", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ reason: reason || "" })
+            });
+
+            const json = await res.json();
+
+            if (!json.ok) {
+              alert(json.error || "Failed to reject lead");
+              return;
+            }
+
+            alert("Lead rejected.");
+            window.location.reload();
+          }
+
+          async function updateBusinessLeadStatus(business, id, status) {
+            const res = await fetch("/api/business-leads/" + business + "/" + id + "/status", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status })
+            });
+
+            const json = await res.json();
+
+            if (!json.ok) {
+              alert(json.error || "Failed to update status");
+              return;
+            }
+
+            window.location.reload();
+          }
+        </script>
       </body>
     </html>
   `;
@@ -26546,6 +27207,161 @@ app.post("/whatsapp", async (req, res) => {
     return sendTwiml(res, "Something went wrong.");
   }
 });
+
+app.post(
+  "/api/leads/:id/transcribe",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const leadVoiceId = Number(req.params.id);
+
+      if (!leadVoiceId) {
+        return sendApiError(res, 400, "Invalid lead voice ID");
+      }
+
+      const data = await transcribeLeadVoiceUploadById({
+        leadVoiceId,
+        orgId,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("POST /api/leads/:id/transcribe error:", error);
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to transcribe lead",
+      );
+    }
+  },
+);
+
+app.patch(
+  "/api/leads/:id/transcript",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const leadVoiceId = Number(req.params.id);
+
+      const cleanedTranscript = String(
+        req.body.cleaned_transcript || "",
+      ).trim();
+      const translatedText = String(req.body.translated_text || "").trim();
+      const reviewNotes = String(req.body.review_notes || "").trim();
+
+      if (!leadVoiceId) {
+        return sendApiError(res, 400, "Invalid lead voice ID");
+      }
+
+      if (!cleanedTranscript) {
+        return sendApiError(res, 400, "Cleaned transcript is required");
+      }
+
+      const data = await updateLeadVoiceTranscript({
+        leadVoiceId,
+        orgId,
+        cleanedTranscript,
+        translatedText,
+        reviewNotes,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("PATCH /api/leads/:id/transcript error:", error);
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to update transcript",
+      );
+    }
+  },
+);
+
+app.post("/api/leads/:id/approve", requireDashboardAuth, async (req, res) => {
+  try {
+    const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+    const userId = req.session?.user?.id || null;
+    const leadVoiceId = Number(req.params.id);
+
+    if (!leadVoiceId) {
+      return sendApiError(res, 400, "Invalid lead voice ID");
+    }
+
+    const data = await approveLeadVoiceUpload({
+      leadVoiceId,
+      orgId,
+      userId,
+    });
+
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("POST /api/leads/:id/approve error:", error);
+    return sendApiError(res, 500, error.message || "Failed to approve lead");
+  }
+});
+
+app.post("/api/leads/:id/reject", requireDashboardAuth, async (req, res) => {
+  try {
+    const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+    const userId = req.session?.user?.id || null;
+    const leadVoiceId = Number(req.params.id);
+    const reason = String(req.body.reason || "").trim();
+
+    if (!leadVoiceId) {
+      return sendApiError(res, 400, "Invalid lead voice ID");
+    }
+
+    const data = await rejectLeadVoiceUpload({
+      leadVoiceId,
+      orgId,
+      userId,
+      reason,
+    });
+
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("POST /api/leads/:id/reject error:", error);
+    return sendApiError(res, 500, error.message || "Failed to reject lead");
+  }
+});
+
+app.patch(
+  "/api/business-leads/:business/:id/status",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const business = req.params.business;
+      const leadId = Number(req.params.id);
+      const status = String(req.body.status || "").trim();
+
+      if (!leadId) {
+        return sendApiError(res, 400, "Invalid business lead ID");
+      }
+
+      const data = await updateBusinessLeadStatus({
+        business,
+        leadId,
+        orgId,
+        status,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error(
+        "PATCH /api/business-leads/:business/:id/status error:",
+        error,
+      );
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to update business lead status",
+      );
+    }
+  },
+);
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
