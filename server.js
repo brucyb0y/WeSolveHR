@@ -154,8 +154,21 @@ function safeParseJson(text) {
   }
 }
 
-async function getBusinessLeadsData(orgId, business, selectedTab = "leads") {
+async function getBusinessLeadsData(
+  orgId,
+  business,
+  selectedTab = "all",
+  search = "",
+  page = 1,
+) {
   const normalizedBusiness = getBusinessCanonicalName(business);
+  const tableName = getBusinessLeadTableName(normalizedBusiness);
+
+  const safePage = Math.max(1, Number(page) || 1);
+  const pageSize = 25;
+  const from = (safePage - 1) * pageSize;
+  const to = from + pageSize - 1;
+  const q = String(search || "").trim();
 
   const { data: voiceRows, error: voiceError } = await supabase
     .from("lead_voice_uploads")
@@ -164,62 +177,89 @@ async function getBusinessLeadsData(orgId, business, selectedTab = "leads") {
     .eq("business", normalizedBusiness)
     .order("created_at", { ascending: false });
 
-  if (voiceError) {
-    console.error("getBusinessLeadsData voice error:", voiceError);
-    throw voiceError;
-  }
+  if (voiceError) throw voiceError;
 
-  const tableName = getBusinessLeadTableName(normalizedBusiness);
   let businessRows = [];
 
   if (tableName) {
-    const { data, error } = await supabase
+    let query = supabase
       .from(tableName)
       .select("*")
       .eq("org_id", orgId)
       .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("getBusinessLeadsData business table error:", error);
-      throw error;
+    if (q) {
+      query = query.or(
+        [
+          `phone.ilike.%${q}%`,
+          `business_name.ilike.%${q}%`,
+          `contact_name.ilike.%${q}%`,
+          `email.ilike.%${q}%`,
+          `city.ilike.%${q}%`,
+          `industry.ilike.%${q}%`,
+          `notes.ilike.%${q}%`,
+          `latest_transcript.ilike.%${q}%`,
+        ].join(","),
+      );
     }
 
+    const { data, error } = await query;
+
+    if (error) throw error;
     businessRows = data || [];
   }
 
   const voice = voiceRows || [];
 
-  const tabs = {
-    leads: voice.filter((x) =>
-      [
-        "pending_transcription",
-        "transcribing",
-        "pending_review",
-        "rejected",
-      ].includes(x.status),
-    ),
-    in_progress: businessRows.filter((x) => x.status === "in_progress"),
-    completed: businessRows.filter((x) => x.status === "completed"),
-  };
+  const voiceInboxRows = voice.filter((x) =>
+    [
+      "pending_transcription",
+      "transcribing",
+      "pending_review",
+      "rejected",
+    ].includes(x.status),
+  );
+
+  const filteredBusinessRows = businessRows.filter((x) => {
+    if (selectedTab === "b2b") return x.lead_category === "b2b";
+    if (selectedTab === "b2c") return x.lead_category === "b2c";
+    if (selectedTab === "in_progress") return x.status === "in_progress";
+    if (selectedTab === "completed") return x.status === "completed";
+    return true;
+  });
+
+  const pagedBusinessRows = filteredBusinessRows.slice(from, to + 1);
+
+  const rows =
+    selectedTab === "voice_inbox" ? voiceInboxRows : pagedBusinessRows;
 
   return {
     business: normalizedBusiness,
     selectedTab,
-    rows: tabs[selectedTab] || tabs.leads,
+    search: q,
+    page: safePage,
+    pageSize,
+    rows,
     voiceRows: voice,
     businessRows,
     tableName,
     counts: {
-      leads: tabs.leads.length,
-      in_progress: tabs.in_progress.length,
-      completed: tabs.completed.length,
-      total: voice.length + businessRows.length,
-      reviewed: voice.filter((x) => x.status === "reviewed").length,
-      pending_transcription: voice.filter(
-        (x) => x.status === "pending_transcription",
-      ).length,
+      all: businessRows.length,
+      b2b: businessRows.filter((x) => x.lead_category === "b2b").length,
+      b2c: businessRows.filter((x) => x.lead_category === "b2c").length,
+      in_progress: businessRows.filter((x) => x.status === "in_progress")
+        .length,
+      completed: businessRows.filter((x) => x.status === "completed").length,
+      voice_inbox: voiceInboxRows.length,
+      total: businessRows.length,
       pending_review: voice.filter((x) => x.status === "pending_review").length,
-      rejected: voice.filter((x) => x.status === "rejected").length,
+    },
+    pagination: {
+      total: filteredBusinessRows.length,
+      page: safePage,
+      pageSize,
+      hasPrev: safePage > 1,
+      hasNext: to + 1 < filteredBusinessRows.length,
     },
   };
 }
@@ -7495,6 +7535,8 @@ async function approveLeadVoiceUpload({ leadVoiceId, orgId, userId }) {
     const basePayload = {
       org_id: orgId,
       phone: lead.lead_phone,
+      lead_category: business === "rasset" ? "b2b" : "b2c",
+      lead_source: "voice",
       source_voice_upload_id: lead.id,
       latest_transcript: transcriptForLead,
       status: "new",
@@ -7572,6 +7614,222 @@ async function updateBusinessLeadStatus({ business, leadId, orgId, status }) {
 
   if (error) throw error;
   return data;
+}
+
+function buildBusinessLeadPayloadFromBody(body) {
+  return {
+    phone: normalizePhoneForLogin(body.phone || ""),
+    lead_category: normalizeText(body.lead_category || "b2b"),
+    lead_source: normalizeText(body.lead_source || "manual"),
+    business_name: String(body.business_name || "").trim() || null,
+    contact_name: String(body.contact_name || "").trim() || null,
+    email: String(body.email || "").trim() || null,
+    website: String(body.website || "").trim() || null,
+    google_maps_url: String(body.google_maps_url || "").trim() || null,
+    yelp_url: String(body.yelp_url || "").trim() || null,
+    address: String(body.address || "").trim() || null,
+    city: String(body.city || "").trim() || null,
+    state: String(body.state || "").trim() || null,
+    industry: String(body.industry || "").trim() || null,
+    notes: String(body.notes || "").trim() || null,
+    status: normalizeText(body.status || "new"),
+  };
+}
+
+function validateBusinessLeadPayload(payload) {
+  if (
+    !payload.phone &&
+    !payload.business_name &&
+    !payload.website &&
+    !payload.google_maps_url &&
+    !payload.yelp_url
+  ) {
+    return "Enter at least phone, business name, website, Google Maps link, or Yelp link.";
+  }
+
+  if (!["b2b", "b2c"].includes(payload.lead_category)) {
+    return "Lead category must be b2b or b2c.";
+  }
+
+  if (!["new", "in_progress", "completed"].includes(payload.status)) {
+    return "Status must be new, in_progress, or completed.";
+  }
+
+  return null;
+}
+
+async function createBusinessLead({ orgId, business, body }) {
+  const tableName = getBusinessLeadTableName(business);
+
+  if (!tableName) {
+    throw new Error(`No lead table configured for ${business}`);
+  }
+
+  const payload = buildBusinessLeadPayloadFromBody(body);
+  const validationError = validateBusinessLeadPayload(payload);
+
+  if (validationError) {
+    const err = new Error(validationError);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const insertPayload = {
+    org_id: orgId,
+    ...payload,
+    latest_transcript:
+      String(body.latest_transcript || body.notes || "").trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from(tableName)
+    .insert([insertPayload])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function updateBusinessLead({ orgId, business, leadId, body }) {
+  const tableName = getBusinessLeadTableName(business);
+
+  if (!tableName) {
+    throw new Error(`No lead table configured for ${business}`);
+  }
+
+  const payload = buildBusinessLeadPayloadFromBody(body);
+  const validationError = validateBusinessLeadPayload(payload);
+
+  if (validationError) {
+    const err = new Error(validationError);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const updatePayload = {
+    ...payload,
+    latest_transcript: String(body.latest_transcript || "").trim() || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from(tableName)
+    .update(updatePayload)
+    .eq("org_id", orgId)
+    .eq("id", leadId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function getBusinessLeadById({ orgId, business, leadId }) {
+  const tableName = getBusinessLeadTableName(business);
+
+  if (!tableName) {
+    throw new Error(`No lead table configured for ${business}`);
+  }
+
+  const { data, error } = await supabase
+    .from(tableName)
+    .select("*")
+    .eq("org_id", orgId)
+    .eq("id", leadId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function enrichLeadFromUrl({ url }) {
+  const rawUrl = String(url || "").trim();
+
+  if (!rawUrl) {
+    return {
+      success: false,
+      message: "No URL provided.",
+      data: {},
+    };
+  }
+
+  if (/google\./i.test(rawUrl) || /maps\.app\.goo\.gl/i.test(rawUrl)) {
+    return {
+      success: false,
+      message:
+        "Google Maps link detected. Direct scraping is not supported. Save the link now; later use Google Places API for proper enrichment.",
+      data: {
+        google_maps_url: rawUrl,
+        lead_source: "google_map",
+      },
+    };
+  }
+
+  if (/yelp\./i.test(rawUrl)) {
+    return {
+      success: false,
+      message:
+        "Yelp link detected. Direct scraping is not supported. Save the link now; later use Yelp Fusion API for proper enrichment.",
+      data: {
+        yelp_url: rawUrl,
+        lead_source: "yelp",
+      },
+    };
+  }
+
+  try {
+    const response = await fetch(rawUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 WeSolveHR Lead Enrichment",
+      },
+    });
+
+    if (!response.ok) {
+      return {
+        success: false,
+        message: `Could not fetch website. Status: ${response.status}`,
+        data: {
+          website: rawUrl,
+          lead_source: "website",
+        },
+      };
+    }
+
+    const html = await response.text();
+
+    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const descMatch = html.match(
+      /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    );
+
+    const title = titleMatch ? titleMatch[1].replace(/\s+/g, " ").trim() : "";
+
+    const description = descMatch
+      ? descMatch[1].replace(/\s+/g, " ").trim()
+      : "";
+
+    return {
+      success: true,
+      message: "Website fetched. Please verify before saving.",
+      data: {
+        website: rawUrl,
+        lead_source: "website",
+        business_name: title || null,
+        notes: description || null,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: `Could not fetch automatically: ${error.message}`,
+      data: {
+        website: rawUrl,
+        lead_source: "website",
+      },
+    };
+  }
 }
 
 async function parseTaskWithAI(text) {
@@ -13858,17 +14116,52 @@ function renderLeadsOverviewPage(data) {
 function renderBusinessLeadsPage(data) {
   const business = data.business;
   const rows = data.rows || [];
-  const selectedTab = data.selectedTab || "leads";
+  const selectedTab = data.selectedTab || "all";
   const counts = data.counts || {};
+  const search = data.search || "";
+  const pagination = data.pagination || {};
 
   const tabLink = (key, label, count) => `
-    <a class="tab ${selectedTab === key ? "active" : ""}" href="/leads/${encodeURIComponent(business)}?tab=${key}">
+    <a class="tab ${selectedTab === key ? "active" : ""}"
+       href="/leads/${encodeURIComponent(business)}?tab=${key}&search=${encodeURIComponent(search)}">
       ${label} (${count || 0})
     </a>
   `;
 
-  const leadCardsHtml =
-    selectedTab === "leads"
+  const leadRowsHtml =
+    selectedTab !== "voice_inbox"
+      ? rows.length
+        ? rows
+            .map(
+              (lead) => `
+                <tr>
+                  <td>
+                    <div style="font-weight:900;">${escapeHtml(lead.business_name || lead.contact_name || lead.phone || "Lead #" + lead.id)}</div>
+                    <div class="muted">#${escapeHtml(lead.id)} · ${escapeHtml(lead.lead_source || "manual")}</div>
+                  </td>
+                  <td>${escapeHtml(lead.phone || "-")}</td>
+                  <td>${escapeHtml(lead.lead_category || "-")}</td>
+                  <td>${escapeHtml(lead.contact_name || "-")}</td>
+                  <td>${escapeHtml(lead.city || "-")}</td>
+                  <td><span class="${badgeClass(lead.status)}">${escapeHtml(lead.status || "new")}</span></td>
+                  <td>${escapeHtml(lead.latest_transcript || lead.notes || "-")}</td>
+                  <td>
+                    <button class="btn" type="button" onclick="openLeadEditModal(${Number(lead.id)})">Edit</button>
+                    <select onchange="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, this.value)">
+                      <option value="new" ${lead.status === "new" ? "selected" : ""}>New</option>
+                      <option value="in_progress" ${lead.status === "in_progress" ? "selected" : ""}>In Progress</option>
+                      <option value="completed" ${lead.status === "completed" ? "selected" : ""}>Completed</option>
+                    </select>
+                  </td>
+                </tr>
+              `,
+            )
+            .join("")
+        : `<tr><td colspan="8" class="empty-cell">No leads found.</td></tr>`
+      : "";
+
+  const voiceInboxHtml =
+    selectedTab === "voice_inbox"
       ? rows.length
         ? rows
             .map(
@@ -13934,42 +14227,11 @@ function renderBusinessLeadsPage(data) {
                       <textarea id="notes-${Number(lead.id)}">${escapeHtml(lead.review_notes || "")}</textarea>
                     </div>
                   </div>
-
-                  ${
-                    lead.linked_table_name && lead.linked_lead_id
-                      ? `<div class="muted" style="margin-top:10px;">Linked to ${escapeHtml(lead.linked_table_name)} #${escapeHtml(lead.linked_lead_id)}</div>`
-                      : ""
-                  }
                 </div>
               `,
             )
             .join("")
-        : `<div class="panel">No leads in this tab.</div>`
-      : "";
-
-  const businessRowsHtml =
-    selectedTab !== "leads"
-      ? rows.length
-        ? rows
-            .map(
-              (lead) => `
-                <tr>
-                  <td>${escapeHtml(lead.id)}</td>
-                  <td>${escapeHtml(lead.phone)}</td>
-                  <td>${escapeHtml(lead.status)}</td>
-                  <td>${escapeHtml(lead.latest_transcript || "-")}</td>
-                  <td>
-                    <select onchange="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, this.value)">
-                      <option value="new" ${lead.status === "new" ? "selected" : ""}>New</option>
-                      <option value="in_progress" ${lead.status === "in_progress" ? "selected" : ""}>In Progress</option>
-                      <option value="completed" ${lead.status === "completed" ? "selected" : ""}>Completed</option>
-                    </select>
-                  </td>
-                </tr>
-              `,
-            )
-            .join("")
-        : `<tr><td colspan="5" class="empty-cell">No business leads in this tab.</td></tr>`
+        : `<div class="panel">No voice leads need review.</div>`
       : "";
 
   return `
@@ -14002,7 +14264,7 @@ function renderBusinessLeadsPage(data) {
           .stat-value { margin-top:10px; font-size:28px; font-weight:800; }
 
           .tabs {
-            display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:0;
+            display:grid; grid-template-columns:repeat(6, minmax(0,1fr)); gap:0;
             margin-bottom:18px; background:rgba(255,255,255,0.035);
             border:1px solid rgba(255,255,255,0.10); border-radius:16px; padding:6px;
           }
@@ -14017,7 +14279,7 @@ function renderBusinessLeadsPage(data) {
             color:var(--text-strong);
           }
 
-          .panel { padding:18px; }
+          .panel { padding:18px; margin-bottom:16px; }
           .lead-list { display:grid; gap:14px; }
           .lead-card { padding:16px; }
           .lead-card-top {
@@ -14029,21 +14291,26 @@ function renderBusinessLeadsPage(data) {
           .transcript-grid {
             display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px;
           }
+          .form-grid {
+            display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px;
+          }
           .form-field { display:flex; flex-direction:column; gap:8px; }
           .form-field label { font-size:13px; font-weight:800; }
-          .form-field textarea {
-            width:100%; min-height:120px; padding:12px; border-radius:12px;
+          input, select, textarea {
+            width:100%; padding:12px; border-radius:12px;
             border:1px solid var(--line); background:rgba(255,255,255,0.04);
             color:var(--text); font:inherit;
           }
+          textarea { min-height:100px; }
 
           table { width:100%; border-collapse:collapse; }
           th, td { padding:12px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:left; font-size:14px; vertical-align:top; }
           th { color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; font-size:12px; }
 
           .btn {
-            display:inline-flex; align-items:center; text-decoration:none; color:var(--text);
-            padding:10px 13px; border-radius:12px; background:rgba(255,255,255,0.05);
+            display:inline-flex; align-items:center; justify-content:center;
+            text-decoration:none; color:var(--text); padding:10px 13px;
+            border-radius:12px; background:rgba(255,255,255,0.05);
             border:1px solid rgba(255,255,255,0.12); font-weight:800; cursor:pointer;
           }
           .btn-primary {
@@ -14059,65 +14326,402 @@ function renderBusinessLeadsPage(data) {
             border-color:color-mix(in srgb, var(--danger) 55%, transparent);
           }
 
-          select {
-            padding:10px; border-radius:10px; border:1px solid var(--line);
-            background:rgba(255,255,255,0.04); color:var(--text);
+          .modal {
+            display:none; position:fixed; inset:0; z-index:9999;
+            background:rgba(3,8,20,0.70); backdrop-filter:blur(8px);
+            align-items:center; justify-content:center; padding:18px;
+          }
+          .modal.open { display:flex; }
+          .modal-card {
+            width:min(980px,100%); max-height:90vh; overflow:auto;
+            background:linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border:1px solid var(--line); border-radius:22px;
+            box-shadow:var(--shadow-soft); padding:18px;
           }
 
-          @media (max-width: 900px) {
-            .stats, .tabs, .transcript-grid { grid-template-columns:1fr; }
+          .search-row {
+            display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:center;
+          }
+
+          .pagination {
+            display:flex; justify-content:flex-end; gap:10px; margin-top:14px;
+          }
+
+          @media (max-width: 1000px) {
+            .stats, .tabs, .transcript-grid, .form-grid, .search-row { grid-template-columns:1fr; }
             .panel { overflow-x:auto; }
           }
         </style>
       </head>
       <body>
         ${renderTopNav("leads")}
+
         <div class="wrap">
           <div class="topbar">
             <div>
-              <div class="eyebrow">Business Leads</div>
+              <div class="eyebrow">Business Lead CRM</div>
               <h1>${escapeHtml(business)} Leads</h1>
-              <div class="subtitle">Voice leads, transcript review, and business lead movement.</div>
+              <div class="subtitle">All leads, B2B/B2C split, manual onboarding, search, and voice inbox.</div>
             </div>
-            <a class="btn" href="/leads">← Leads Overview</a>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <a class="btn" href="/leads">← Leads Overview</a>
+              <button class="btn btn-primary" type="button" onclick="openLeadCreateModal()">+ Add Lead</button>
+            </div>
           </div>
 
           <div class="stats">
-            <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${counts.total || 0}</div></div>
-            <div class="stat-card"><div class="stat-label">Needs Review</div><div class="stat-value">${counts.leads || 0}</div></div>
-            <div class="stat-card"><div class="stat-label">In Progress</div><div class="stat-value">${counts.in_progress || 0}</div></div>
-            <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value">${counts.completed || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">All Leads</div><div class="stat-value">${counts.all || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">B2B</div><div class="stat-value">${counts.b2b || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">B2C</div><div class="stat-value">${counts.b2c || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">Voice Inbox</div><div class="stat-value">${counts.voice_inbox || 0}</div></div>
           </div>
 
           <div class="tabs">
-            ${tabLink("leads", "Leads", counts.leads)}
+            ${tabLink("all", "All Leads", counts.all)}
+            ${tabLink("b2b", "B2B", counts.b2b)}
+            ${tabLink("b2c", "B2C", counts.b2c)}
             ${tabLink("in_progress", "In Progress", counts.in_progress)}
             ${tabLink("completed", "Completed", counts.completed)}
+            ${tabLink("voice_inbox", "Voice Inbox", counts.voice_inbox)}
           </div>
 
           ${
-            selectedTab === "leads"
-              ? `<div class="lead-list">${leadCardsHtml}</div>`
-              : `
+            selectedTab !== "voice_inbox"
+              ? `
+                <div class="panel">
+                  <form class="search-row" method="GET" action="/leads/${encodeURIComponent(business)}">
+                    <input type="hidden" name="tab" value="${escapeHtml(selectedTab)}" />
+                    <input name="search" value="${escapeHtml(search)}" placeholder="Search phone, business, contact, city, notes..." />
+                    <button class="btn btn-primary" type="submit">Search</button>
+                    <a class="btn" href="/leads/${encodeURIComponent(business)}?tab=${escapeHtml(selectedTab)}">Clear</a>
+                  </form>
+                </div>
+
                 <div class="panel">
                   <table>
                     <thead>
                       <tr>
-                        <th>ID</th>
+                        <th>Lead</th>
                         <th>Phone</th>
+                        <th>Type</th>
+                        <th>Contact</th>
+                        <th>City</th>
                         <th>Status</th>
-                        <th>Latest Transcript</th>
-                        <th>Move</th>
+                        <th>Notes / Transcript</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
-                    <tbody>${businessRowsHtml}</tbody>
+                    <tbody>${leadRowsHtml}</tbody>
                   </table>
+
+                  <div class="pagination">
+                    ${
+                      pagination.hasPrev
+                        ? `<a class="btn" href="/leads/${encodeURIComponent(business)}?tab=${escapeHtml(selectedTab)}&search=${encodeURIComponent(search)}&page=${Number(pagination.page) - 1}">← Previous</a>`
+                        : ""
+                    }
+                    <span class="btn">Page ${escapeHtml(pagination.page || 1)}</span>
+                    ${
+                      pagination.hasNext
+                        ? `<a class="btn" href="/leads/${encodeURIComponent(business)}?tab=${escapeHtml(selectedTab)}&search=${encodeURIComponent(search)}&page=${Number(pagination.page) + 1}">Next →</a>`
+                        : ""
+                    }
+                  </div>
                 </div>
               `
+              : `<div class="lead-list">${voiceInboxHtml}</div>`
           }
         </div>
 
+        <div id="leadModal" class="modal" onclick="closeLeadModal(event)">
+          <div class="modal-card" onclick="event.stopPropagation()">
+            <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
+              <div id="leadModalTitle" style="font-size:22px; font-weight:900;">Add Lead</div>
+              <button class="btn" type="button" onclick="closeLeadModal()">Close</button>
+            </div>
+
+            <input id="leadId" type="hidden" />
+
+            <div class="panel">
+              <h2 style="margin-top:0;">Quick Enrichment</h2>
+              <div class="search-row">
+                <input id="enrichUrl" placeholder="Paste website, Google Maps link, or Yelp link" />
+                <button class="btn btn-primary" type="button" onclick="enrichLeadUrl()">Fetch Info</button>
+                <button class="btn" type="button" onclick="clearLeadForm()">Clear</button>
+              </div>
+              <div id="enrichMessage" class="muted" style="margin-top:10px;"></div>
+            </div>
+
+            <div class="form-grid">
+              <div class="form-field">
+                <label>Lead Type</label>
+                <select id="leadCategory">
+                  <option value="b2b">B2B</option>
+                  <option value="b2c">B2C</option>
+                </select>
+              </div>
+
+              <div class="form-field">
+                <label>Status</label>
+                <select id="leadStatus">
+                  <option value="new">New</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+
+              <div class="form-field">
+                <label>Phone</label>
+                <input id="leadPhone" placeholder="+14085551234" />
+              </div>
+
+              <div class="form-field">
+                <label>Lead Source</label>
+                <select id="leadSource">
+                  <option value="manual">Manual</option>
+                  <option value="voice">Voice</option>
+                  <option value="website">Website</option>
+                  <option value="google_map">Google Map</option>
+                  <option value="yelp">Yelp</option>
+                </select>
+              </div>
+
+              <div class="form-field">
+                <label>Business / Organization Name</label>
+                <input id="leadBusinessName" />
+              </div>
+
+              <div class="form-field">
+                <label>Contact Name</label>
+                <input id="leadContactName" />
+              </div>
+
+              <div class="form-field">
+                <label>Email</label>
+                <input id="leadEmail" />
+              </div>
+
+              <div class="form-field">
+                <label>Website</label>
+                <input id="leadWebsite" />
+              </div>
+
+              <div class="form-field">
+                <label>Google Maps URL</label>
+                <input id="leadGoogleMapsUrl" />
+              </div>
+
+              <div class="form-field">
+                <label>Yelp URL</label>
+                <input id="leadYelpUrl" />
+              </div>
+
+              <div class="form-field">
+                <label>City</label>
+                <input id="leadCity" />
+              </div>
+
+              <div class="form-field">
+                <label>State</label>
+                <input id="leadState" />
+              </div>
+
+              <div class="form-field">
+                <label>Industry</label>
+                <input id="leadIndustry" />
+              </div>
+
+              <div class="form-field">
+                <label>Address</label>
+                <input id="leadAddress" />
+              </div>
+
+              <div class="form-field" style="grid-column:1 / -1;">
+                <label>Notes</label>
+                <textarea id="leadNotes"></textarea>
+              </div>
+
+              <div class="form-field" style="grid-column:1 / -1;">
+                <label>Latest Transcript / Summary</label>
+                <textarea id="leadLatestTranscript"></textarea>
+              </div>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+              <button class="btn" type="button" onclick="closeLeadModal()">Cancel</button>
+              <button class="btn btn-primary" type="button" onclick="saveBusinessLead()">Save Lead</button>
+            </div>
+          </div>
+        </div>
+
         <script>
+          const BUSINESS = ${JSON.stringify(business)};
+
+          function escapeHtmlClient(value) {
+            return String(value ?? "")
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;");
+          }
+
+          function openLeadCreateModal() {
+            clearLeadForm();
+            document.getElementById("leadModalTitle").textContent = "Add Lead";
+            document.getElementById("leadModal").classList.add("open");
+          }
+
+          async function openLeadEditModal(id) {
+            clearLeadForm();
+            document.getElementById("leadModalTitle").textContent = "Edit Lead #" + id;
+            document.getElementById("leadModal").classList.add("open");
+
+            const res = await fetch("/api/business-leads/" + BUSINESS + "/" + id);
+            const json = await res.json();
+
+            if (!json.ok) {
+              alert(json.error || "Failed to load lead");
+              return;
+            }
+
+            const lead = json.data || {};
+
+            document.getElementById("leadId").value = lead.id || "";
+            document.getElementById("leadCategory").value = lead.lead_category || "b2b";
+            document.getElementById("leadStatus").value = lead.status || "new";
+            document.getElementById("leadPhone").value = lead.phone || "";
+            document.getElementById("leadSource").value = lead.lead_source || "manual";
+            document.getElementById("leadBusinessName").value = lead.business_name || "";
+            document.getElementById("leadContactName").value = lead.contact_name || "";
+            document.getElementById("leadEmail").value = lead.email || "";
+            document.getElementById("leadWebsite").value = lead.website || "";
+            document.getElementById("leadGoogleMapsUrl").value = lead.google_maps_url || "";
+            document.getElementById("leadYelpUrl").value = lead.yelp_url || "";
+            document.getElementById("leadCity").value = lead.city || "";
+            document.getElementById("leadState").value = lead.state || "";
+            document.getElementById("leadIndustry").value = lead.industry || "";
+            document.getElementById("leadAddress").value = lead.address || "";
+            document.getElementById("leadNotes").value = lead.notes || "";
+            document.getElementById("leadLatestTranscript").value = lead.latest_transcript || "";
+          }
+
+          function closeLeadModal(event) {
+            if (event && event.target && event.target.id !== "leadModal") return;
+            document.getElementById("leadModal").classList.remove("open");
+          }
+
+          function clearLeadForm() {
+            [
+              "leadId",
+              "leadPhone",
+              "leadBusinessName",
+              "leadContactName",
+              "leadEmail",
+              "leadWebsite",
+              "leadGoogleMapsUrl",
+              "leadYelpUrl",
+              "leadCity",
+              "leadState",
+              "leadIndustry",
+              "leadAddress",
+              "leadNotes",
+              "leadLatestTranscript",
+              "enrichUrl",
+              "enrichMessage"
+            ].forEach(function(id) {
+              const el = document.getElementById(id);
+              if (el) el.value = "";
+              if (id === "enrichMessage" && el) el.textContent = "";
+            });
+
+            document.getElementById("leadCategory").value = BUSINESS === "rasset" ? "b2b" : "b2c";
+            document.getElementById("leadStatus").value = "new";
+            document.getElementById("leadSource").value = "manual";
+          }
+
+          function getLeadPayloadFromForm() {
+            return {
+              phone: document.getElementById("leadPhone").value.trim(),
+              lead_category: document.getElementById("leadCategory").value,
+              status: document.getElementById("leadStatus").value,
+              lead_source: document.getElementById("leadSource").value,
+              business_name: document.getElementById("leadBusinessName").value.trim(),
+              contact_name: document.getElementById("leadContactName").value.trim(),
+              email: document.getElementById("leadEmail").value.trim(),
+              website: document.getElementById("leadWebsite").value.trim(),
+              google_maps_url: document.getElementById("leadGoogleMapsUrl").value.trim(),
+              yelp_url: document.getElementById("leadYelpUrl").value.trim(),
+              city: document.getElementById("leadCity").value.trim(),
+              state: document.getElementById("leadState").value.trim(),
+              industry: document.getElementById("leadIndustry").value.trim(),
+              address: document.getElementById("leadAddress").value.trim(),
+              notes: document.getElementById("leadNotes").value.trim(),
+              latest_transcript: document.getElementById("leadLatestTranscript").value.trim()
+            };
+          }
+
+          async function saveBusinessLead() {
+            const id = document.getElementById("leadId").value;
+            const payload = getLeadPayloadFromForm();
+
+            const url = id
+              ? "/api/business-leads/" + BUSINESS + "/" + id
+              : "/api/business-leads/" + BUSINESS;
+
+            const method = id ? "PUT" : "POST";
+
+            const res = await fetch(url, {
+              method,
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload)
+            });
+
+            const json = await res.json();
+
+            if (!json.ok) {
+              alert(json.error || "Failed to save lead");
+              return;
+            }
+
+            window.location.reload();
+          }
+
+          async function enrichLeadUrl() {
+            const url = document.getElementById("enrichUrl").value.trim();
+
+            if (!url) {
+              alert("Paste a website, Google Maps link, or Yelp link first.");
+              return;
+            }
+
+            document.getElementById("enrichMessage").textContent = "Trying to fetch info...";
+
+            const res = await fetch("/api/business-leads/enrich-url", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url })
+            });
+
+            const json = await res.json();
+
+            if (!json.ok) {
+              document.getElementById("enrichMessage").textContent = json.error || "Could not fetch.";
+              return;
+            }
+
+            const result = json.data || {};
+            const d = result.data || {};
+
+            document.getElementById("enrichMessage").textContent = result.message || "Done.";
+
+            if (d.website) document.getElementById("leadWebsite").value = d.website;
+            if (d.google_maps_url) document.getElementById("leadGoogleMapsUrl").value = d.google_maps_url;
+            if (d.yelp_url) document.getElementById("leadYelpUrl").value = d.yelp_url;
+            if (d.lead_source) document.getElementById("leadSource").value = d.lead_source;
+            if (d.business_name) document.getElementById("leadBusinessName").value = d.business_name;
+            if (d.notes) document.getElementById("leadNotes").value = d.notes;
+          }
+
           async function transcribeLead(id) {
             if (!confirm("Transcribe this voice note now?")) return;
 
@@ -14169,7 +14773,7 @@ function renderBusinessLeadsPage(data) {
           }
 
           async function approveLead(id) {
-            if (!confirm("Approve this transcript and move/create business lead?")) return;
+            if (!confirm("Approve this transcript and create/update business lead?")) return;
 
             const res = await fetch("/api/leads/" + id + "/approve", {
               method: "POST",
@@ -14183,8 +14787,8 @@ function renderBusinessLeadsPage(data) {
               return;
             }
 
-            alert("Lead approved and moved to business table.");
-            window.location.reload();
+            alert("Lead approved. It will now show under All Leads.");
+            window.location.href = "/leads/" + BUSINESS + "?tab=all";
           }
 
           async function rejectLead(id) {
@@ -14223,6 +14827,12 @@ function renderBusinessLeadsPage(data) {
 
             window.location.reload();
           }
+
+          document.addEventListener("keydown", function(event) {
+            if (event.key === "Escape") {
+              closeLeadModal();
+            }
+          });
         </script>
       </body>
     </html>
@@ -18696,19 +19306,141 @@ app.get("/leads/:business", requireDashboardAuth, async (req, res) => {
   try {
     const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
     const business = req.params.business;
-    const selectedTab = ["leads", "in_progress", "completed"].includes(
-      req.query.tab,
-    )
-      ? req.query.tab
-      : "leads";
 
-    const data = await getBusinessLeadsData(orgId, business, selectedTab);
+    const allowedTabs = [
+      "all",
+      "b2b",
+      "b2c",
+      "in_progress",
+      "completed",
+      "voice_inbox",
+    ];
+
+    const selectedTab = allowedTabs.includes(req.query.tab)
+      ? req.query.tab
+      : "all";
+
+    const search = String(req.query.search || "").trim();
+    const page = Number(req.query.page || 1);
+
+    const data = await getBusinessLeadsData(
+      orgId,
+      business,
+      selectedTab,
+      search,
+      page,
+    );
+
     return res.send(renderBusinessLeadsPage(data));
   } catch (error) {
     console.error("GET /leads/:business error:", error);
     return res.status(500).send("Failed to load business leads page");
   }
 });
+
+app.post(
+  "/api/business-leads/:business",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const business = req.params.business;
+
+      const data = await createBusinessLead({
+        orgId,
+        business,
+        body: req.body,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("POST /api/business-leads/:business error:", error);
+      return sendApiError(
+        res,
+        error.statusCode || 500,
+        error.message || "Failed to create lead",
+      );
+    }
+  },
+);
+app.get(
+  "/api/business-leads/:business/:id",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const business = req.params.business;
+      const leadId = Number(req.params.id);
+
+      if (!leadId) {
+        return sendApiError(res, 400, "Invalid lead ID");
+      }
+
+      const data = await getBusinessLeadById({
+        orgId,
+        business,
+        leadId,
+      });
+
+      if (!data) {
+        return sendApiError(res, 404, "Lead not found");
+      }
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("GET /api/business-leads/:business/:id error:", error);
+      return sendApiError(res, 500, error.message || "Failed to fetch lead");
+    }
+  },
+);
+
+app.put(
+  "/api/business-leads/:business/:id",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const business = req.params.business;
+      const leadId = Number(req.params.id);
+
+      if (!leadId) {
+        return sendApiError(res, 400, "Invalid lead ID");
+      }
+
+      const data = await updateBusinessLead({
+        orgId,
+        business,
+        leadId,
+        body: req.body,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("PUT /api/business-leads/:business/:id error:", error);
+      return sendApiError(
+        res,
+        error.statusCode || 500,
+        error.message || "Failed to update lead",
+      );
+    }
+  },
+);
+
+app.post(
+  "/api/business-leads/enrich-url",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const url = String(req.body.url || "").trim();
+      const data = await enrichLeadFromUrl({ url });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("POST /api/business-leads/enrich-url error:", error);
+      return sendApiError(res, 500, error.message || "Failed to enrich URL");
+    }
+  },
+);
 
 app.get("/health/live", (_req, res) => {
   return res.status(200).json({ ok: true, status: "live" });
