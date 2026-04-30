@@ -14902,6 +14902,39 @@ function renderBusinessLeadsPage(data) {
         : `<tr><td colspan="7" class="empty-cell">No leads found.</td></tr>`
       : "";
 
+  const renderConversationRows = (lead) => {
+    const rows = Array.isArray(lead.conversation_rows)
+      ? lead.conversation_rows
+      : [];
+
+    if (!rows.length) {
+      return `
+      <textarea id="translated-${Number(lead.id)}" class="compact-transcript-textarea">${escapeHtml(lead.translated_text || "")}</textarea>
+    `;
+    }
+
+    return `
+    <div class="conversation-thread">
+      ${rows
+        .map((row, index) => {
+          const speaker =
+            row.speaker || row.person || row.role || `Person ${index + 1}`;
+          const text = row.text || row.message || row.content || "";
+
+          return `
+            <div class="conversation-row">
+              <div class="speaker-pill">${escapeHtml(speaker)}</div>
+              <div class="conversation-text">${escapeHtml(text)}</div>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+
+    <textarea id="translated-${Number(lead.id)}" class="compact-transcript-textarea hidden-transcript">${escapeHtml(lead.translated_text || "")}</textarea>
+  `;
+  };
+
   const voiceInboxHtml =
     selectedTab === "voice_inbox"
       ? rows.length
@@ -14915,80 +14948,94 @@ function renderBusinessLeadsPage(data) {
 ${rows
   .map(
     (lead) => `
-    <div class="lead-card" id="lead-card-${Number(lead.id)}">
+    <div class="lead-card compact-voice-card" id="lead-card-${Number(lead.id)}">
 
-      <div class="lead-card-top">
-        <div style="min-width:0; flex:1;">
-          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-            <div class="lead-title">Voice Lead #${escapeHtml(lead.id)}</div>
+      <!-- HEADER -->
+      <div class="voice-header">
+        <div class="voice-left">
+          <label class="voice-select">
+            <input type="checkbox" class="voice-delete-checkbox" value="${Number(lead.id)}">
+            <span class="voice-id">#${escapeHtml(lead.id)}</span>
+          </label>
 
-            <label style="display:inline-flex; gap:7px; align-items:center; font-size:14px; color:var(--muted);">
-              <input type="checkbox" class="voice-delete-checkbox" value="${Number(lead.id)}">
-              Select
-            </label>
-          </div>
-
-          <div class="muted">
+          <div class="voice-meta">
             ${escapeHtml(formatDateTime(lead.created_at))}
-            · Phone: ${escapeHtml(lead.lead_phone)}
-            · Uploaded by: ${escapeHtml(lead.sender_phone)}
+            · ${escapeHtml(lead.lead_phone)}
+            · ${escapeHtml(lead.sender_phone)}
           </div>
         </div>
 
-        <span class="${badgeClass(lead.status)}">${escapeHtml(lead.status)}</span>
+        <div class="voice-right">
+          <span class="${badgeClass(lead.status)}">${escapeHtml(lead.status)}</span>
+
+          <button class="kebab-btn" onclick="toggleVoiceActions(event, ${Number(lead.id)})">⋯</button>
+
+          <div id="voiceActions-${Number(lead.id)}" class="lead-actions-menu">
+
+            <button onclick="deleteVoiceUpload(${Number(lead.id)})">Delete Voice</button>
+
+            ${
+              lead.status === "pending_transcription" ||
+              lead.status === "transcribing"
+                ? `<button onclick="window.transcribeLead(${Number(lead.id)})">Transcribe</button>`
+                : ""
+            }
+
+            ${
+              lead.status === "pending_review"
+                ? `
+                  <button onclick="saveTranscript(${Number(lead.id)})">Save</button>
+                  <button onclick="approveLead(${Number(lead.id)})">Approve</button>
+                  <button onclick="rejectLead(${Number(lead.id)})">Reject</button>
+                  <button onclick="deleteVoiceTranscript(${Number(lead.id)})">Delete Transcript</button>
+                `
+                : ""
+            }
+
+            ${
+              lead.status === "rejected"
+                ? `<button onclick="saveTranscript(${Number(lead.id)})">Edit & Reopen</button>`
+                : ""
+            }
+
+          </div>
+        </div>
       </div>
 
-      <div class="lead-actions" style="align-items:center;">
-        <audio controls preload="none" style="width:100%; max-width:520px;">
+      <!-- AUDIO -->
+      <div class="voice-audio">
+        <audio controls preload="none">
           <source src="/api/lead-voice-uploads/${Number(lead.id)}/audio" type="${escapeHtml(lead.media_content_type || "audio/mpeg")}">
         </audio>
+      </div>
 
-        <button class="btn btn-danger" type="button" onclick="deleteVoiceUpload(${Number(lead.id)})">
-          Delete
-        </button>
+      <!-- TRANSCRIPT -->
+      <details class="voice-transcript" open>
+        <summary>Conversation</summary>
 
-                ${
-                  lead.status === "pending_transcription" ||
-                  lead.status === "transcribing"
-                    ? `<button
-  class="btn btn-primary"
-  type="button"
-  data-transcribe-id="${Number(lead.id)}"
-  onclick="window.transcribeLead(${Number(lead.id)})"
->
-  Transcribe
-</button>`
-                    : ""
-                }
-
-                ${
-                  lead.status === "pending_review"
-                    ? `
-                      <button class="btn btn-primary" type="button" onclick="saveTranscript(${Number(lead.id)})">Save Transcript</button>
-                      <button class="btn btn-success" type="button" onclick="approveLead(${Number(lead.id)})">Approve Transcript</button>
-                      <button class="btn btn-danger" type="button" onclick="rejectLead(${Number(lead.id)})">Reject</button>
-                      <button class="btn btn-danger" type="button" onclick="deleteVoiceTranscript(${Number(lead.id)})">Delete Transcription</button>
-                    `
-                    : ""
-                }
-
-                ${
-                  lead.status === "rejected"
-                    ? `<button class="btn btn-primary" type="button" onclick="saveTranscript(${Number(lead.id)})">Edit & Reopen Review</button>`
-                    : ""
-                }
-
+        <div class="chat-thread">
+          ${escapeHtml(lead.translated_text || "")
+            .split(/(?=Hello|Hi|Okay|Yes|No)/g)
+            .map(
+              (line) => `
+              <div class="chat-line">
+                <div class="chat-bubble">${line.trim()}</div>
               </div>
+            `,
+            )
+            .join("")}
+        </div>
 
-<div class="transcript-grid" style="display:block; width:100%; margin-top:16px;">                <div class="form-field">
-                  <label>English Translation</label>
-<textarea id="translated-${Number(lead.id)}" style="width:100%; min-height:180px;">${escapeHtml(lead.translated_text || "")}</textarea>                </div>
-              </div>
+        <!-- hidden textarea for save -->
+        <textarea id="translated-${Number(lead.id)}" class="hidden-textarea">${escapeHtml(lead.translated_text || "")}</textarea>
 
-            </div>
-          `,
+      </details>
+
+    </div>
+  `,
   )
   .join("")}
+
       `
         : `<div class="panel">No voice leads need review.</div>`
       : "";
@@ -15045,6 +15092,134 @@ ${rows
             border-color:color-mix(in srgb, var(--primary) 55%, transparent);
             color:var(--text-strong);
           }
+          
+          
+          .compact-voice-card {
+  padding: 14px 16px;
+}
+
+.voice-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.voice-main-info {
+  min-width: 0;
+}
+
+.voice-select-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-title {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.voice-meta {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.voice-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
+.voice-audio-row {
+  margin: 8px 0 10px;
+}
+
+.voice-audio-row audio {
+  width: 100%;
+  max-width: 430px;
+  height: 38px;
+}
+
+.transcript-details {
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-top: 10px;
+}
+
+.transcript-details summary {
+  cursor: pointer;
+  font-weight: 900;
+  color: var(--text);
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.conversation-thread {
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.conversation-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.speaker-pill {
+  position: sticky;
+  top: 0;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--text-strong);
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  border-radius: 999px;
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.conversation-text {
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 9px 11px;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.compact-transcript-textarea {
+  width: 100%;
+  min-height: 220px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.hidden-transcript {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .voice-card-header {
+    flex-direction: column;
+  }
+
+  .conversation-row {
+    grid-template-columns: 1fr;
+  }
+
+  .speaker-pill {
+    width: fit-content;
+  }
+}
           
           .lead-name-cell {
   min-width: 520px;
@@ -16176,6 +16351,26 @@ async function saveTranscript(id) {
             }
           });
           
+          
+          function toggleVoiceActions(event, leadId) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  document.querySelectorAll(".lead-actions-menu.open").forEach(function(menu) {
+    if (menu.id !== "voiceActions-" + leadId) {
+      menu.classList.remove("open");
+    }
+  });
+
+  const menu = document.getElementById("voiceActions-" + leadId);
+  if (!menu) return;
+
+  const rect = event.currentTarget.getBoundingClientRect();
+
+  menu.style.top = rect.bottom + 6 + "px";
+  menu.style.left = Math.max(12, rect.right - 180) + "px";
+  menu.classList.toggle("open");
+}
 
 function toggleLeadActions(event, leadId) {
   event.preventDefault();
