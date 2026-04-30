@@ -16043,10 +16043,7 @@ async function deleteVoiceUpload(id) {
   window.location.reload();
 }
 
-
 window.transcribeLead = async function transcribeLead(id) {
-  if (!confirm("Transcribe this voice note now? This can take 30-90 seconds.")) return;
-
   const btn = document.querySelector('[data-transcribe-id="' + id + '"]');
 
   if (btn) {
@@ -16057,30 +16054,36 @@ window.transcribeLead = async function transcribeLead(id) {
   try {
     const res = await fetch("/api/leads/" + id + "/transcribe", {
       method: "POST",
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
     });
 
-    const json = await res.json();
+    const text = await res.text();
+    let json;
+
+    try {
+      json = JSON.parse(text);
+    } catch {
+      alert("Server returned non-JSON response:\n\n" + text.slice(0, 800));
+      return;
+    }
 
     if (!json.ok) {
-      alert(json.error || "Failed to transcribe");
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = "Transcribe";
-      }
+      alert("Transcription failed:\n\n" + (json.error || JSON.stringify(json)));
       return;
     }
 
     alert("Transcription completed.");
     window.location.reload();
   } catch (error) {
-    alert(error?.message || "Failed to transcribe");
+    alert("Transcription request failed:\n\n" + (error?.message || error));
+  } finally {
     if (btn) {
       btn.disabled = false;
       btn.textContent = "Transcribe";
     }
   }
 };
+
 
 async function saveTranscript(id) {
   const translated = document.getElementById("translated-" + id)?.value || "";
@@ -20132,6 +20135,27 @@ app.put(
       console.error("Edit update failed:", err);
       res.status(500).json({ success: false, error: err.message });
     }
+  },
+);
+
+app.get(
+  "/api/leads/voice/:id/debug",
+  requireDashboardAuth,
+  async (req, res) => {
+    const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+    const id = Number(req.params.id);
+
+    const { data, error } = await supabase
+      .from("lead_voice_uploads")
+      .select("*")
+      .eq("org_id", orgId)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) return sendApiError(res, 500, error.message);
+    if (!data) return sendApiError(res, 404, "Voice lead not found");
+
+    return sendApiSuccess(res, data);
   },
 );
 
@@ -29488,21 +29512,52 @@ app.post(
       const leadVoiceId = Number(req.params.id);
 
       if (!leadVoiceId) {
-        return sendApiError(res, 400, "Invalid lead voice ID");
+        return sendApiError(res, 400, "Invalid voice lead id");
       }
 
-      const data = await transcribeLeadVoiceUploadById({
+      const { data: voice, error: voiceError } = await supabase
+        .from("lead_voice_uploads")
+        .select("*")
+        .eq("org_id", orgId)
+        .eq("id", leadVoiceId)
+        .maybeSingle();
+
+      if (voiceError) throw voiceError;
+      if (!voice) return sendApiError(res, 404, "Voice lead not found");
+      if (!voice.media_url)
+        return sendApiError(res, 400, "Voice lead has no media_url");
+
+      await supabase
+        .from("lead_voice_uploads")
+        .update({
+          status: "transcribing",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("org_id", orgId)
+        .eq("id", leadVoiceId);
+
+      const result = await transcribeLeadVoiceUploadById({
         leadVoiceId,
         orgId,
       });
 
-      return sendApiSuccess(res, data);
+      return sendApiSuccess(res, result || { message: "Transcribed" });
     } catch (error) {
       console.error("POST /api/leads/:id/transcribe error:", error);
+
+      await supabase
+        .from("lead_voice_uploads")
+        .update({
+          status: "pending_transcription",
+          transcription_error: String(error.message || error),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", Number(req.params.id));
+
       return sendApiError(
         res,
         500,
-        error.message || "Failed to transcribe lead",
+        error.message || "Failed to transcribe voice lead",
       );
     }
   },
