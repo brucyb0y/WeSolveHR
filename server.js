@@ -14464,13 +14464,11 @@ function renderBusinessLeadsPage(data) {
                   <button class="btn btn-danger" type="button" onclick="deleteBusinessLead('${escapeHtml(
                     business,
                   )}', ${Number(lead.id)})">Delete</button>
-                  <select onchange="updateBusinessLeadStatus('${escapeHtml(
-                    business,
-                  )}', ${Number(lead.id)}, this.value)">
-                    <option value="new" ${lead.status === "new" ? "selected" : ""}>New</option>
-                    <option value="in_progress" ${lead.status === "in_progress" ? "selected" : ""}>In Progress</option>
-                    <option value="completed" ${lead.status === "completed" ? "selected" : ""}>Completed</option>
-                  </select>
+<select class="lead-status-select" onchange="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, this.value)">
+  <option value="new" ${lead.status === "new" ? "selected" : ""}>New</option>
+  <option value="in_progress" ${lead.status === "in_progress" ? "selected" : ""}>Progress</option>
+  <option value="completed" ${lead.status === "completed" ? "selected" : ""}>Done</option>
+</select>
                 </td>
               </tr>
             `,
@@ -14632,6 +14630,15 @@ function renderBusinessLeadsPage(data) {
             border-radius:12px; background:rgba(255,255,255,0.05);
             border:1px solid rgba(255,255,255,0.12); font-weight:800; cursor:pointer;
           }
+          
+          .lead-status-select {
+  width: 92px;
+  max-width: 92px;
+  padding: 8px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
           .btn-primary {
             background:var(--primary-soft); color:var(--text-strong);
             border-color:color-mix(in srgb, var(--primary) 55%, transparent);
@@ -15085,7 +15092,8 @@ async function uploadRassetExcel() {
   const json = await res.json();
 
   if (!json.ok) {
-    alert(json.error || "Excel import failed");
+    alert("Excel import failed:\n" + (json.error || JSON.stringify(json)));
+console.error("Excel import failed:", json);
     return;
   }
 
