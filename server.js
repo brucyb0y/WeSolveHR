@@ -14373,7 +14373,7 @@ function renderLeadsOverviewPage(data) {
         <div class="wrap">
           <div class="topbar">
             <div>
-              <div class="eyebrow">Lead Voice Inbox</div>
+              <div class="eyebrow">Voice Upload Inbox</div>
               <h1>Leads Overview</h1>
               <div class="subtitle">Voice leads received from WhatsApp, grouped by business.</div>
             </div>
@@ -14434,47 +14434,51 @@ function renderBusinessLeadsPage(data) {
               (lead) => `
               <tr>
                 <td>
-                  <div style="font-weight:900;">${escapeHtml(
-                    lead.company ||
-                      lead.business_name ||
-                      lead.contact_name ||
-                      lead.phone ||
-                      "Lead #" + lead.id,
-                  )}</div>
-                  <div class="muted">#${escapeHtml(lead.id)} · ${escapeHtml(
-                    lead.lead_source || "manual",
-                  )}</div>
+                  <div style="font-weight:900;">
+                    ${escapeHtml(lead.company || lead.business_name || "Lead #" + lead.id)}
+                    ${lead.factory_setup === "multiple_sites" ? " · Multi-site" : ""}
+                  </div>
+                  <div class="muted">
+                    ${escapeHtml(lead.contact_name || lead.owner_name || "-")} · ${escapeHtml(lead.phone || "-")}
+                  </div>
                 </td>
-                <td>${
-                  lead.website
-                    ? `<a href="${escapeHtml(lead.website)}" target="_blank" rel="noopener noreferrer">Website</a>`
-                    : "-"
-                }</td>
-                <td>${escapeHtml(lead.email || "-")}</td>
-                <td>${escapeHtml(lead.industry || "-")}</td>
-                <td>${escapeHtml(lead.city || "-")}</td>
-                <td>${escapeHtml(lead.phone || "-")}</td>
-                <td><span class="${badgeClass(lead.lead_stage || lead.status)}">${escapeHtml(
-                  lead.lead_stage || lead.status || "prospect",
-                )}</span></td>
+
                 <td>
-                  <button class="btn" type="button" onclick="openLeadEditModal(${Number(
-                    lead.id,
-                  )})">Edit</button>
-                  <button class="btn btn-danger" type="button" onclick="deleteBusinessLead('${escapeHtml(
-                    business,
-                  )}', ${Number(lead.id)})">Delete</button>
-<select class="lead-status-select" onchange="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, this.value)">
-  <option value="new" ${lead.status === "new" ? "selected" : ""}>New</option>
-  <option value="in_progress" ${lead.status === "in_progress" ? "selected" : ""}>Progress</option>
-  <option value="completed" ${lead.status === "completed" ? "selected" : ""}>Done</option>
-</select>
+                  <div>${escapeHtml([lead.city, lead.state, lead.country].filter(Boolean).join(", ") || "-")}</div>
+                  <div class="muted">${escapeHtml(lead.pin_code || lead.location || "")}</div>
+                </td>
+
+                <td>
+                  ${lead.website ? `<a href="${escapeHtml(lead.website)}" target="_blank" rel="noopener noreferrer">Website</a>` : "-"}
+                  ${lead.google_maps_url ? `<div><a href="${escapeHtml(lead.google_maps_url)}" target="_blank" rel="noopener noreferrer">Google Map</a></div>` : ""}
+                </td>
+
+                <td>
+                  <div>${escapeHtml(lead.industry || "-")}</div>
+                  <div class="muted">Employees: ${escapeHtml(lead.number_of_employees || lead.company_size || "-")}</div>
+                  <div class="muted">Machines: ${escapeHtml(lead.machine_count_range || "-")}</div>
+                </td>
+
+                <td>
+                  <span class="${badgeClass(lead.lead_stage || lead.status)}">
+                    ${escapeHtml(lead.lead_stage || lead.status || "prospect")}
+                  </span>
+                </td>
+
+                <td>
+                  <button class="btn" type="button" onclick="openLeadEditModal(${Number(lead.id)})">Edit</button>
+                  <button class="btn btn-danger" type="button" onclick="deleteBusinessLead('${escapeHtml(business)}', ${Number(lead.id)})">Delete</button>
+                  <select class="lead-status-select" onchange="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, this.value)">
+                    <option value="new" ${lead.status === "new" ? "selected" : ""}>New</option>
+                    <option value="in_progress" ${lead.status === "in_progress" ? "selected" : ""}>Progress</option>
+                    <option value="completed" ${lead.status === "completed" ? "selected" : ""}>Done</option>
+                  </select>
                 </td>
               </tr>
             `,
             )
             .join("")
-        : `<tr><td colspan="8" class="empty-cell">No leads found.</td></tr>`
+        : `<tr><td colspan="6" class="empty-cell">No leads found.</td></tr>`
       : "";
 
   const voiceInboxHtml =
@@ -14559,6 +14563,14 @@ function renderBusinessLeadsPage(data) {
           ${buildThemeCss()}
           ${buildBasePageCss()}
           ${buildTopNavCss()}
+
+.lead-status-select {
+  width: 92px;
+  max-width: 92px;
+  padding: 8px;
+  border-radius: 10px;
+  font-size: 12px;
+}
 
           .wrap { max-width: 1600px; margin: 0 auto; padding: 24px 18px 36px; }
           .topbar, .panel, .stat-card, .lead-card {
@@ -14742,12 +14754,10 @@ function renderBusinessLeadsPage(data) {
                   <table>
                     <thead>
                       <tr>
-<th>Company</th>
-<th>Website</th>
-<th>Email</th>
-<th>Industry</th>
-<th>City</th>
-<th>Phone</th>
+<th>Company / Contact</th>
+<th>Location</th>
+<th>Web / Maps</th>
+<th>Industry / Size</th>
 <th>Stage</th>
 <th>Actions</th>
                       </tr>
