@@ -190,15 +190,15 @@ async function getBusinessLeadsData(
   let businessRows = [];
 
   if (tableName) {
-let query = supabase
-  .from(tableName)
-  .select("*")
-  .eq("org_id", orgId)
-  .order("created_at", { ascending: false });
+    let query = supabase
+      .from(tableName)
+      .select("*")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false });
 
-if (tableName === "rasset_leads") {
-  query = query.or("is_deleted.is.null,is_deleted.eq.false");
-}
+    if (tableName === "rasset_leads") {
+      query = query.or("is_deleted.is.null,is_deleted.eq.false");
+    }
 
     if (q) {
       query = query.or(
@@ -212,14 +212,14 @@ if (tableName === "rasset_leads") {
           `notes.ilike.%${q}%`,
           `latest_transcript.ilike.%${q}%`,
           `company.ilike.%${q}%`,
-`website.ilike.%${q}%`,
-`pin_code.ilike.%${q}%`,
-`location.ilike.%${q}%`,
-`country.ilike.%${q}%`,
-`owner_name.ilike.%${q}%`,
-`number_of_employees.ilike.%${q}%`,
-`company_size.ilike.%${q}%`,
-`lead_stage.ilike.%${q}%`,
+          `website.ilike.%${q}%`,
+          `pin_code.ilike.%${q}%`,
+          `location.ilike.%${q}%`,
+          `country.ilike.%${q}%`,
+          `owner_name.ilike.%${q}%`,
+          `number_of_employees.ilike.%${q}%`,
+          `company_size.ilike.%${q}%`,
+          `lead_stage.ilike.%${q}%`,
         ].join(","),
       );
     }
@@ -233,7 +233,12 @@ if (tableName === "rasset_leads") {
   const voice = voiceRows || [];
 
   const voiceInboxRows = voice.filter((x) =>
-    ["pending_transcription", "transcribing", "pending_review", "rejected"].includes(x.status),
+    [
+      "pending_transcription",
+      "transcribing",
+      "pending_review",
+      "rejected",
+    ].includes(x.status),
   );
 
   const filteredBusinessRows = businessRows.filter((x) => {
@@ -246,7 +251,8 @@ if (tableName === "rasset_leads") {
 
   const pagedBusinessRows = filteredBusinessRows.slice(from, to + 1);
 
-  const rows = selectedTab === "voice_inbox" ? voiceInboxRows : pagedBusinessRows;
+  const rows =
+    selectedTab === "voice_inbox" ? voiceInboxRows : pagedBusinessRows;
 
   return {
     business: normalizedBusiness,
@@ -262,7 +268,8 @@ if (tableName === "rasset_leads") {
       all: businessRows.length,
       b2b: businessRows.filter((x) => x.lead_category === "b2b").length,
       b2c: businessRows.filter((x) => x.lead_category === "b2c").length,
-      in_progress: businessRows.filter((x) => x.status === "in_progress").length,
+      in_progress: businessRows.filter((x) => x.status === "in_progress")
+        .length,
       completed: businessRows.filter((x) => x.status === "completed").length,
       voice_inbox: voiceInboxRows.length,
       total: businessRows.length,
@@ -5693,7 +5700,6 @@ function monthNameToNumber(monthText) {
   return months[normalizeText(monthText)] || null;
 }
 
-
 function parseLeadUploadCommand(text) {
   const raw = normalizeText(text).replace(/\s+/g, " ");
 
@@ -5704,11 +5710,17 @@ function parseLeadUploadCommand(text) {
   const leadPhone = normalizePhoneForLogin(match[2].trim());
 
   if (!business) {
-    return { error: "❌ Business name is missing.\nUse: lead rasset upload +14085551234" };
+    return {
+      error:
+        "❌ Business name is missing.\nUse: lead rasset upload +14085551234",
+    };
   }
 
   if (!leadPhone || leadPhone.length < 8) {
-    return { error: "❌ Lead phone number is missing or invalid.\nUse: lead rasset upload +14085551234" };
+    return {
+      error:
+        "❌ Lead phone number is missing or invalid.\nUse: lead rasset upload +14085551234",
+    };
   }
 
   return {
@@ -5745,7 +5757,13 @@ function isAudioMedia(mediaContentType) {
   );
 }
 
-async function createLeadUploadSession({ orgId, senderPhone, business, leadPhone, userId }) {
+async function createLeadUploadSession({
+  orgId,
+  senderPhone,
+  business,
+  leadPhone,
+  userId,
+}) {
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
   await supabase
@@ -5782,7 +5800,9 @@ async function createLeadUploadSession({ orgId, senderPhone, business, leadPhone
 async function getLeadsOverviewData(orgId) {
   const { data: voiceRows, error: voiceError } = await supabase
     .from("lead_voice_uploads")
-    .select("id, business, lead_phone, sender_phone, status, media_content_type, created_at")
+    .select(
+      "id, business, lead_phone, sender_phone, status, media_content_type, created_at",
+    )
     .eq("org_id", orgId)
     .order("created_at", { ascending: false });
 
@@ -5797,7 +5817,10 @@ async function getLeadsOverviewData(orgId) {
   const businesses = [];
 
   for (const item of businessTables) {
-    let query = supabase.from(item.table).select("id, status", { count: "exact" }).eq("org_id", orgId);
+    let query = supabase
+      .from(item.table)
+      .select("id, status", { count: "exact" })
+      .eq("org_id", orgId);
 
     if (item.table === "rasset_leads") {
       query = query.or("is_deleted.is.null,is_deleted.eq.false");
@@ -5810,10 +5833,14 @@ async function getLeadsOverviewData(orgId) {
       businesses.push({
         business: item.business,
         total: count || rows.length,
-        leads: rows.filter((x) => !["in_progress", "completed"].includes(x.status)).length,
+        leads: rows.filter(
+          (x) => !["in_progress", "completed"].includes(x.status),
+        ).length,
         in_progress: rows.filter((x) => x.status === "in_progress").length,
         completed: rows.filter((x) => x.status === "completed").length,
-        voice_uploads: (voiceRows || []).filter((x) => x.business === item.business).length,
+        voice_uploads: (voiceRows || []).filter(
+          (x) => x.business === item.business,
+        ).length,
       });
     }
   }
@@ -5900,7 +5927,6 @@ async function saveLeadVoiceUpload({
 
   return data;
 }
-
 
 function parseLateForOtherCommand(text) {
   const raw = normalizeText(text);
@@ -7256,7 +7282,6 @@ async function canModifyTask(user, task) {
   return ownerIds.includes(user.id);
 }
 
-
 function getBusinessLeadTableName(business) {
   const key = normalizeText(business);
 
@@ -7371,7 +7396,10 @@ Rules:
     detected_language: parsed.detected_language || "unknown",
     cleaned_transcript: parsed.cleaned_transcript || rawTranscript || "",
     translated_text:
-      parsed.translated_text || parsed.cleaned_transcript || rawTranscript || "",
+      parsed.translated_text ||
+      parsed.cleaned_transcript ||
+      rawTranscript ||
+      "",
   };
 }
 
@@ -7487,11 +7515,16 @@ async function approveLeadVoiceUpload({ leadVoiceId, orgId, userId }) {
   const tableName = getBusinessLeadTableName(business);
 
   if (!tableName) {
-    throw new Error(`No business lead table configured for business: ${lead.business}`);
+    throw new Error(
+      `No business lead table configured for business: ${lead.business}`,
+    );
   }
 
   const transcriptForLead =
-    lead.translated_text || lead.cleaned_transcript || lead.raw_transcript || "";
+    lead.translated_text ||
+    lead.cleaned_transcript ||
+    lead.raw_transcript ||
+    "";
 
   const { data: existingLead, error: existingError } = await supabase
     .from(tableName)
@@ -7520,15 +7553,15 @@ async function approveLeadVoiceUpload({ leadVoiceId, orgId, userId }) {
     if (error) throw error;
     businessLead = data;
   } else {
-const basePayload = {
-  org_id: orgId,
-  phone: lead.lead_phone,
-  lead_category: business === "rasset" ? "b2b" : "b2c",
-  lead_source: "voice",
-  source_voice_upload_id: lead.id,
-  latest_transcript: transcriptForLead,
-  status: "new",
-};
+    const basePayload = {
+      org_id: orgId,
+      phone: lead.lead_phone,
+      lead_category: business === "rasset" ? "b2b" : "b2c",
+      lead_source: "voice",
+      source_voice_upload_id: lead.id,
+      latest_transcript: transcriptForLead,
+      status: "new",
+    };
 
     if (tableName === "rasset_leads") {
       basePayload.problem_summary = transcriptForLead;
@@ -7580,7 +7613,9 @@ async function updateBusinessLeadStatus({ business, leadId, orgId, status }) {
   const tableName = getBusinessLeadTableName(business);
 
   if (!tableName) {
-    throw new Error(`No business lead table configured for business: ${business}`);
+    throw new Error(
+      `No business lead table configured for business: ${business}`,
+    );
   }
 
   if (!["new", "in_progress", "completed"].includes(status)) {
@@ -7610,7 +7645,8 @@ function buildBusinessLeadPayloadFromBody(body) {
     lead_stage: normalizeText(body.lead_stage || "prospect"),
 
     company: String(body.company || body.business_name || "").trim() || null,
-    business_name: String(body.business_name || body.company || "").trim() || null,
+    business_name:
+      String(body.business_name || body.company || "").trim() || null,
     contact_name: String(body.contact_name || "").trim() || null,
     owner_name: String(body.owner_name || "").trim() || null,
 
@@ -7627,7 +7663,8 @@ function buildBusinessLeadPayloadFromBody(body) {
     country: String(body.country || "").trim() || null,
 
     industry: String(body.industry || "").trim() || null,
-    year_of_establishment: String(body.year_of_establishment || "").trim() || null,
+    year_of_establishment:
+      String(body.year_of_establishment || "").trim() || null,
     number_of_employees: String(body.number_of_employees || "").trim() || null,
     company_size: String(body.company_size || "").trim() || null,
 
@@ -7661,7 +7698,6 @@ function validateBusinessLeadPayload(payload) {
   return null;
 }
 
-
 async function createBusinessLead({ orgId, business, body }) {
   const tableName = getBusinessLeadTableName(business);
 
@@ -7681,7 +7717,8 @@ async function createBusinessLead({ orgId, business, body }) {
   const insertPayload = {
     org_id: orgId,
     ...payload,
-    latest_transcript: String(body.latest_transcript || body.notes || "").trim() || null,
+    latest_transcript:
+      String(body.latest_transcript || body.notes || "").trim() || null,
     updated_at: new Date().toISOString(),
   };
 
@@ -7808,7 +7845,9 @@ async function enrichLeadFromUrl({ url, googleMapsUrl = "" }) {
         data.business_name = title || null;
         data.notes = description || null;
         data.email = emailMatch?.[0] || null;
-        data.phone = phoneMatch?.[0] ? normalizePhoneForLogin(phoneMatch[0]) : null;
+        data.phone = phoneMatch?.[0]
+          ? normalizePhoneForLogin(phoneMatch[0])
+          : null;
       } else {
         data.enrichment_notes = `Website fetch failed with status ${response.status}`;
       }
@@ -7858,7 +7897,8 @@ Rules:
         ],
       });
 
-      const parsed = safeParseJson(completion.choices?.[0]?.message?.content || "{}") || {};
+      const parsed =
+        safeParseJson(completion.choices?.[0]?.message?.content || "{}") || {};
 
       for (const key of [
         "company",
@@ -7882,7 +7922,8 @@ Rules:
       data.business_name = data.company || data.business_name || null;
       data.phone = data.phone ? normalizePhoneForLogin(data.phone) : null;
       data.enrichment_status = "enriched";
-      data.enrichment_notes = parsed.confidence_notes || data.enrichment_notes || null;
+      data.enrichment_notes =
+        parsed.confidence_notes || data.enrichment_notes || null;
     } catch (error) {
       data.enrichment_status = "partial";
       data.enrichment_notes = `AI extraction failed: ${error.message}`;
@@ -7920,7 +7961,11 @@ function mapExcelRowToRassetLead(row) {
   const get = (...keys) => {
     for (const key of keys) {
       const value = normalized[normalizeExcelHeader(key)];
-      if (value !== undefined && value !== null && String(value).trim() !== "") {
+      if (
+        value !== undefined &&
+        value !== null &&
+        String(value).trim() !== ""
+      ) {
         return String(value).trim();
       }
     }
@@ -7937,14 +7982,25 @@ function mapExcelRowToRassetLead(row) {
     city: get("city", "City"),
     location: get("Location", "address", "Address"),
     phone: normalizePhoneForLogin(get("Phone", "phone", "mobile")),
-    year_of_establishment: get("year of estb.", "year_of_establishment", "established"),
+    year_of_establishment: get(
+      "year of estb.",
+      "year_of_establishment",
+      "established",
+    ),
     owner_name: get("ownwer", "owner", "owner_name"),
-    number_of_employees: get("No of Employe", "No of Employee", "employees", "number_of_employees"),
+    number_of_employees: get(
+      "No of Employe",
+      "No of Employee",
+      "employees",
+      "number_of_employees",
+    ),
     company_size: get("Company Size", "company_size"),
     google_maps_url: get("Google Map", "google_map", "google_maps_url"),
     country: get("country", "Country"),
 
-    lead_category: normalizeText(get("lead_category", "type of lead", "lead type") || "b2b"),
+    lead_category: normalizeText(
+      get("lead_category", "type of lead", "lead type") || "b2b",
+    ),
     lead_stage: normalizeText(get("lead_stage", "stage") || "prospect"),
     lead_source: normalizeText(get("lead_source", "source") || "excel"),
     status: normalizeText(get("status") || "new"),
@@ -7976,7 +8032,12 @@ async function importRassetLeadsFromExcel({ orgId, buffer }) {
     try {
       const payload = mapExcelRowToRassetLead(rows[i]);
 
-      if (!payload.company && !payload.website && !payload.phone && !payload.google_maps_url) {
+      if (
+        !payload.company &&
+        !payload.website &&
+        !payload.phone &&
+        !payload.google_maps_url
+      ) {
         results.skipped += 1;
         continue;
       }
@@ -8068,7 +8129,6 @@ async function deleteBusinessLead({ orgId, business, leadId }) {
   if (error) throw error;
   return data;
 }
-
 
 async function parseTaskWithAI(text) {
   if (!openai) return null;
@@ -14351,7 +14411,6 @@ function renderLeadsOverviewPage(data) {
   `;
 }
 
-
 function renderBusinessLeadsPage(data) {
   const business = data.business;
   const rows = data.rows || [];
@@ -14367,12 +14426,12 @@ function renderBusinessLeadsPage(data) {
     </a>
   `;
 
-const leadRowsHtml =
-  selectedTab !== "voice_inbox"
-    ? rows.length
-      ? rows
-          .map(
-            (lead) => `
+  const leadRowsHtml =
+    selectedTab !== "voice_inbox"
+      ? rows.length
+        ? rows
+            .map(
+              (lead) => `
               <tr>
                 <td class="lead-name-cell">
                   <div class="lead-company-name">
@@ -14424,10 +14483,10 @@ const leadRowsHtml =
                 </td>
               </tr>
             `,
-          )
-          .join("")
-      : `<tr><td colspan="7" class="empty-cell">No leads found.</td></tr>`
-    : "";
+            )
+            .join("")
+        : `<tr><td colspan="7" class="empty-cell">No leads found.</td></tr>`
+      : "";
 
   const voiceInboxHtml =
     selectedTab === "voice_inbox"
@@ -14452,7 +14511,8 @@ const leadRowsHtml =
                     <a class="btn" href="${escapeHtml(lead.media_url)}" target="_blank" rel="noopener noreferrer">Play Audio</a>
 
                     ${
-                      lead.status === "pending_transcription" || lead.status === "transcribing"
+                      lead.status === "pending_transcription" ||
+                      lead.status === "transcribing"
                         ? `<button class="btn btn-primary" type="button" onclick="transcribeLead(${Number(lead.id)})">Transcribe</button>`
                         : ""
                     }
@@ -14762,8 +14822,8 @@ const leadRowsHtml =
                 </div>
                 
                 ${
-  business === "rasset" && selectedTab !== "voice_inbox"
-    ? `
+                  business === "rasset" && selectedTab !== "voice_inbox"
+                    ? `
       <div class="panel">
         <h2 style="margin-top:0;">Import Rasset Excel</h2>
         <div class="search-row">
@@ -14773,8 +14833,8 @@ const leadRowsHtml =
         </div>
       </div>
     `
-    : ""
-}
+                    : ""
+                }
 
                 <div class="panel">
                   <table>
@@ -15147,34 +15207,6 @@ console.error("Excel import failed:", json);
   window.location.reload();
 }
 
-function toggleLeadActions(event, leadId) {
-  event.preventDefault();
-  event.stopPropagation();
-
-  document.querySelectorAll(".lead-actions-menu.open").forEach(function(menu) {
-    if (menu.id !== "leadActions-" + leadId) {
-      menu.classList.remove("open");
-    }
-  });
-
-  const menu = document.getElementById("leadActions-" + leadId);
-  if (!menu) {
-    alert("Action menu not found for lead " + leadId);
-    return;
-  }
-
-  const rect = event.currentTarget.getBoundingClientRect();
-
-  menu.style.top = rect.bottom + 6 + "px";
-  menu.style.left = Math.max(12, rect.right - 180) + "px";
-  menu.classList.toggle("open");
-}
-
-document.addEventListener("click", function() {
-  document.querySelectorAll(".lead-actions-menu.open").forEach(function(menu) {
-    menu.classList.remove("open");
-  });
-});
 
           function getLeadPayloadFromForm() {
             return {
@@ -15398,7 +15430,9 @@ async function enrichLeadUrl() {
             }
           });
           
-          function toggleLeadActions(event, leadId) {
+
+function toggleLeadActions(event, leadId) {
+  event.preventDefault();
   event.stopPropagation();
 
   document.querySelectorAll(".lead-actions-menu.open").forEach(function(menu) {
@@ -15408,15 +15442,19 @@ async function enrichLeadUrl() {
   });
 
   const menu = document.getElementById("leadActions-" + leadId);
-  if (!menu) return;
+  if (!menu) {
+    console.error("Menu not found for lead:", leadId);
+    return;
+  }
 
   const rect = event.currentTarget.getBoundingClientRect();
+
   menu.style.top = rect.bottom + 6 + "px";
   menu.style.left = Math.max(12, rect.right - 180) + "px";
   menu.classList.toggle("open");
 }
 
-document.addEventListener("click", function() {
+document.addEventListener("click", function () {
   document.querySelectorAll(".lead-actions-menu.open").forEach(function(menu) {
     menu.classList.remove("open");
   });
@@ -15427,8 +15465,6 @@ document.addEventListener("click", function() {
     </html>
   `;
 }
-
-
 
 function renderReportsSummaryHtml(compliance = {}, reportDate) {
   const safeCompliance = {
@@ -19882,7 +19918,6 @@ app.post(
   },
 );
 
-
 app.get("/leads", requireDashboardAuth, async (req, res) => {
   try {
     const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
@@ -19893,7 +19928,6 @@ app.get("/leads", requireDashboardAuth, async (req, res) => {
     return res.status(500).send("Failed to load leads page");
   }
 });
-
 
 app.get("/leads/:business", requireDashboardAuth, async (req, res) => {
   try {
@@ -19944,10 +19978,13 @@ app.post("/api/rasset-leads/enrich", requireDashboardAuth, async (req, res) => {
     return sendApiSuccess(res, data);
   } catch (error) {
     console.error("POST /api/rasset-leads/enrich error:", error);
-    return sendApiError(res, 500, error.message || "Failed to enrich Rasset lead");
+    return sendApiError(
+      res,
+      500,
+      error.message || "Failed to enrich Rasset lead",
+    );
   }
 });
-
 
 app.post(
   "/api/rasset-leads/import-excel",
@@ -19974,123 +20011,140 @@ app.post(
   },
 );
 
-app.delete("/api/business-leads/:business/:id", requireDashboardAuth, async (req, res) => {
-  try {
-    const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
-    const business = req.params.business;
-    const leadId = Number(req.params.id);
+app.delete(
+  "/api/business-leads/:business/:id",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const business = req.params.business;
+      const leadId = Number(req.params.id);
 
-    if (!leadId) {
-      return sendApiError(res, 400, "Invalid lead ID");
+      if (!leadId) {
+        return sendApiError(res, 400, "Invalid lead ID");
+      }
+
+      const data = await deleteBusinessLead({
+        orgId,
+        business,
+        leadId,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("DELETE /api/business-leads/:business/:id error:", error);
+      return sendApiError(res, 500, error.message || "Failed to delete lead");
     }
+  },
+);
 
-    const data = await deleteBusinessLead({
-      orgId,
-      business,
-      leadId,
-    });
+app.post(
+  "/api/business-leads/:business",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const business = req.params.business;
 
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("DELETE /api/business-leads/:business/:id error:", error);
-    return sendApiError(res, 500, error.message || "Failed to delete lead");
-  }
-});
+      const data = await createBusinessLead({
+        orgId,
+        business,
+        body: req.body,
+      });
 
-
-app.post("/api/business-leads/:business", requireDashboardAuth, async (req, res) => {
-  try {
-    const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
-    const business = req.params.business;
-
-    const data = await createBusinessLead({
-      orgId,
-      business,
-      body: req.body,
-    });
-
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("POST /api/business-leads/:business error:", error);
-    return sendApiError(
-      res,
-      error.statusCode || 500,
-      error.message || "Failed to create lead",
-    );
-  }
-});
-app.get("/api/business-leads/:business/:id", requireDashboardAuth, async (req, res) => {
-  try {
-    const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
-    const business = req.params.business;
-    const leadId = Number(req.params.id);
-
-    if (!leadId) {
-      return sendApiError(res, 400, "Invalid lead ID");
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("POST /api/business-leads/:business error:", error);
+      return sendApiError(
+        res,
+        error.statusCode || 500,
+        error.message || "Failed to create lead",
+      );
     }
+  },
+);
+app.get(
+  "/api/business-leads/:business/:id",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const business = req.params.business;
+      const leadId = Number(req.params.id);
 
-    const data = await getBusinessLeadById({
-      orgId,
-      business,
-      leadId,
-    });
+      if (!leadId) {
+        return sendApiError(res, 400, "Invalid lead ID");
+      }
 
-    if (!data) {
-      return sendApiError(res, 404, "Lead not found");
+      const data = await getBusinessLeadById({
+        orgId,
+        business,
+        leadId,
+      });
+
+      if (!data) {
+        return sendApiError(res, 404, "Lead not found");
+      }
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("GET /api/business-leads/:business/:id error:", error);
+      return sendApiError(res, 500, error.message || "Failed to fetch lead");
     }
+  },
+);
 
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("GET /api/business-leads/:business/:id error:", error);
-    return sendApiError(res, 500, error.message || "Failed to fetch lead");
-  }
-});
+app.put(
+  "/api/business-leads/:business/:id",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const business = req.params.business;
+      const leadId = Number(req.params.id);
 
-app.put("/api/business-leads/:business/:id", requireDashboardAuth, async (req, res) => {
-  try {
-    const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
-    const business = req.params.business;
-    const leadId = Number(req.params.id);
+      if (!leadId) {
+        return sendApiError(res, 400, "Invalid lead ID");
+      }
 
-    if (!leadId) {
-      return sendApiError(res, 400, "Invalid lead ID");
+      const data = await updateBusinessLead({
+        orgId,
+        business,
+        leadId,
+        body: req.body,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("PUT /api/business-leads/:business/:id error:", error);
+      return sendApiError(
+        res,
+        error.statusCode || 500,
+        error.message || "Failed to update lead",
+      );
     }
+  },
+);
 
-    const data = await updateBusinessLead({
-      orgId,
-      business,
-      leadId,
-      body: req.body,
-    });
+app.post(
+  "/api/business-leads/enrich-url",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const url = String(req.body.url || "").trim();
 
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("PUT /api/business-leads/:business/:id error:", error);
-    return sendApiError(
-      res,
-      error.statusCode || 500,
-      error.message || "Failed to update lead",
-    );
-  }
-});
+      const data = await enrichLeadFromUrl({
+        url,
+        googleMapsUrl: "",
+      });
 
-app.post("/api/business-leads/enrich-url", requireDashboardAuth, async (req, res) => {
-  try {
-    const url = String(req.body.url || "").trim();
-
-    const data = await enrichLeadFromUrl({
-      url,
-      googleMapsUrl: "",
-    });
-
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("POST /api/business-leads/enrich-url error:", error);
-    return sendApiError(res, 500, error.message || "Failed to enrich URL");
-  }
-});
-
-
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("POST /api/business-leads/enrich-url error:", error);
+      return sendApiError(res, 500, error.message || "Failed to enrich URL");
+    }
+  },
+);
 
 app.get("/health/live", (_req, res) => {
   return res.status(200).json({ ok: true, status: "live" });
@@ -27459,7 +27513,6 @@ app.post("/whatsapp", async (req, res) => {
       resolvedOrgId,
     );
 
-
     if (processingStart.error) {
       console.error("Inbound processing start error:", processingStart.error);
       return sendTwiml(res, "❌ System error while processing message");
@@ -27471,7 +27524,7 @@ app.post("/whatsapp", async (req, res) => {
         "Duplicate message detected. No action was repeated.",
       );
     }
-    
+
     const logResult = await logIncomingMessage(user, req.body, body, from);
 
     if (logResult.error) {
@@ -27499,9 +27552,7 @@ app.post("/whatsapp", async (req, res) => {
         "⚠️ We already received this message. If your attendance did not update, send 'status'.",
       );
     }
-    
-    
-    
+
     if (!user) {
       await failInboundProcessing(messageSid, "unknown_user", resolvedOrgId);
       return sendTwiml(
@@ -27511,124 +27562,122 @@ app.post("/whatsapp", async (req, res) => {
     }
 
     console.log(`Mapped sender to user: ${user.name} (${user.role})`);
-        
+
     const leadCommand = parseLeadUploadCommand(body);
 
-if (leadCommand?.error) {
-  await logParse({
-    intentDetected: "lead_upload_command",
-    parserUsed: "parseLeadUploadCommand",
-    parsedJson: leadCommand,
-    validationPassed: false,
-    validationError: "invalid_lead_upload_command",
-    actionTaken: "reply_lead_command_error",
-  });
-
-  return sendTwiml(res, leadCommand.error);
-}
-
-if (leadCommand) {
-  await logParse({
-    intentDetected: "lead_upload_command",
-    parserUsed: "parseLeadUploadCommand",
-    parsedJson: leadCommand,
-    validationPassed: true,
-    validationError: null,
-    actionTaken: "create_lead_upload_session",
-  });
-
-  return runInboundAction({
-    successType: "lead_upload_session_created",
-    failureType: "lead_upload_session_failed",
-    action: async () => {
-      await createLeadUploadSession({
-        orgId: resolvedOrgId,
-        senderPhone: from,
-        business: leadCommand.business,
-        leadPhone: leadCommand.lead_phone,
-        userId: user?.id,
+    if (leadCommand?.error) {
+      await logParse({
+        intentDetected: "lead_upload_command",
+        parserUsed: "parseLeadUploadCommand",
+        parsedJson: leadCommand,
+        validationPassed: false,
+        validationError: "invalid_lead_upload_command",
+        actionTaken: "reply_lead_command_error",
       });
 
-      return sendTwiml(
-        res,
-        [
-          "✅ Ready for lead voice upload.",
-          `Business: ${leadCommand.business}`,
-          `Lead phone: ${leadCommand.lead_phone}`,
-          "",
-          "Now send the voice note within 10 minutes.",
-        ].join("\n"),
-      );
-    },
-  });
-}
+      return sendTwiml(res, leadCommand.error);
+    }
 
-const media = getTwilioMediaFromRequest(req);
-    
+    if (leadCommand) {
+      await logParse({
+        intentDetected: "lead_upload_command",
+        parserUsed: "parseLeadUploadCommand",
+        parsedJson: leadCommand,
+        validationPassed: true,
+        validationError: null,
+        actionTaken: "create_lead_upload_session",
+      });
+
+      return runInboundAction({
+        successType: "lead_upload_session_created",
+        failureType: "lead_upload_session_failed",
+        action: async () => {
+          await createLeadUploadSession({
+            orgId: resolvedOrgId,
+            senderPhone: from,
+            business: leadCommand.business,
+            leadPhone: leadCommand.lead_phone,
+            userId: user?.id,
+          });
+
+          return sendTwiml(
+            res,
+            [
+              "✅ Ready for lead voice upload.",
+              `Business: ${leadCommand.business}`,
+              `Lead phone: ${leadCommand.lead_phone}`,
+              "",
+              "Now send the voice note within 10 minutes.",
+            ].join("\n"),
+          );
+        },
+      });
+    }
+
+    const media = getTwilioMediaFromRequest(req);
+
     if (media) {
-  const activeLeadSession = await getActiveLeadUploadSession({
-    orgId: resolvedOrgId,
-    senderPhone: from,
-  });
-
-  if (!activeLeadSession) {
-    return sendTwiml(
-      res,
-      [
-        "❌ I received media, but I do not know which lead it belongs to.",
-        "",
-        "First send:",
-        "lead rasset upload +14085551234",
-        "",
-        "Then send the voice note.",
-      ].join("\n"),
-    );
-  }
-
-  if (!isAudioMedia(media.media_content_type)) {
-    return sendTwiml(
-      res,
-      [
-        "❌ I received media, but it does not look like a voice note.",
-        `Type received: ${media.media_content_type || "unknown"}`,
-        "",
-        "Please send a WhatsApp voice note.",
-      ].join("\n"),
-    );
-  }
-
-  return runInboundAction({
-    successType: "lead_voice_received",
-    failureType: "lead_voice_save_failed",
-    action: async () => {
-      const savedLead = await saveLeadVoiceUpload({
+      const activeLeadSession = await getActiveLeadUploadSession({
         orgId: resolvedOrgId,
-        business: activeLeadSession.business,
-        leadPhone: activeLeadSession.lead_phone,
         senderPhone: from,
-        uploadedByUserId: user?.id,
-        twilioMessageSid: messageSid,
-        mediaUrl: media.media_url,
-        mediaContentType: media.media_content_type,
       });
 
-      await markLeadUploadSessionCompleted(activeLeadSession.id);
+      if (!activeLeadSession) {
+        return sendTwiml(
+          res,
+          [
+            "❌ I received media, but I do not know which lead it belongs to.",
+            "",
+            "First send:",
+            "lead rasset upload +14085551234",
+            "",
+            "Then send the voice note.",
+          ].join("\n"),
+        );
+      }
 
-      return sendTwiml(
-        res,
-        [
-          "✅ Lead voice received.",
-          `Business: ${activeLeadSession.business}`,
-          `Lead phone: ${activeLeadSession.lead_phone}`,
-          `Lead voice ID: ${savedLead.id}`,
-          "Status: pending transcription",
-        ].join("\n"),
-      );
-    },
-  });
-}
+      if (!isAudioMedia(media.media_content_type)) {
+        return sendTwiml(
+          res,
+          [
+            "❌ I received media, but it does not look like a voice note.",
+            `Type received: ${media.media_content_type || "unknown"}`,
+            "",
+            "Please send a WhatsApp voice note.",
+          ].join("\n"),
+        );
+      }
 
+      return runInboundAction({
+        successType: "lead_voice_received",
+        failureType: "lead_voice_save_failed",
+        action: async () => {
+          const savedLead = await saveLeadVoiceUpload({
+            orgId: resolvedOrgId,
+            business: activeLeadSession.business,
+            leadPhone: activeLeadSession.lead_phone,
+            senderPhone: from,
+            uploadedByUserId: user?.id,
+            twilioMessageSid: messageSid,
+            mediaUrl: media.media_url,
+            mediaContentType: media.media_content_type,
+          });
 
+          await markLeadUploadSessionCompleted(activeLeadSession.id);
+
+          return sendTwiml(
+            res,
+            [
+              "✅ Lead voice received.",
+              `Business: ${activeLeadSession.business}`,
+              `Lead phone: ${activeLeadSession.lead_phone}`,
+              `Lead voice ID: ${savedLead.id}`,
+              "Status: pending transcription",
+            ].join("\n"),
+          );
+        },
+      });
+    }
 
     // ------------------------------------------------------------------
     // Basic / utility commands
@@ -28595,58 +28644,76 @@ const media = getTwilioMediaFromRequest(req);
   }
 });
 
-app.post("/api/leads/:id/transcribe", requireDashboardAuth, async (req, res) => {
-  try {
-    const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
-    const leadVoiceId = Number(req.params.id);
+app.post(
+  "/api/leads/:id/transcribe",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const leadVoiceId = Number(req.params.id);
 
-    if (!leadVoiceId) {
-      return sendApiError(res, 400, "Invalid lead voice ID");
+      if (!leadVoiceId) {
+        return sendApiError(res, 400, "Invalid lead voice ID");
+      }
+
+      const data = await transcribeLeadVoiceUploadById({
+        leadVoiceId,
+        orgId,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("POST /api/leads/:id/transcribe error:", error);
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to transcribe lead",
+      );
     }
+  },
+);
 
-    const data = await transcribeLeadVoiceUploadById({
-      leadVoiceId,
-      orgId,
-    });
+app.patch(
+  "/api/leads/:id/transcript",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const leadVoiceId = Number(req.params.id);
 
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("POST /api/leads/:id/transcribe error:", error);
-    return sendApiError(res, 500, error.message || "Failed to transcribe lead");
-  }
-});
+      const cleanedTranscript = String(
+        req.body.cleaned_transcript || "",
+      ).trim();
+      const translatedText = String(req.body.translated_text || "").trim();
+      const reviewNotes = String(req.body.review_notes || "").trim();
 
-app.patch("/api/leads/:id/transcript", requireDashboardAuth, async (req, res) => {
-  try {
-    const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
-    const leadVoiceId = Number(req.params.id);
+      if (!leadVoiceId) {
+        return sendApiError(res, 400, "Invalid lead voice ID");
+      }
 
-    const cleanedTranscript = String(req.body.cleaned_transcript || "").trim();
-    const translatedText = String(req.body.translated_text || "").trim();
-    const reviewNotes = String(req.body.review_notes || "").trim();
+      if (!cleanedTranscript) {
+        return sendApiError(res, 400, "Cleaned transcript is required");
+      }
 
-    if (!leadVoiceId) {
-      return sendApiError(res, 400, "Invalid lead voice ID");
+      const data = await updateLeadVoiceTranscript({
+        leadVoiceId,
+        orgId,
+        cleanedTranscript,
+        translatedText,
+        reviewNotes,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("PATCH /api/leads/:id/transcript error:", error);
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to update transcript",
+      );
     }
-
-    if (!cleanedTranscript) {
-      return sendApiError(res, 400, "Cleaned transcript is required");
-    }
-
-    const data = await updateLeadVoiceTranscript({
-      leadVoiceId,
-      orgId,
-      cleanedTranscript,
-      translatedText,
-      reviewNotes,
-    });
-
-    return sendApiSuccess(res, data);
-  } catch (error) {
-    console.error("PATCH /api/leads/:id/transcript error:", error);
-    return sendApiError(res, 500, error.message || "Failed to update transcript");
-  }
-});
+  },
+);
 
 app.post("/api/leads/:id/approve", requireDashboardAuth, async (req, res) => {
   try {
@@ -28719,15 +28786,18 @@ app.patch(
 
       return sendApiSuccess(res, data);
     } catch (error) {
-      console.error("PATCH /api/business-leads/:business/:id/status error:", error);
-      return sendApiError(res, 500, error.message || "Failed to update business lead status");
+      console.error(
+        "PATCH /api/business-leads/:business/:id/status error:",
+        error,
+      );
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to update business lead status",
+      );
     }
   },
 );
-
-
-
-
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
