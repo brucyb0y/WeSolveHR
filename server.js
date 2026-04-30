@@ -5361,6 +5361,7 @@ function renderTopNav(active = "") {
     { href: "/logs", label: "Logs", key: "logs" },
     { href: "/bugs", label: "Bug Board", key: "bugs" },
     { href: "/reports", label: "Reports", key: "reports" },
+    { href: "/leads", label: "Leads", key: "leads" },
     { href: "/clients", label: "Clients", key: "clients" },
     { href: "/account", label: "My Account", key: "account" },
     { href: "/logout", label: "Logout", key: "logout" },
@@ -5565,6 +5566,234 @@ function monthNameToNumber(monthText) {
   };
 
   return months[normalizeText(monthText)] || null;
+}
+
+function parseLeadUploadCommand(text) {
+  const raw = normalizeText(text).replace(/\s+/g, " ");
+
+  const match = raw.match(/^lead\s+([a-z0-9_-]+)\s+upload\s+(.+)$/i);
+  if (!match) return null;
+
+  const business = match[1].trim().toLowerCase();
+  const leadPhone = normalizePhoneForLogin(match[2].trim());
+
+  if (!business) {
+    return {
+      error:
+        "❌ Business name is missing.\nUse: lead rasset upload +14085551234",
+    };
+  }
+
+  if (!leadPhone || leadPhone.length < 8) {
+    return {
+      error:
+        "❌ Lead phone number is missing or invalid.\nUse: lead rasset upload +14085551234",
+    };
+  }
+
+  return {
+    business,
+    lead_phone: leadPhone,
+  };
+}
+
+function getTwilioMediaFromRequest(req) {
+  const numMedia = Number(req.body.NumMedia || 0);
+
+  if (!numMedia || numMedia < 1) return null;
+
+  const mediaUrl = req.body.MediaUrl0 || null;
+  const mediaContentType = req.body.MediaContentType0 || null;
+
+  if (!mediaUrl) return null;
+
+  return {
+    media_url: mediaUrl,
+    media_content_type: mediaContentType,
+  };
+}
+
+function isAudioMedia(mediaContentType) {
+  const value = String(mediaContentType || "").toLowerCase();
+
+  return (
+    value.startsWith("audio/") ||
+    value.includes("ogg") ||
+    value.includes("mpeg") ||
+    value.includes("mp4") ||
+    value.includes("amr")
+  );
+}
+
+async function createLeadUploadSession({
+  orgId,
+  senderPhone,
+  business,
+  leadPhone,
+  userId,
+}) {
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+  await supabase
+    .from("lead_upload_sessions")
+    .update({ status: "expired" })
+    .eq("org_id", orgId)
+    .eq("sender_phone", senderPhone)
+    .eq("status", "waiting_for_voice");
+
+  const { data, error } = await supabase
+    .from("lead_upload_sessions")
+    .insert([
+      {
+        org_id: orgId,
+        sender_phone: senderPhone,
+        business,
+        lead_phone: leadPhone,
+        status: "waiting_for_voice",
+        expires_at: expiresAt,
+        created_by_user_id: userId || null,
+      },
+    ])
+    .select()
+    .single();
+
+  if (error) {
+    console.error("createLeadUploadSession error:", error);
+    throw error;
+  }
+
+  return data;
+}
+
+async function getLeadsOverviewData(orgId) {
+  const { data, error } = await supabase
+    .from("lead_voice_uploads")
+    .select(
+      "id, business, lead_phone, sender_phone, status, media_content_type, created_at",
+    )
+    .eq("org_id", orgId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("getLeadsOverviewData error:", error);
+    throw error;
+  }
+
+  const rows = data || [];
+
+  const businessMap = new Map();
+
+  for (const row of rows) {
+    const business = row.business || "unknown";
+
+    if (!businessMap.has(business)) {
+      businessMap.set(business, {
+        business,
+        total: 0,
+        leads: 0,
+        in_progress: 0,
+        completed: 0,
+        pending_transcription: 0,
+      });
+    }
+
+    const item = businessMap.get(business);
+    item.total += 1;
+
+    if (row.status === "in_progress") item.in_progress += 1;
+    else if (row.status === "completed") item.completed += 1;
+    else item.leads += 1;
+
+    if (row.status === "pending_transcription") item.pending_transcription += 1;
+  }
+
+  return {
+    summary: {
+      total: rows.length,
+      leads: rows.filter(
+        (x) => !["in_progress", "completed"].includes(x.status),
+      ).length,
+      in_progress: rows.filter((x) => x.status === "in_progress").length,
+      completed: rows.filter((x) => x.status === "completed").length,
+      pending_transcription: rows.filter(
+        (x) => x.status === "pending_transcription",
+      ).length,
+    },
+    businesses: Array.from(businessMap.values()).sort((a, b) =>
+      a.business.localeCompare(b.business),
+    ),
+    recent: rows.slice(0, 20),
+  };
+}
+
+async function getActiveLeadUploadSession({ orgId, senderPhone }) {
+  const nowIso = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from("lead_upload_sessions")
+    .select("*")
+    .eq("org_id", orgId)
+    .eq("sender_phone", senderPhone)
+    .eq("status", "waiting_for_voice")
+    .gt("expires_at", nowIso)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("getActiveLeadUploadSession error:", error);
+    throw error;
+  }
+
+  return data || null;
+}
+
+async function markLeadUploadSessionCompleted(sessionId) {
+  const { error } = await supabase
+    .from("lead_upload_sessions")
+    .update({ status: "completed" })
+    .eq("id", sessionId);
+
+  if (error) {
+    console.error("markLeadUploadSessionCompleted error:", error);
+    throw error;
+  }
+}
+
+async function saveLeadVoiceUpload({
+  orgId,
+  business,
+  leadPhone,
+  senderPhone,
+  uploadedByUserId,
+  twilioMessageSid,
+  mediaUrl,
+  mediaContentType,
+}) {
+  const { data, error } = await supabase
+    .from("lead_voice_uploads")
+    .insert([
+      {
+        org_id: orgId,
+        business,
+        lead_phone: leadPhone,
+        sender_phone: senderPhone,
+        uploaded_by_user_id: uploadedByUserId || null,
+        twilio_message_sid: twilioMessageSid || null,
+        media_url: mediaUrl,
+        media_content_type: mediaContentType || null,
+        status: "pending_transcription",
+      },
+    ])
+    .select()
+    .single();
+
+  if (error) {
+    console.error("saveLeadVoiceUpload error:", error);
+    throw error;
+  }
+
+  return data;
 }
 
 function parseLateForOtherCommand(text) {
@@ -13073,6 +13302,272 @@ async function getMultiDayNarrativeReport({
   };
 }
 
+function renderLeadsOverviewPage(data) {
+  const summary = data?.summary || {};
+  const businesses = data?.businesses || [];
+  const recent = data?.recent || [];
+
+  const businessCardsHtml = businesses.length
+    ? businesses
+        .map(
+          (b) => `
+            <div class="stat-card">
+              <div class="stat-label">${escapeHtml(b.business)}</div>
+              <div class="stat-value">${escapeHtml(b.total)}</div>
+              <div class="muted" style="margin-top:8px;">
+                Leads: ${escapeHtml(b.leads)} · In Progress: ${escapeHtml(b.in_progress)} · Completed: ${escapeHtml(b.completed)}
+              </div>
+              <div style="margin-top:12px;">
+                <a class="action-btn" href="/leads/${encodeURIComponent(b.business)}">Open ${escapeHtml(b.business)}</a>
+              </div>
+            </div>
+          `,
+        )
+        .join("")
+    : `<div class="panel" style="padding:18px;">No leads yet.</div>`;
+
+  const recentRowsHtml = recent.length
+    ? recent
+        .map(
+          (lead) => `
+            <tr>
+              <td>${escapeHtml(formatDateTime(lead.created_at))}</td>
+              <td><a href="/leads/${encodeURIComponent(lead.business)}">${escapeHtml(lead.business)}</a></td>
+              <td>${escapeHtml(lead.lead_phone)}</td>
+              <td>${escapeHtml(lead.sender_phone)}</td>
+              <td><span class="${badgeClass(lead.status)}">${escapeHtml(lead.status)}</span></td>
+            </tr>
+          `,
+        )
+        .join("")
+    : `<tr><td colspan="5" class="empty-cell">No recent voice uploads.</td></tr>`;
+
+  return `
+    <html>
+      <head>
+        <title>Leads | WeSolveHR</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+          ${buildTopNavCss()}
+
+          .wrap { max-width: 1600px; margin: 0 auto; padding: 24px 18px 36px; }
+          .topbar, .panel, .stat-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+          .topbar {
+            display:flex; justify-content:space-between; align-items:center;
+            gap:16px; flex-wrap:wrap; margin-bottom:20px; padding:18px 20px;
+          }
+          .eyebrow {
+            font-size:11px; letter-spacing:0.16em; text-transform:uppercase;
+            color:var(--primary); font-weight:700; margin-bottom:8px;
+          }
+          h1 { margin:0; font-size:30px; letter-spacing:-0.04em; }
+          .subtitle { color:var(--muted); margin-top:8px; font-size:14px; }
+          .stats { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:20px; }
+          .business-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; margin-bottom:20px; }
+          .stat-card { padding:14px; }
+          .stat-label { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:0.08em; font-weight:700; }
+          .stat-value { margin-top:10px; font-size:28px; font-weight:800; }
+          .panel { padding:18px; }
+          table { width:100%; border-collapse:collapse; }
+          th, td { padding:12px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:left; font-size:14px; }
+          th { color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; font-size:12px; }
+          .action-btn {
+            display:inline-flex; align-items:center; text-decoration:none; color:var(--text-strong);
+            padding:10px 13px; border-radius:12px; background:var(--primary-soft);
+            border:1px solid color-mix(in srgb, var(--primary) 55%, transparent); font-weight:800;
+          }
+          @media (max-width: 900px) {
+            .stats, .business-grid { grid-template-columns:1fr; }
+            .panel { overflow-x:auto; }
+          }
+        </style>
+      </head>
+      <body>
+        ${renderTopNav("leads")}
+        <div class="wrap">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Lead Voice Inbox</div>
+              <h1>Leads Overview</h1>
+              <div class="subtitle">Voice leads received from WhatsApp, grouped by business.</div>
+            </div>
+          </div>
+
+          <div class="stats">
+            <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${summary.total || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">Leads</div><div class="stat-value">${summary.leads || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">In Progress</div><div class="stat-value">${summary.in_progress || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value">${summary.completed || 0}</div></div>
+          </div>
+
+          <div class="business-grid">
+            ${businessCardsHtml}
+          </div>
+
+          <div class="panel">
+            <h2 style="margin-top:0;">Recent Voice Uploads</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Business</th>
+                  <th>Lead Phone</th>
+                  <th>Uploaded By</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>${recentRowsHtml}</tbody>
+            </table>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
+function renderBusinessLeadsPage(data) {
+  const business = data.business;
+  const rows = data.rows || [];
+  const selectedTab = data.selectedTab || "leads";
+  const counts = data.counts || {};
+
+  const tabLink = (key, label, count) => `
+    <a class="tab ${selectedTab === key ? "active" : ""}" href="/leads/${encodeURIComponent(business)}?tab=${key}">
+      ${label} (${count || 0})
+    </a>
+  `;
+
+  const rowsHtml = rows.length
+    ? rows
+        .map(
+          (lead) => `
+            <tr>
+              <td>${escapeHtml(formatDateTime(lead.created_at))}</td>
+              <td>${escapeHtml(lead.lead_phone)}</td>
+              <td>${escapeHtml(lead.sender_phone)}</td>
+              <td>${escapeHtml(lead.media_content_type || "-")}</td>
+              <td><span class="${badgeClass(lead.status)}">${escapeHtml(lead.status)}</span></td>
+              <td>
+                <a href="${escapeHtml(lead.media_url)}" target="_blank" rel="noopener noreferrer">Open Audio</a>
+              </td>
+            </tr>
+          `,
+        )
+        .join("")
+    : `<tr><td colspan="6" class="empty-cell">No leads in this tab.</td></tr>`;
+
+  return `
+    <html>
+      <head>
+        <title>${escapeHtml(business)} Leads | WeSolveHR</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+          ${buildTopNavCss()}
+
+          .wrap { max-width: 1600px; margin: 0 auto; padding: 24px 18px 36px; }
+          .topbar, .panel, .stat-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+          .topbar {
+            display:flex; justify-content:space-between; align-items:center;
+            gap:16px; flex-wrap:wrap; margin-bottom:20px; padding:18px 20px;
+          }
+          .eyebrow { font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:var(--primary); font-weight:700; margin-bottom:8px; }
+          h1 { margin:0; font-size:30px; letter-spacing:-0.04em; text-transform:capitalize; }
+          .subtitle { color:var(--muted); margin-top:8px; font-size:14px; }
+
+          .stats { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:20px; }
+          .stat-card { padding:14px; }
+          .stat-label { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:0.08em; font-weight:700; }
+          .stat-value { margin-top:10px; font-size:28px; font-weight:800; }
+
+          .tabs {
+            display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:0;
+            margin-bottom:18px; background:rgba(255,255,255,0.035);
+            border:1px solid rgba(255,255,255,0.10); border-radius:16px; padding:6px;
+          }
+          .tab {
+            min-height:44px; display:flex; align-items:center; justify-content:center;
+            text-align:center; padding:9px 10px; border-radius:12px; font-size:13px;
+            font-weight:800; text-decoration:none; color:var(--muted); border:1px solid transparent;
+          }
+          .tab.active {
+            background:var(--primary-soft);
+            border-color:color-mix(in srgb, var(--primary) 55%, transparent);
+            color:var(--text-strong);
+          }
+
+          .panel { padding:18px; }
+          table { width:100%; border-collapse:collapse; }
+          th, td { padding:12px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:left; font-size:14px; }
+          th { color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; font-size:12px; }
+          .btn {
+            display:inline-flex; align-items:center; text-decoration:none; color:var(--text);
+            padding:10px 13px; border-radius:12px; background:rgba(255,255,255,0.05);
+            border:1px solid rgba(255,255,255,0.12); font-weight:800;
+          }
+          @media (max-width: 900px) {
+            .stats, .tabs { grid-template-columns:1fr; }
+            .panel { overflow-x:auto; }
+          }
+        </style>
+      </head>
+      <body>
+        ${renderTopNav("leads")}
+        <div class="wrap">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Business Leads</div>
+              <h1>${escapeHtml(business)} Leads</h1>
+              <div class="subtitle">Voice leads for ${escapeHtml(business)}.</div>
+            </div>
+            <a class="btn" href="/leads">← Leads Overview</a>
+          </div>
+
+          <div class="stats">
+            <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${counts.total || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">Leads</div><div class="stat-value">${counts.leads || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">In Progress</div><div class="stat-value">${counts.in_progress || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value">${counts.completed || 0}</div></div>
+          </div>
+
+          <div class="tabs">
+            ${tabLink("leads", "Leads", counts.leads)}
+            ${tabLink("in_progress", "In Progress", counts.in_progress)}
+            ${tabLink("completed", "Completed", counts.completed)}
+          </div>
+
+          <div class="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Lead Phone</th>
+                  <th>Uploaded By</th>
+                  <th>Media Type</th>
+                  <th>Status</th>
+                  <th>Audio</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
 function renderReportsSummaryHtml(compliance = {}, reportDate) {
   const safeCompliance = {
     full: compliance?.full || [],
@@ -17524,6 +18019,35 @@ app.post(
     }
   },
 );
+
+app.get("/leads", requireDashboardAuth, async (req, res) => {
+  try {
+    const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+    const data = await getLeadsOverviewData(orgId);
+    return res.send(renderLeadsOverviewPage(data));
+  } catch (error) {
+    console.error("GET /leads error:", error);
+    return res.status(500).send("Failed to load leads page");
+  }
+});
+
+app.get("/leads/:business", requireDashboardAuth, async (req, res) => {
+  try {
+    const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+    const business = req.params.business;
+    const selectedTab = ["leads", "in_progress", "completed"].includes(
+      req.query.tab,
+    )
+      ? req.query.tab
+      : "leads";
+
+    const data = await getBusinessLeadsData(orgId, business, selectedTab);
+    return res.send(renderBusinessLeadsPage(data));
+  } catch (error) {
+    console.error("GET /leads/:business error:", error);
+    return res.status(500).send("Failed to load business leads page");
+  }
+});
 
 app.get("/health/live", (_req, res) => {
   return res.status(200).json({ ok: true, status: "live" });
@@ -24941,6 +25465,122 @@ app.post("/whatsapp", async (req, res) => {
     }
 
     console.log(`Mapped sender to user: ${user.name} (${user.role})`);
+
+    const leadCommand = parseLeadUploadCommand(body);
+
+    if (leadCommand?.error) {
+      await logParse({
+        intentDetected: "lead_upload_command",
+        parserUsed: "parseLeadUploadCommand",
+        parsedJson: leadCommand,
+        validationPassed: false,
+        validationError: "invalid_lead_upload_command",
+        actionTaken: "reply_lead_command_error",
+      });
+
+      return sendTwiml(res, leadCommand.error);
+    }
+
+    if (leadCommand) {
+      await logParse({
+        intentDetected: "lead_upload_command",
+        parserUsed: "parseLeadUploadCommand",
+        parsedJson: leadCommand,
+        validationPassed: true,
+        validationError: null,
+        actionTaken: "create_lead_upload_session",
+      });
+
+      return runInboundAction({
+        successType: "lead_upload_session_created",
+        failureType: "lead_upload_session_failed",
+        action: async () => {
+          await createLeadUploadSession({
+            orgId: resolvedOrgId,
+            senderPhone: from,
+            business: leadCommand.business,
+            leadPhone: leadCommand.lead_phone,
+            userId: user?.id,
+          });
+
+          return sendTwiml(
+            res,
+            [
+              "✅ Ready for lead voice upload.",
+              `Business: ${leadCommand.business}`,
+              `Lead phone: ${leadCommand.lead_phone}`,
+              "",
+              "Now send the voice note within 10 minutes.",
+            ].join("\n"),
+          );
+        },
+      });
+    }
+
+    const media = getTwilioMediaFromRequest(req);
+
+    if (media) {
+      const activeLeadSession = await getActiveLeadUploadSession({
+        orgId: resolvedOrgId,
+        senderPhone: from,
+      });
+
+      if (!activeLeadSession) {
+        return sendTwiml(
+          res,
+          [
+            "❌ I received media, but I do not know which lead it belongs to.",
+            "",
+            "First send:",
+            "lead rasset upload +14085551234",
+            "",
+            "Then send the voice note.",
+          ].join("\n"),
+        );
+      }
+
+      if (!isAudioMedia(media.media_content_type)) {
+        return sendTwiml(
+          res,
+          [
+            "❌ I received media, but it does not look like a voice note.",
+            `Type received: ${media.media_content_type || "unknown"}`,
+            "",
+            "Please send a WhatsApp voice note.",
+          ].join("\n"),
+        );
+      }
+
+      return runInboundAction({
+        successType: "lead_voice_received",
+        failureType: "lead_voice_save_failed",
+        action: async () => {
+          const savedLead = await saveLeadVoiceUpload({
+            orgId: resolvedOrgId,
+            business: activeLeadSession.business,
+            leadPhone: activeLeadSession.lead_phone,
+            senderPhone: from,
+            uploadedByUserId: user?.id,
+            twilioMessageSid: messageSid,
+            mediaUrl: media.media_url,
+            mediaContentType: media.media_content_type,
+          });
+
+          await markLeadUploadSessionCompleted(activeLeadSession.id);
+
+          return sendTwiml(
+            res,
+            [
+              "✅ Lead voice received.",
+              `Business: ${activeLeadSession.business}`,
+              `Lead phone: ${activeLeadSession.lead_phone}`,
+              `Lead voice ID: ${savedLead.id}`,
+              "Status: pending transcription",
+            ].join("\n"),
+          );
+        },
+      });
+    }
 
     // ------------------------------------------------------------------
     // Basic / utility commands
