@@ -20188,7 +20188,12 @@ app.get("/leads/:business", requireDashboardAuth, async (req, res) => {
     return res.send(renderBusinessLeadsPage(data));
   } catch (error) {
     console.error("GET /leads/:business error:", error);
-    return res.status(500).send("Failed to load business leads page");
+    return res
+      .status(500)
+      .send(
+        "Failed to load business leads page: " +
+          (error.message || String(error)),
+      );
   }
 });
 
