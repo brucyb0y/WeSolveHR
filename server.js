@@ -7517,7 +7517,13 @@ async function rejectLeadVoiceUpload({ leadVoiceId, orgId, userId, reason }) {
   return data;
 }
 
-async function approveLeadVoiceUpload({ leadVoiceId, orgId, userId }) {
+async function approveLeadVoiceUpload({
+  leadVoiceId,
+  orgId,
+  userId,
+  verifiedBy,
+  verifiedAt,
+}) {
   const { data: lead, error: fetchError } = await supabase
     .from("lead_voice_uploads")
     .select("*")
@@ -7611,6 +7617,8 @@ async function approveLeadVoiceUpload({ leadVoiceId, orgId, userId }) {
       linked_table_name: tableName,
       linked_lead_id: businessLead.id,
       updated_at: new Date().toISOString(),
+      verified_by: verifiedBy || null,
+      verified_at: verifiedAt || new Date().toISOString(),
     })
     .eq("id", leadVoiceId)
     .eq("org_id", orgId)
@@ -15405,18 +15413,18 @@ async function openCallSummaryModal(business, phone) {
             '<table style="width:100%; border-collapse:collapse; margin-top:12px;">' +
               '<thead>' +
                 '<tr>' +
-                  '<th style="text-align:left; padding:6px;">Speaker</th>' +
-                  '<th style="text-align:left; padding:6px;">What was said</th>' +
+                  '<th style="text-align:left; padding:8px;">Speaker</th>' +
+                  '<th style="text-align:left; padding:8px;">What was said</th>' +
                 '</tr>' +
               '</thead>' +
               '<tbody>' +
                 conversationRows.map(function(row) {
                   return (
                     '<tr>' +
-                      '<td style="width:140px; font-weight:900; padding:6px;">' +
+                      '<td style="width:150px; font-weight:900; padding:8px; vertical-align:top;">' +
                         escapeHtmlClient(row.speaker || "Unknown") +
                       '</td>' +
-                      '<td style="white-space:pre-wrap; padding:6px;">' +
+                      '<td style="white-space:pre-wrap; padding:8px; vertical-align:top; line-height:1.55;">' +
                         escapeHtmlClient(row.text || "") +
                       '</td>' +
                     '</tr>'
@@ -15438,28 +15446,28 @@ async function openCallSummaryModal(business, phone) {
 
             '<div>' +
               '<div style="font-weight:900;">Call #' + escapeHtmlClient(item.id) + '</div>' +
-              '<div class="muted">' +
-                escapeHtmlClient(item.created_at || "-") +
-                ' · ' +
-                escapeHtmlClient(item.status || "-") +
+              '<div class="muted" style="line-height:1.6; margin-top:4px;">' +
+                'Created: ' + escapeHtmlClient(item.created_at || "-") + '<br>' +
+                'Uploaded by: ' + escapeHtmlClient(item.sender_phone || "-") + '<br>' +
+                'Verified by: ' + escapeHtmlClient(item.verified_by || "Not verified") + '<br>' +
+                'Verified at: ' + escapeHtmlClient(item.verified_at || "-") + '<br>' +
+                'Status: ' + escapeHtmlClient(item.status || "-") +
               '</div>' +
             '</div>' +
 
             '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
 
-              (item.media_url
-  ? '<a class="btn" href="/api/lead-voice-uploads/' +
-    Number(item.id) +
-    '/audio" target="_blank" rel="noopener noreferrer">Audio</a>'
-  : '') +
+              '<a class="btn" href="/api/lead-voice-uploads/' +
+                Number(item.id) +
+                '/audio" target="_blank" rel="noopener noreferrer">Audio</a>' +
 
-'<button class="btn btn-danger" type="button" data-call-id="' +
-  Number(item.id) +
-  '" data-business="' +
-  escapeHtmlClient(business) +
-  '" data-phone="' +
-  escapeHtmlClient(phone) +
-  '" onclick="handleDeleteCallSummaryClick(this)">Delete</button>' +
+              '<button class="btn btn-danger" type="button" data-call-id="' +
+                Number(item.id) +
+                '" data-business="' +
+                escapeHtmlClient(business) +
+                '" data-phone="' +
+                escapeHtmlClient(phone) +
+                '" onclick="handleDeleteCallSummaryClick(this)">Delete</button>' +
 
             '</div>' +
 
@@ -28960,6 +28968,9 @@ app.post("/api/leads/:id/approve", requireDashboardAuth, async (req, res) => {
       leadVoiceId,
       orgId,
       userId,
+      verifiedBy:
+        req.session?.user?.phone || req.session?.user?.name || "admin",
+      verifiedAt: new Date().toISOString(),
     });
 
     return sendApiSuccess(res, data);
@@ -29001,16 +29012,20 @@ app.get(
     try {
       const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
       const business = getBusinessCanonicalName(req.params.business);
-      const phone = normalizePhoneForLogin(req.query.phone || "");
+      const phone = (req.query.phone || "").trim();
 
-      if (!business || !phone) {
-        return sendApiError(res, 400, "Business and phone are required");
+      if (!business) {
+        return sendApiError(res, 400, "Invalid business");
+      }
+
+      if (!phone) {
+        return sendApiError(res, 400, "Phone is required");
       }
 
       const { data, error } = await supabase
         .from("lead_voice_uploads")
         .select(
-          "id, business, lead_phone, status, raw_transcript, cleaned_transcript, translated_text, conversation_rows, review_notes, media_url, created_at",
+          "id, business, lead_phone, sender_phone, status, raw_transcript, cleaned_transcript, translated_text, conversation_rows, review_notes, media_url, created_at, updated_at, verified_by, verified_at",
         )
         .eq("org_id", orgId)
         .eq("business", business)
@@ -29020,12 +29035,12 @@ app.get(
       if (error) throw error;
 
       return sendApiSuccess(res, data || []);
-    } catch (error) {
-      console.error("GET call summaries error:", error);
+    } catch (err) {
+      console.error("call summaries error:", err);
       return sendApiError(
         res,
         500,
-        error.message || "Failed to load call summaries",
+        err.message || "Failed to load call summaries",
       );
     }
   },
