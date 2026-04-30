@@ -7,12 +7,20 @@ import { toFile } from "openai/uploads";
 import bcrypt from "bcrypt";
 import session from "express-session";
 import crypto from "crypto";
+import multer from "multer";
+import XLSX from "xlsx";
 
 dotenv.config();
 
 console.log("OPENAI KEY LOADED:", !!process.env.OPENAI_API_KEY);
 
 const app = express();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+  },
+});
 const port = process.env.PORT || 3000;
 const DASHBOARD_ORG_ID = 1;
 
@@ -188,6 +196,10 @@ async function getBusinessLeadsData(
       .eq("org_id", orgId)
       .order("created_at", { ascending: false });
 
+    if (tableName === "rasset_leads") {
+      query = query.or("is_deleted.is.null,is_deleted.eq.false");
+    }
+
     if (q) {
       query = query.or(
         [
@@ -199,6 +211,15 @@ async function getBusinessLeadsData(
           `industry.ilike.%${q}%`,
           `notes.ilike.%${q}%`,
           `latest_transcript.ilike.%${q}%`,
+          `company.ilike.%${q}%`,
+          `website.ilike.%${q}%`,
+          `pin_code.ilike.%${q}%`,
+          `location.ilike.%${q}%`,
+          `country.ilike.%${q}%`,
+          `owner_name.ilike.%${q}%`,
+          `number_of_employees.ilike.%${q}%`,
+          `company_size.ilike.%${q}%`,
+          `lead_stage.ilike.%${q}%`,
         ].join(","),
       );
     }
@@ -7621,30 +7642,49 @@ function buildBusinessLeadPayloadFromBody(body) {
     phone: normalizePhoneForLogin(body.phone || ""),
     lead_category: normalizeText(body.lead_category || "b2b"),
     lead_source: normalizeText(body.lead_source || "manual"),
-    business_name: String(body.business_name || "").trim() || null,
+    lead_stage: normalizeText(body.lead_stage || "prospect"),
+
+    company: String(body.company || body.business_name || "").trim() || null,
+    business_name:
+      String(body.business_name || body.company || "").trim() || null,
     contact_name: String(body.contact_name || "").trim() || null,
+    owner_name: String(body.owner_name || "").trim() || null,
+
     email: String(body.email || "").trim() || null,
     website: String(body.website || "").trim() || null,
     google_maps_url: String(body.google_maps_url || "").trim() || null,
     yelp_url: String(body.yelp_url || "").trim() || null,
+
     address: String(body.address || "").trim() || null,
     city: String(body.city || "").trim() || null,
     state: String(body.state || "").trim() || null,
+    pin_code: String(body.pin_code || "").trim() || null,
+    location: String(body.location || body.address || "").trim() || null,
+    country: String(body.country || "").trim() || null,
+
     industry: String(body.industry || "").trim() || null,
+    year_of_establishment:
+      String(body.year_of_establishment || "").trim() || null,
+    number_of_employees: String(body.number_of_employees || "").trim() || null,
+    company_size: String(body.company_size || "").trim() || null,
+
     notes: String(body.notes || "").trim() || null,
     status: normalizeText(body.status || "new"),
+    enrichment_status: normalizeText(body.enrichment_status || "not_enriched"),
+    enrichment_notes: String(body.enrichment_notes || "").trim() || null,
   };
 }
 
 function validateBusinessLeadPayload(payload) {
   if (
     !payload.phone &&
+    !payload.company &&
     !payload.business_name &&
     !payload.website &&
     !payload.google_maps_url &&
     !payload.yelp_url
   ) {
-    return "Enter at least phone, business name, website, Google Maps link, or Yelp link.";
+    return "Enter at least phone, company, website, Google Maps link, or Yelp link.";
   }
 
   if (!["b2b", "b2c"].includes(payload.lead_category)) {
@@ -7744,92 +7784,350 @@ async function getBusinessLeadById({ orgId, business, leadId }) {
   return data;
 }
 
-async function enrichLeadFromUrl({ url }) {
-  const rawUrl = String(url || "").trim();
+async function enrichLeadFromUrl({ url, googleMapsUrl = "" }) {
+  const websiteUrl = String(url || "").trim();
+  const mapUrl = String(googleMapsUrl || "").trim();
 
-  if (!rawUrl) {
+  if (!websiteUrl && !mapUrl) {
     return {
       success: false,
-      message: "No URL provided.",
+      message: "Please provide website or Google Map link.",
       data: {},
     };
   }
 
-  if (/google\./i.test(rawUrl) || /maps\.app\.goo\.gl/i.test(rawUrl)) {
-    return {
-      success: false,
-      message:
-        "Google Maps link detected. Direct scraping is not supported. Save the link now; later use Google Places API for proper enrichment.",
-      data: {
-        google_maps_url: rawUrl,
-        lead_source: "google_map",
-      },
-    };
-  }
+  const data = {
+    website: websiteUrl || null,
+    google_maps_url: mapUrl || null,
+    lead_source: websiteUrl ? "website" : "google_map",
+    lead_category: "b2b",
+    lead_stage: "prospect",
+    enrichment_status: "partial",
+  };
 
-  if (/yelp\./i.test(rawUrl)) {
-    return {
-      success: false,
-      message:
-        "Yelp link detected. Direct scraping is not supported. Save the link now; later use Yelp Fusion API for proper enrichment.",
-      data: {
-        yelp_url: rawUrl,
-        lead_source: "yelp",
-      },
-    };
-  }
+  let websiteText = "";
 
-  try {
-    const response = await fetch(rawUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 WeSolveHR Lead Enrichment",
-      },
-    });
-
-    if (!response.ok) {
-      return {
-        success: false,
-        message: `Could not fetch website. Status: ${response.status}`,
-        data: {
-          website: rawUrl,
-          lead_source: "website",
+  if (websiteUrl) {
+    try {
+      const response = await fetch(websiteUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 WeSolveHR Lead Enrichment",
         },
-      };
+      });
+
+      if (response.ok) {
+        const html = await response.text();
+
+        const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        const descMatch = html.match(
+          /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+        );
+
+        const title = titleMatch
+          ? titleMatch[1].replace(/\s+/g, " ").trim()
+          : "";
+
+        const description = descMatch
+          ? descMatch[1].replace(/\s+/g, " ").trim()
+          : "";
+
+        const emailMatch = html.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+        const phoneMatch = html.match(/(\+?\d[\d\s().-]{8,}\d)/);
+
+        websiteText = html
+          .replace(/<script[\s\S]*?<\/script>/gi, " ")
+          .replace(/<style[\s\S]*?<\/style>/gi, " ")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .slice(0, 12000);
+
+        data.company = title || null;
+        data.business_name = title || null;
+        data.notes = description || null;
+        data.email = emailMatch?.[0] || null;
+        data.phone = phoneMatch?.[0]
+          ? normalizePhoneForLogin(phoneMatch[0])
+          : null;
+      } else {
+        data.enrichment_notes = `Website fetch failed with status ${response.status}`;
+      }
+    } catch (error) {
+      data.enrichment_notes = `Website fetch failed: ${error.message}`;
     }
-
-    const html = await response.text();
-
-    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-    const descMatch = html.match(
-      /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-    );
-
-    const title = titleMatch ? titleMatch[1].replace(/\s+/g, " ").trim() : "";
-
-    const description = descMatch
-      ? descMatch[1].replace(/\s+/g, " ").trim()
-      : "";
-
-    return {
-      success: true,
-      message: "Website fetched. Please verify before saving.",
-      data: {
-        website: rawUrl,
-        lead_source: "website",
-        business_name: title || null,
-        notes: description || null,
-      },
-    };
-  } catch (error) {
-    return {
-      success: false,
-      message: `Could not fetch automatically: ${error.message}`,
-      data: {
-        website: rawUrl,
-        lead_source: "website",
-      },
-    };
   }
+
+  if (openai && websiteText) {
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: `
+Extract Rasset B2B lead fields from website text.
+Return JSON only:
+{
+  "company": "",
+  "website": "",
+  "email": "",
+  "industry": "",
+  "pin_code": "",
+  "city": "",
+  "location": "",
+  "phone": "",
+  "year_of_establishment": "",
+  "owner_name": "",
+  "number_of_employees": "",
+  "company_size": "",
+  "country": "",
+  "notes": "",
+  "confidence_notes": ""
+}
+Rules:
+- Do not invent.
+- If unknown, use empty string.
+- Prefer exact data from website text.
+`,
+          },
+          {
+            role: "user",
+            content: `Website: ${websiteUrl}\nGoogle Map: ${mapUrl}\n\nText:\n${websiteText}`,
+          },
+        ],
+      });
+
+      const parsed =
+        safeParseJson(completion.choices?.[0]?.message?.content || "{}") || {};
+
+      for (const key of [
+        "company",
+        "website",
+        "email",
+        "industry",
+        "pin_code",
+        "city",
+        "location",
+        "phone",
+        "year_of_establishment",
+        "owner_name",
+        "number_of_employees",
+        "company_size",
+        "country",
+        "notes",
+      ]) {
+        if (parsed[key]) data[key] = parsed[key];
+      }
+
+      data.business_name = data.company || data.business_name || null;
+      data.phone = data.phone ? normalizePhoneForLogin(data.phone) : null;
+      data.enrichment_status = "enriched";
+      data.enrichment_notes =
+        parsed.confidence_notes || data.enrichment_notes || null;
+    } catch (error) {
+      data.enrichment_status = "partial";
+      data.enrichment_notes = `AI extraction failed: ${error.message}`;
+    }
+  }
+
+  if (mapUrl) {
+    data.google_maps_url = mapUrl;
+  }
+
+  return {
+    success: true,
+    message:
+      data.enrichment_status === "enriched"
+        ? "Website enriched. Please review before saving."
+        : "Partial data fetched. Please review manually.",
+    data,
+  };
+}
+
+function normalizeExcelHeader(value) {
+  return normalizeText(value)
+    .replace(/\./g, "")
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+function mapExcelRowToRassetLead(row) {
+  const normalized = {};
+
+  for (const [key, value] of Object.entries(row || {})) {
+    normalized[normalizeExcelHeader(key)] = value;
+  }
+
+  const get = (...keys) => {
+    for (const key of keys) {
+      const value = normalized[normalizeExcelHeader(key)];
+      if (
+        value !== undefined &&
+        value !== null &&
+        String(value).trim() !== ""
+      ) {
+        return String(value).trim();
+      }
+    }
+    return "";
+  };
+
+  return {
+    company: get("Company", "company", "business_name"),
+    business_name: get("Company", "company", "business_name"),
+    website: get("website", "Website"),
+    email: get("Email", "email"),
+    industry: get("Industry", "industry"),
+    pin_code: get("Pin code", "pincode", "pin_code", "zip"),
+    city: get("city", "City"),
+    location: get("Location", "address", "Address"),
+    phone: normalizePhoneForLogin(get("Phone", "phone", "mobile")),
+    year_of_establishment: get(
+      "year of estb.",
+      "year_of_establishment",
+      "established",
+    ),
+    owner_name: get("ownwer", "owner", "owner_name"),
+    number_of_employees: get(
+      "No of Employe",
+      "No of Employee",
+      "employees",
+      "number_of_employees",
+    ),
+    company_size: get("Company Size", "company_size"),
+    google_maps_url: get("Google Map", "google_map", "google_maps_url"),
+    country: get("country", "Country"),
+
+    lead_category: normalizeText(
+      get("lead_category", "type of lead", "lead type") || "b2b",
+    ),
+    lead_stage: normalizeText(get("lead_stage", "stage") || "prospect"),
+    lead_source: normalizeText(get("lead_source", "source") || "excel"),
+    status: normalizeText(get("status") || "new"),
+    notes: get("notes", "Notes"),
+    enrichment_status: "imported",
+  };
+}
+
+async function importRassetLeadsFromExcel({ orgId, buffer }) {
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const sheetName = workbook.SheetNames[0];
+
+  if (!sheetName) {
+    throw new Error("Excel file has no sheets");
+  }
+
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+  const results = {
+    total: rows.length,
+    inserted: 0,
+    updated: 0,
+    skipped: 0,
+    errors: [],
+  };
+
+  for (let i = 0; i < rows.length; i += 1) {
+    try {
+      const payload = mapExcelRowToRassetLead(rows[i]);
+
+      if (
+        !payload.company &&
+        !payload.website &&
+        !payload.phone &&
+        !payload.google_maps_url
+      ) {
+        results.skipped += 1;
+        continue;
+      }
+
+      const matchPhone = payload.phone || null;
+      const matchWebsite = payload.website || null;
+
+      let existing = null;
+
+      if (matchPhone) {
+        const { data, error } = await supabase
+          .from("rasset_leads")
+          .select("*")
+          .eq("org_id", orgId)
+          .eq("phone", matchPhone)
+          .maybeSingle();
+
+        if (error) throw error;
+        existing = data;
+      }
+
+      if (!existing && matchWebsite) {
+        const { data, error } = await supabase
+          .from("rasset_leads")
+          .select("*")
+          .eq("org_id", orgId)
+          .eq("website", matchWebsite)
+          .maybeSingle();
+
+        if (error) throw error;
+        existing = data;
+      }
+
+      if (existing) {
+        const { error } = await supabase
+          .from("rasset_leads")
+          .update({
+            ...payload,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("org_id", orgId)
+          .eq("id", existing.id);
+
+        if (error) throw error;
+        results.updated += 1;
+      } else {
+        const { error } = await supabase.from("rasset_leads").insert([
+          {
+            org_id: orgId,
+            ...payload,
+          },
+        ]);
+
+        if (error) throw error;
+        results.inserted += 1;
+      }
+    } catch (error) {
+      results.errors.push({
+        row: i + 2,
+        error: error.message,
+      });
+    }
+  }
+
+  return results;
+}
+
+async function deleteBusinessLead({ orgId, business, leadId }) {
+  const tableName = getBusinessLeadTableName(business);
+
+  if (!tableName) {
+    throw new Error(`No lead table configured for ${business}`);
+  }
+
+  const patch = {
+    is_deleted: true,
+    deleted_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from(tableName)
+    .update(patch)
+    .eq("org_id", orgId)
+    .eq("id", leadId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 }
 
 async function parseTaskWithAI(text) {
@@ -14134,27 +14432,48 @@ function renderBusinessLeadsPage(data) {
         ? rows
             .map(
               (lead) => `
-                <tr>
-                  <td>
-                    <div style="font-weight:900;">${escapeHtml(lead.business_name || lead.contact_name || lead.phone || "Lead #" + lead.id)}</div>
-                    <div class="muted">#${escapeHtml(lead.id)} · ${escapeHtml(lead.lead_source || "manual")}</div>
-                  </td>
-                  <td>${escapeHtml(lead.phone || "-")}</td>
-                  <td>${escapeHtml(lead.lead_category || "-")}</td>
-                  <td>${escapeHtml(lead.contact_name || "-")}</td>
-                  <td>${escapeHtml(lead.city || "-")}</td>
-                  <td><span class="${badgeClass(lead.status)}">${escapeHtml(lead.status || "new")}</span></td>
-                  <td>${escapeHtml(lead.latest_transcript || lead.notes || "-")}</td>
-                  <td>
-                    <button class="btn" type="button" onclick="openLeadEditModal(${Number(lead.id)})">Edit</button>
-                    <select onchange="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, this.value)">
-                      <option value="new" ${lead.status === "new" ? "selected" : ""}>New</option>
-                      <option value="in_progress" ${lead.status === "in_progress" ? "selected" : ""}>In Progress</option>
-                      <option value="completed" ${lead.status === "completed" ? "selected" : ""}>Completed</option>
-                    </select>
-                  </td>
-                </tr>
-              `,
+              <tr>
+                <td>
+                  <div style="font-weight:900;">${escapeHtml(
+                    lead.company ||
+                      lead.business_name ||
+                      lead.contact_name ||
+                      lead.phone ||
+                      "Lead #" + lead.id,
+                  )}</div>
+                  <div class="muted">#${escapeHtml(lead.id)} · ${escapeHtml(
+                    lead.lead_source || "manual",
+                  )}</div>
+                </td>
+                <td>${
+                  lead.website
+                    ? `<a href="${escapeHtml(lead.website)}" target="_blank" rel="noopener noreferrer">Website</a>`
+                    : "-"
+                }</td>
+                <td>${escapeHtml(lead.email || "-")}</td>
+                <td>${escapeHtml(lead.industry || "-")}</td>
+                <td>${escapeHtml(lead.city || "-")}</td>
+                <td>${escapeHtml(lead.phone || "-")}</td>
+                <td><span class="${badgeClass(lead.lead_stage || lead.status)}">${escapeHtml(
+                  lead.lead_stage || lead.status || "prospect",
+                )}</span></td>
+                <td>
+                  <button class="btn" type="button" onclick="openLeadEditModal(${Number(
+                    lead.id,
+                  )})">Edit</button>
+                  <button class="btn btn-danger" type="button" onclick="deleteBusinessLead('${escapeHtml(
+                    business,
+                  )}', ${Number(lead.id)})">Delete</button>
+                  <select onchange="updateBusinessLeadStatus('${escapeHtml(
+                    business,
+                  )}', ${Number(lead.id)}, this.value)">
+                    <option value="new" ${lead.status === "new" ? "selected" : ""}>New</option>
+                    <option value="in_progress" ${lead.status === "in_progress" ? "selected" : ""}>In Progress</option>
+                    <option value="completed" ${lead.status === "completed" ? "selected" : ""}>Completed</option>
+                  </select>
+                </td>
+              </tr>
+            `,
             )
             .join("")
         : `<tr><td colspan="8" class="empty-cell">No leads found.</td></tr>`
@@ -14396,19 +14715,34 @@ function renderBusinessLeadsPage(data) {
                     <a class="btn" href="/leads/${encodeURIComponent(business)}?tab=${escapeHtml(selectedTab)}">Clear</a>
                   </form>
                 </div>
+                
+                ${
+                  business === "rasset" && selectedTab !== "voice_inbox"
+                    ? `
+      <div class="panel">
+        <h2 style="margin-top:0;">Import Rasset Excel</h2>
+        <div class="search-row">
+          <input id="rassetExcelFile" type="file" accept=".xlsx,.xls,.csv" />
+          <button class="btn btn-primary" type="button" onclick="uploadRassetExcel()">Upload Excel</button>
+          <span class="muted">Columns supported: Company, website, Email, Industry, Pin code, city, Location, Phone, year of estb., ownwer, No of Employe, Company Size, Google Map, country</span>
+        </div>
+      </div>
+    `
+                    : ""
+                }
 
                 <div class="panel">
                   <table>
                     <thead>
                       <tr>
-                        <th>Lead</th>
-                        <th>Phone</th>
-                        <th>Type</th>
-                        <th>Contact</th>
-                        <th>City</th>
-                        <th>Status</th>
-                        <th>Notes / Transcript</th>
-                        <th>Actions</th>
+<th>Company</th>
+<th>Website</th>
+<th>Email</th>
+<th>Industry</th>
+<th>City</th>
+<th>Phone</th>
+<th>Stage</th>
+<th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>${leadRowsHtml}</tbody>
@@ -14485,6 +14819,60 @@ function renderBusinessLeadsPage(data) {
                   <option value="yelp">Yelp</option>
                 </select>
               </div>
+              
+              <div class="form-field">
+  <label>Lead Stage</label>
+  <select id="leadStage">
+    <option value="prospect">Prospect</option>
+    <option value="qualified">Qualified</option>
+    <option value="not_fit">Not Fit</option>
+  </select>
+</div>
+
+<div class="form-field">
+  <label>Company</label>
+  <input id="leadCompany" />
+</div>
+
+<div class="form-field">
+  <label>Pin Code</label>
+  <input id="leadPinCode" />
+</div>
+
+<div class="form-field">
+  <label>Location</label>
+  <input id="leadLocation" />
+</div>
+
+<div class="form-field">
+  <label>Country</label>
+  <input id="leadCountry" />
+</div>
+
+<div class="form-field">
+  <label>Year of Establishment</label>
+  <input id="leadYearOfEstablishment" />
+</div>
+
+<div class="form-field">
+  <label>Owner</label>
+  <input id="leadOwnerName" />
+</div>
+
+<div class="form-field">
+  <label>No. of Employees</label>
+  <input id="leadNumberOfEmployees" />
+</div>
+
+<div class="form-field">
+  <label>Company Size</label>
+  <input id="leadCompanySize" />
+</div>
+
+<div class="form-field" style="grid-column:1 / -1;">
+  <label>Enrichment Notes</label>
+  <textarea id="leadEnrichmentNotes"></textarea>
+</div>
 
               <div class="form-field">
                 <label>Business / Organization Name</label>
@@ -14603,6 +14991,16 @@ function renderBusinessLeadsPage(data) {
             document.getElementById("leadAddress").value = lead.address || "";
             document.getElementById("leadNotes").value = lead.notes || "";
             document.getElementById("leadLatestTranscript").value = lead.latest_transcript || "";
+            document.getElementById("leadCompany").value = lead.company || lead.business_name || "";
+document.getElementById("leadStage").value = lead.lead_stage || "prospect";
+document.getElementById("leadPinCode").value = lead.pin_code || "";
+document.getElementById("leadLocation").value = lead.location || "";
+document.getElementById("leadCountry").value = lead.country || "";
+document.getElementById("leadYearOfEstablishment").value = lead.year_of_establishment || "";
+document.getElementById("leadOwnerName").value = lead.owner_name || "";
+document.getElementById("leadNumberOfEmployees").value = lead.number_of_employees || "";
+document.getElementById("leadCompanySize").value = lead.company_size || "";
+document.getElementById("leadEnrichmentNotes").value = lead.enrichment_notes || "";
           }
 
           function closeLeadModal(event) {
@@ -14627,7 +15025,17 @@ function renderBusinessLeadsPage(data) {
               "leadNotes",
               "leadLatestTranscript",
               "enrichUrl",
-              "enrichMessage"
+              "enrichMessage",
+              "leadCompany",
+"leadStage",
+"leadPinCode",
+"leadLocation",
+"leadCountry",
+"leadYearOfEstablishment",
+"leadOwnerName",
+"leadNumberOfEmployees",
+"leadCompanySize",
+"leadEnrichmentNotes"
             ].forEach(function(id) {
               const el = document.getElementById(id);
               if (el) el.value = "";
@@ -14637,7 +15045,63 @@ function renderBusinessLeadsPage(data) {
             document.getElementById("leadCategory").value = BUSINESS === "rasset" ? "b2b" : "b2c";
             document.getElementById("leadStatus").value = "new";
             document.getElementById("leadSource").value = "manual";
+            document.getElementById("leadStage").value = "prospect";
           }
+          
+          async function deleteBusinessLead(business, id) {
+  if (!confirm("Delete this lead? It will be hidden from the CRM.")) return;
+
+  const res = await fetch("/api/business-leads/" + business + "/" + id, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" }
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    alert(json.error || "Failed to delete lead");
+    return;
+  }
+
+  window.location.reload();
+}
+
+async function uploadRassetExcel() {
+  const input = document.getElementById("rassetExcelFile");
+
+  if (!input || !input.files || !input.files[0]) {
+    alert("Choose an Excel file first.");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", input.files[0]);
+
+  const res = await fetch("/api/rasset-leads/import-excel", {
+    method: "POST",
+    body: formData
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    alert(json.error || "Excel import failed");
+    return;
+  }
+
+  const d = json.data || {};
+  alert(
+    "Import complete\\n" +
+    "Total: " + d.total + "\\n" +
+    "Inserted: " + d.inserted + "\\n" +
+    "Updated: " + d.updated + "\\n" +
+    "Skipped: " + d.skipped + "\\n" +
+    "Errors: " + (d.errors || []).length
+  );
+
+  window.location.reload();
+}
+
 
           function getLeadPayloadFromForm() {
             return {
@@ -14656,6 +15120,16 @@ function renderBusinessLeadsPage(data) {
               industry: document.getElementById("leadIndustry").value.trim(),
               address: document.getElementById("leadAddress").value.trim(),
               notes: document.getElementById("leadNotes").value.trim(),
+              company: document.getElementById("leadCompany")?.value.trim() || "",
+lead_stage: document.getElementById("leadStage")?.value || "prospect",
+pin_code: document.getElementById("leadPinCode")?.value.trim() || "",
+location: document.getElementById("leadLocation")?.value.trim() || "",
+country: document.getElementById("leadCountry")?.value.trim() || "",
+year_of_establishment: document.getElementById("leadYearOfEstablishment")?.value.trim() || "",
+owner_name: document.getElementById("leadOwnerName")?.value.trim() || "",
+number_of_employees: document.getElementById("leadNumberOfEmployees")?.value.trim() || "",
+company_size: document.getElementById("leadCompanySize")?.value.trim() || "",
+enrichment_notes: document.getElementById("leadEnrichmentNotes")?.value.trim() || "",
               latest_transcript: document.getElementById("leadLatestTranscript").value.trim()
             };
           }
@@ -14686,41 +15160,58 @@ function renderBusinessLeadsPage(data) {
             window.location.reload();
           }
 
-          async function enrichLeadUrl() {
-            const url = document.getElementById("enrichUrl").value.trim();
 
-            if (!url) {
-              alert("Paste a website, Google Maps link, or Yelp link first.");
-              return;
-            }
+async function enrichLeadUrl() {
+  const website = document.getElementById("leadWebsite").value.trim() || document.getElementById("enrichUrl").value.trim();
+  const googleMapsUrl = document.getElementById("leadGoogleMapsUrl").value.trim();
 
-            document.getElementById("enrichMessage").textContent = "Trying to fetch info...";
+  if (!website && !googleMapsUrl) {
+    alert("Add website or Google Map link first.");
+    return;
+  }
 
-            const res = await fetch("/api/business-leads/enrich-url", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ url })
-            });
+  document.getElementById("enrichMessage").textContent = "Trying to fetch company info...";
 
-            const json = await res.json();
+  const res = await fetch("/api/rasset-leads/enrich", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      website,
+      google_maps_url: googleMapsUrl
+    })
+  });
 
-            if (!json.ok) {
-              document.getElementById("enrichMessage").textContent = json.error || "Could not fetch.";
-              return;
-            }
+  const json = await res.json();
 
-            const result = json.data || {};
-            const d = result.data || {};
+  if (!json.ok) {
+    document.getElementById("enrichMessage").textContent = json.error || "Could not fetch.";
+    return;
+  }
 
-            document.getElementById("enrichMessage").textContent = result.message || "Done.";
+  const result = json.data || {};
+  const d = result.data || {};
 
-            if (d.website) document.getElementById("leadWebsite").value = d.website;
-            if (d.google_maps_url) document.getElementById("leadGoogleMapsUrl").value = d.google_maps_url;
-            if (d.yelp_url) document.getElementById("leadYelpUrl").value = d.yelp_url;
-            if (d.lead_source) document.getElementById("leadSource").value = d.lead_source;
-            if (d.business_name) document.getElementById("leadBusinessName").value = d.business_name;
-            if (d.notes) document.getElementById("leadNotes").value = d.notes;
-          }
+  document.getElementById("enrichMessage").textContent = result.message || "Done.";
+
+  if (d.company) document.getElementById("leadCompany").value = d.company;
+  if (d.company) document.getElementById("leadBusinessName").value = d.company;
+  if (d.website) document.getElementById("leadWebsite").value = d.website;
+  if (d.google_maps_url) document.getElementById("leadGoogleMapsUrl").value = d.google_maps_url;
+  if (d.lead_source) document.getElementById("leadSource").value = d.lead_source;
+  if (d.email) document.getElementById("leadEmail").value = d.email;
+  if (d.industry) document.getElementById("leadIndustry").value = d.industry;
+  if (d.pin_code) document.getElementById("leadPinCode").value = d.pin_code;
+  if (d.city) document.getElementById("leadCity").value = d.city;
+  if (d.location) document.getElementById("leadLocation").value = d.location;
+  if (d.phone) document.getElementById("leadPhone").value = d.phone;
+  if (d.year_of_establishment) document.getElementById("leadYearOfEstablishment").value = d.year_of_establishment;
+  if (d.owner_name) document.getElementById("leadOwnerName").value = d.owner_name;
+  if (d.number_of_employees) document.getElementById("leadNumberOfEmployees").value = d.number_of_employees;
+  if (d.company_size) document.getElementById("leadCompanySize").value = d.company_size;
+  if (d.country) document.getElementById("leadCountry").value = d.country;
+  if (d.notes) document.getElementById("leadNotes").value = d.notes;
+  if (d.enrichment_notes) document.getElementById("leadEnrichmentNotes").value = d.enrichment_notes;
+}
 
           async function transcribeLead(id) {
             if (!confirm("Transcribe this voice note now?")) return;
@@ -19338,6 +19829,79 @@ app.get("/leads/:business", requireDashboardAuth, async (req, res) => {
   }
 });
 
+app.post("/api/rasset-leads/enrich", requireDashboardAuth, async (req, res) => {
+  try {
+    const website = String(req.body.website || "").trim();
+    const googleMapsUrl = String(req.body.google_maps_url || "").trim();
+
+    const data = await enrichLeadFromUrl({
+      url: website,
+      googleMapsUrl,
+    });
+
+    return sendApiSuccess(res, data);
+  } catch (error) {
+    console.error("POST /api/rasset-leads/enrich error:", error);
+    return sendApiError(
+      res,
+      500,
+      error.message || "Failed to enrich Rasset lead",
+    );
+  }
+});
+
+app.post(
+  "/api/rasset-leads/import-excel",
+  requireDashboardAuth,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+
+      if (!req.file?.buffer) {
+        return sendApiError(res, 400, "Excel file is required");
+      }
+
+      const data = await importRassetLeadsFromExcel({
+        orgId,
+        buffer: req.file.buffer,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("POST /api/rasset-leads/import-excel error:", error);
+      return sendApiError(res, 500, error.message || "Failed to import Excel");
+    }
+  },
+);
+
+app.delete(
+  "/api/business-leads/:business/:id",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const business = req.params.business;
+      const leadId = Number(req.params.id);
+
+      if (!leadId) {
+        return sendApiError(res, 400, "Invalid lead ID");
+      }
+
+      const data = await deleteBusinessLead({
+        orgId,
+        business,
+        leadId,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("DELETE /api/business-leads/:business/:id error:", error);
+      return sendApiError(res, 500, error.message || "Failed to delete lead");
+    }
+  },
+);
+
 app.post(
   "/api/business-leads/:business",
   requireDashboardAuth,
@@ -19432,7 +19996,11 @@ app.post(
   async (req, res) => {
     try {
       const url = String(req.body.url || "").trim();
-      const data = await enrichLeadFromUrl({ url });
+
+      const data = await enrichLeadFromUrl({
+        url,
+        googleMapsUrl: "",
+      });
 
       return sendApiSuccess(res, data);
     } catch (error) {
