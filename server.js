@@ -15454,11 +15454,13 @@ async function openCallSummaryModal(business, phone) {
                   '" target="_blank">Audio</a>'
                 : '') +
 
-              '<button class="btn btn-danger" type="button" onclick="deleteCallSummary(' +
-                Number(item.id) +
-                ', \'' + escapeHtmlClient(business) +
-                '\', \'' + escapeHtmlClient(phone) +
-              '\')">Delete</button>' +
+'<button class="btn btn-danger" type="button" data-call-id="' +
+  Number(item.id) +
+  '" data-business="' +
+  escapeHtmlClient(business) +
+  '" data-phone="' +
+  escapeHtmlClient(phone) +
+  '" onclick="handleDeleteCallSummaryClick(this)">Delete</button>' +
 
             '</div>' +
 
@@ -15492,6 +15494,14 @@ async function deleteCallSummary(id, business, phone) {
   }
 
   await openCallSummaryModal(business, phone);
+}
+
+async function handleDeleteCallSummaryClick(button) {
+  const id = Number(button.getAttribute("data-call-id"));
+  const business = button.getAttribute("data-business") || "";
+  const phone = button.getAttribute("data-phone") || "";
+
+  await deleteCallSummary(id, business, phone);
 }
 
           async function transcribeLead(id) {
