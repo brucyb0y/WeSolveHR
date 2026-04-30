@@ -14805,7 +14805,6 @@ ${rows
                       <button class="btn btn-success" type="button" onclick="approveLead(${Number(lead.id)})">Approve Transcript</button>
                       <button class="btn btn-danger" type="button" onclick="rejectLead(${Number(lead.id)})">Reject</button>
                       <button class="btn btn-danger" type="button" onclick="deleteVoiceTranscript(${Number(lead.id)})">Delete Transcription</button>
-                      <button class="btn btn-danger" type="button" onclick="deleteVoiceUpload(${Number(lead.id)})">Delete Voice Lead</button>
                     `
                     : ""
                 }
