@@ -15189,7 +15189,7 @@ async function uploadRassetExcel() {
   const json = await res.json();
 
   if (!json.ok) {
-    alert("Excel import failed:\n" + (json.error || JSON.stringify(json)));
+    alert("Excel import failed:\\n" + (json.error || JSON.stringify(json)));
 console.error("Excel import failed:", json);
     return;
   }
