@@ -7349,7 +7349,7 @@ async function transcribeAudioBuffer({ buffer, contentType }) {
   const fileName = guessFilenameFromContentType(contentType);
 
   const transcription = await openai.audio.transcriptions.create({
-    model: "gpt-4o-mini-transcribe",
+    model: "gpt-4o-transcribe",
     file: await toFile(buffer, fileName, {
       type: contentType || "audio/ogg",
     }),
@@ -7364,26 +7364,39 @@ async function cleanAndTranslateLeadTranscript(rawTranscript) {
   }
 
   const prompt = `
-You are cleaning a sales lead voice note.
+You are cleaning and structuring a sales discovery call transcript.
 
 Return JSON only with EXACT structure:
 {
   "detected_language": "hindi|english|hinglish|unknown",
   "cleaned_transcript": "Clean readable version in original meaning",
   "translated_text": "English translation if needed, else same as cleaned_transcript",
+  "transcription_confidence": "low|medium|high",
   "conversation_rows": [
     { "speaker": "Salesperson", "text": "..." },
     { "speaker": "Lead", "text": "..." }
+  ],
+  "important_points": [
+    "Important factual point from the call"
+  ],
+  "pain_points": [
+    "Business pain point mentioned by the lead"
+  ],
+  "follow_up_questions": [
+    "Question salesperson should ask next"
   ]
 }
 
 Rules:
-- Do NOT invent details
-- Keep names, phone numbers, locations exact
-- If unclear, write [unclear]
-- Split conversation logically into turns
-- If speaker unclear → use "Unknown"
-- Keep it short and readable
+- Do NOT invent details.
+- Keep names, phone numbers, locations, company names, machine names exactly if mentioned.
+- If unclear, write [unclear].
+- Split the call logically into speaker turns.
+- If speaker is unclear, use "Unknown".
+- Capture operational details: machines, breakdowns, spare parts, technicians, raw material sourcing, manpower, payment/money issues, production capacity, outsourcing, urgent requirements.
+- If the transcript looks incomplete or jumps abruptly, set transcription_confidence to "low".
+- Keep important_points factual and concise.
+- Keep pain_points specific.
 `;
 
   const completion = await openai.chat.completions.create({
@@ -7395,15 +7408,8 @@ Rules:
     response_format: { type: "json_object" },
   });
 
-  const text = completion.choices?.[0]?.message?.content || "{}";
-
-  let parsed = {};
-  try {
-    parsed = JSON.parse(text);
-  } catch (e) {
-    console.error("Failed to parse AI response:", text);
-    parsed = {};
-  }
+  const parsed =
+    safeParseJson(completion.choices?.[0]?.message?.content || "{}") || {};
 
   return {
     detected_language: parsed.detected_language || "unknown",
@@ -7413,8 +7419,16 @@ Rules:
       parsed.cleaned_transcript ||
       rawTranscript ||
       "",
+    transcription_confidence: parsed.transcription_confidence || "medium",
     conversation_rows: Array.isArray(parsed.conversation_rows)
       ? parsed.conversation_rows
+      : [],
+    important_points: Array.isArray(parsed.important_points)
+      ? parsed.important_points
+      : [],
+    pain_points: Array.isArray(parsed.pain_points) ? parsed.pain_points : [],
+    follow_up_questions: Array.isArray(parsed.follow_up_questions)
+      ? parsed.follow_up_questions
       : [],
   };
 }
@@ -7460,6 +7474,11 @@ async function transcribeLeadVoiceUploadById({ leadVoiceId, orgId }) {
       translated_text: cleaned.translated_text,
       detected_language: cleaned.detected_language,
       conversation_rows: cleaned.conversation_rows || [],
+      transcription_model: "gpt-4o-transcribe",
+      transcription_confidence: cleaned.transcription_confidence || "medium",
+      important_points: cleaned.important_points || [],
+      pain_points: cleaned.pain_points || [],
+      follow_up_questions: cleaned.follow_up_questions || [],
       status: "pending_review",
       updated_at: new Date().toISOString(),
     })
@@ -29041,7 +29060,7 @@ app.get(
       const { data, error } = await supabase
         .from("lead_voice_uploads")
         .select(
-          "id, business, lead_phone, sender_phone, status, raw_transcript, cleaned_transcript, translated_text, conversation_rows, review_notes, media_url, created_at, updated_at, verified_by, verified_at",
+          "id, business, lead_phone, sender_phone, status, raw_transcript, cleaned_transcript, translated_text, conversation_rows, transcription_model, transcription_confidence, important_points, pain_points, follow_up_questions, review_notes, media_url, created_at, updated_at, verified_by, verified_at",
         )
         .eq("org_id", orgId)
         .eq("business", business)
