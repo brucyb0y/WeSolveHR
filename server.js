@@ -14950,7 +14950,14 @@ ${rows
                 ${
                   lead.status === "pending_transcription" ||
                   lead.status === "transcribing"
-                    ? `<button class="btn btn-primary" type="button" onclick="transcribeLead(${Number(lead.id)})">Transcribe</button>`
+                    ? `<button
+  class="btn btn-primary"
+  type="button"
+  data-transcribe-id="${Number(lead.id)}"
+  onclick="window.transcribeLead(${Number(lead.id)})"
+>
+  Transcribe
+</button>`
                     : ""
                 }
 
@@ -16037,24 +16044,43 @@ async function deleteVoiceUpload(id) {
 }
 
 
-          async function transcribeLead(id) {
-            if (!confirm("Transcribe this voice note now?")) return;
+window.transcribeLead = async function transcribeLead(id) {
+  if (!confirm("Transcribe this voice note now? This can take 30-90 seconds.")) return;
 
-            const res = await fetch("/api/leads/" + id + "/transcribe", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" }
-            });
+  const btn = document.querySelector('[data-transcribe-id="' + id + '"]');
 
-            const json = await res.json();
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Transcribing...";
+  }
 
-            if (!json.ok) {
-              alert(json.error || "Failed to transcribe");
-              return;
-            }
+  try {
+    const res = await fetch("/api/leads/" + id + "/transcribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    });
 
-            alert("Transcription completed.");
-            window.location.reload();
-          }
+    const json = await res.json();
+
+    if (!json.ok) {
+      alert(json.error || "Failed to transcribe");
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Transcribe";
+      }
+      return;
+    }
+
+    alert("Transcription completed.");
+    window.location.reload();
+  } catch (error) {
+    alert(error?.message || "Failed to transcribe");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Transcribe";
+    }
+  }
+};
 
 async function saveTranscript(id) {
   const translated = document.getElementById("translated-" + id)?.value || "";
