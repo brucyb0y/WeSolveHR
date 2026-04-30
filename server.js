@@ -8290,28 +8290,51 @@ async function importRassetLeadsFromExcel({ orgId, buffer }) {
 }
 
 async function deleteBusinessLead({ orgId, business, leadId }) {
-  const tableName = getBusinessLeadTableName(business);
+  const normalizedBusiness = getBusinessCanonicalName(business);
+  const tableName = getBusinessLeadTableName(normalizedBusiness);
 
   if (!tableName) {
-    throw new Error(`No lead table configured for ${business}`);
+    throw new Error("Unsupported business");
   }
 
-  const patch = {
-    is_deleted: true,
-    deleted_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-
-  const { data, error } = await supabase
+  const { data: lead, error: fetchError } = await supabase
     .from(tableName)
-    .update(patch)
+    .select("*")
     .eq("org_id", orgId)
     .eq("id", leadId)
-    .select()
-    .single();
+    .maybeSingle();
 
-  if (error) throw error;
-  return data;
+  if (fetchError) throw fetchError;
+  if (!lead) throw new Error("Lead not found");
+
+  const leadPhone = normalizePhoneForLogin(lead.phone || "");
+
+  if (leadPhone) {
+    const { error: voiceDeleteError } = await supabase
+      .from("lead_voice_uploads")
+      .delete()
+      .eq("org_id", orgId)
+      .eq("business", normalizedBusiness)
+      .eq("lead_phone", leadPhone);
+
+    if (voiceDeleteError) throw voiceDeleteError;
+  }
+
+  const { error: leadDeleteError } = await supabase
+    .from(tableName)
+    .delete()
+    .eq("org_id", orgId)
+    .eq("id", leadId);
+
+  if (leadDeleteError) throw leadDeleteError;
+
+  return {
+    deleted: true,
+    business: normalizedBusiness,
+    tableName,
+    leadId,
+    leadPhone,
+  };
 }
 
 async function parseTaskWithAI(text) {
@@ -14704,8 +14727,10 @@ function renderBusinessLeadsPage(data) {
                       lead.status === "pending_review"
                         ? `
                           <button class="btn btn-primary" type="button" onclick="saveTranscript(${Number(lead.id)})">Save Transcript</button>
-                          <button class="btn btn-success" type="button" onclick="approveLead(${Number(lead.id)})">Approve Transcript</button>
-                          <button class="btn btn-danger" type="button" onclick="rejectLead(${Number(lead.id)})">Reject</button>
+<button class="btn btn-success" type="button" onclick="approveLead(${Number(lead.id)})">Approve Transcript</button>
+<button class="btn btn-danger" type="button" onclick="rejectLead(${Number(lead.id)})">Reject</button>
+<button class="btn btn-danger" type="button" onclick="deleteVoiceTranscript(${Number(lead.id)})">Delete Transcription</button>
+<button class="btn btn-danger" type="button" onclick="deleteVoiceUpload(${Number(lead.id)})">Delete Voice Lead</button>
                         `
                         : ""
                     }
@@ -15354,8 +15379,9 @@ document.getElementById("leadEnrichmentNotes").value = lead.enrichment_notes || 
             document.getElementById("leadStage").value = "prospect";
           }
           
-          async function deleteBusinessLead(business, id) {
-  if (!confirm("Delete this lead? It will be hidden from the CRM.")) return;
+
+async function deleteBusinessLead(business, id) {
+  if (!confirm("Delete this lead and all related voice/call data? This cannot be undone.")) return;
 
   const res = await fetch("/api/business-leads/" + business + "/" + id, {
     method: "DELETE",
@@ -15371,6 +15397,7 @@ document.getElementById("leadEnrichmentNotes").value = lead.enrichment_notes || 
 
   window.location.reload();
 }
+
 
 async function uploadRassetExcel() {
   const input = document.getElementById("rassetExcelFile");
@@ -15669,6 +15696,47 @@ async function handleDeleteCallSummaryClick(button) {
 
   await deleteCallSummary(id, business, phone);
 }
+
+async function deleteVoiceTranscript(id) {
+  if (!confirm("Delete this transcription only? The audio will remain and you can transcribe again.")) {
+    return;
+  }
+
+  const res = await fetch("/api/lead-voice-uploads/" + id + "/transcription", {
+    method: "DELETE"
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    alert(json.error || "Failed to delete transcription");
+    return;
+  }
+
+  alert("Transcription deleted.");
+  window.location.reload();
+}
+
+async function deleteVoiceUpload(id) {
+  if (!confirm("Delete this voice lead completely? This removes audio link, transcript, notes, and review data.")) {
+    return;
+  }
+
+  const res = await fetch("/api/lead-voice-uploads/" + id, {
+    method: "DELETE"
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    alert(json.error || "Failed to delete voice lead");
+    return;
+  }
+
+  alert("Voice lead deleted.");
+  window.location.reload();
+}
+
 
           async function transcribeLead(id) {
             if (!confirm("Transcribe this voice note now?")) return;
@@ -29216,6 +29284,56 @@ app.get(
         res,
         500,
         err.message || "Failed to load call summaries",
+      );
+    }
+  },
+);
+
+app.delete(
+  "/api/lead-voice-uploads/:id/transcription",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const id = Number(req.params.id);
+
+      if (!id) {
+        return sendApiError(res, 400, "Invalid voice lead ID");
+      }
+
+      const { data, error } = await supabase
+        .from("lead_voice_uploads")
+        .update({
+          raw_transcript: null,
+          cleaned_transcript: null,
+          translated_text: null,
+          detected_language: null,
+          conversation_rows: [],
+          important_points: [],
+          pain_points: [],
+          follow_up_questions: [],
+          review_notes: null,
+          transcription_confidence: null,
+          transcription_model: null,
+          transcription_chunked: false,
+          transcription_chunk_seconds: null,
+          status: "pending_transcription",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("org_id", orgId)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("DELETE transcription error:", error);
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to delete transcription",
       );
     }
   },
