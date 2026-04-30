@@ -14737,6 +14737,14 @@ function renderBusinessLeadsPage(data) {
   font-size: 12px;
 }
 
+.call-summary-card {
+  padding: 14px;
+  margin-bottom: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.035);
+}
+
           .btn-primary {
             background:var(--primary-soft); color:var(--text-strong);
             border-color:color-mix(in srgb, var(--primary) 55%, transparent);
@@ -14870,6 +14878,17 @@ function renderBusinessLeadsPage(data) {
               : `<div class="lead-list">${voiceInboxHtml}</div>`
           }
         </div>
+        
+        <div id="callSummaryModal" class="modal" onclick="closeCallSummaryModal(event)">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
+      <div id="callSummaryTitle" style="font-size:22px; font-weight:900;">Call Summaries</div>
+      <button class="btn" type="button" onclick="closeCallSummaryModal()">Close</button>
+    </div>
+
+    <div id="callSummaryBody" class="muted">Loading...</div>
+  </div>
+</div>
 
         <div id="leadModal" class="modal" onclick="closeLeadModal(event)">
           <div class="modal-card" onclick="event.stopPropagation()">
@@ -15316,6 +15335,92 @@ async function enrichLeadUrl() {
   if (d.country) document.getElementById("leadCountry").value = d.country;
   if (d.notes) document.getElementById("leadNotes").value = d.notes;
   if (d.enrichment_notes) document.getElementById("leadEnrichmentNotes").value = d.enrichment_notes;
+}
+
+async function openCallSummaryModal(business, phone) {
+  const modal = document.getElementById("callSummaryModal");
+  const title = document.getElementById("callSummaryTitle");
+  const body = document.getElementById("callSummaryBody");
+
+  if (!modal || !title || !body) {
+    alert("Call summary modal is missing");
+    return;
+  }
+
+  title.textContent = "Call Summaries · " + phone;
+  body.innerHTML = "Loading call summaries...";
+  modal.classList.add("open");
+
+  const res = await fetch(
+    "/api/business-leads/" +
+      encodeURIComponent(business) +
+      "/call-summaries?phone=" +
+      encodeURIComponent(phone)
+  );
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    body.innerHTML = escapeHtmlClient(json.error || "Failed to load call summaries");
+    return;
+  }
+
+  const rows = json.data || [];
+
+  if (!rows.length) {
+    body.innerHTML = "No call summaries found for this phone number yet.";
+    return;
+  }
+
+  body.innerHTML = rows
+    .map(function(item) {
+      const summary =
+        item.translated_text ||
+        item.cleaned_transcript ||
+        item.raw_transcript ||
+        "No transcript available yet.";
+
+      return (
+        '<div class="call-summary-card">' +
+          '<div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">' +
+            '<div>' +
+              '<div style="font-weight:900;">Call #' + escapeHtmlClient(item.id) + '</div>' +
+              '<div class="muted">' + escapeHtmlClient(item.created_at || "-") + ' · ' + escapeHtmlClient(item.status || "-") + '</div>' +
+            '</div>' +
+            '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+              (item.media_url ? '<a class="btn" href="' + escapeHtmlClient(item.media_url) + '" target="_blank" rel="noopener noreferrer">Audio</a>' : '') +
+              '<button class="btn btn-danger" type="button" onclick="deleteCallSummary(' + Number(item.id) + ', \\'' + escapeHtmlClient(business) + '\\', \\'' + escapeHtmlClient(phone) + '\\')">Delete</button>' +
+            '</div>' +
+          '</div>' +
+          '<div style="white-space:pre-wrap; margin-top:12px; line-height:1.55;">' +
+            escapeHtmlClient(summary) +
+          '</div>' +
+        '</div>'
+      );
+    })
+    .join("");
+}
+
+function closeCallSummaryModal(event) {
+  if (event && event.target && event.target.id !== "callSummaryModal") return;
+  document.getElementById("callSummaryModal").classList.remove("open");
+}
+
+async function deleteCallSummary(id, business, phone) {
+  if (!confirm("Delete this call summary?")) return;
+
+  const res = await fetch("/api/lead-voice-uploads/" + id, {
+    method: "DELETE"
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    alert(json.error || "Failed to delete call summary");
+    return;
+  }
+
+  await openCallSummaryModal(business, phone);
 }
 
           async function transcribeLead(id) {
@@ -28762,6 +28867,75 @@ app.post("/api/leads/:id/reject", requireDashboardAuth, async (req, res) => {
     return sendApiError(res, 500, error.message || "Failed to reject lead");
   }
 });
+
+app.get(
+  "/api/business-leads/:business/call-summaries",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const business = getBusinessCanonicalName(req.params.business);
+      const phone = normalizePhoneForLogin(req.query.phone || "");
+
+      if (!business || !phone) {
+        return sendApiError(res, 400, "Business and phone are required");
+      }
+
+      const { data, error } = await supabase
+        .from("lead_voice_uploads")
+        .select(
+          "id, business, lead_phone, status, raw_transcript, cleaned_transcript, translated_text, review_notes, media_url, created_at",
+        )
+        .eq("org_id", orgId)
+        .eq("business", business)
+        .eq("lead_phone", phone)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      return sendApiSuccess(res, data || []);
+    } catch (error) {
+      console.error("GET call summaries error:", error);
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to load call summaries",
+      );
+    }
+  },
+);
+
+app.delete(
+  "/api/lead-voice-uploads/:id",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const id = Number(req.params.id);
+
+      if (!id) {
+        return sendApiError(res, 400, "Invalid call summary ID");
+      }
+
+      const { error } = await supabase
+        .from("lead_voice_uploads")
+        .delete()
+        .eq("org_id", orgId)
+        .eq("id", id);
+
+      if (error) throw error;
+
+      return sendApiSuccess(res, { deleted: true });
+    } catch (error) {
+      console.error("DELETE call summary error:", error);
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to delete call summary",
+      );
+    }
+  },
+);
 
 app.patch(
   "/api/business-leads/:business/:id/status",
