@@ -14525,7 +14525,7 @@ function renderBusinessLeadsPage(data) {
                   </div>
 
                   <div class="lead-actions">
-                    <a class="btn" href="${escapeHtml(lead.media_url)}" target="_blank" rel="noopener noreferrer">Play Audio</a>
+                    <a class="btn" href="/api/lead-voice-uploads/${Number(item.id)}/audio"" target="_blank" rel="noopener noreferrer">Play Audio</a>
 
                     ${
                       lead.status === "pending_transcription" ||
@@ -19775,6 +19775,47 @@ app.post(
 // =====================================================
 // PHASE 7: ACTIONS NEEDED
 // =====================================================
+
+app.get(
+  "/api/lead-voice-uploads/:id/audio",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const id = Number(req.params.id);
+
+      const { data: lead, error } = await supabase
+        .from("lead_voice_uploads")
+        .select("*")
+        .eq("org_id", orgId)
+        .eq("id", id)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!lead) return res.status(404).send("Audio not found");
+
+      const accountSid = process.env.TWILIO_ACCOUNT_SID;
+      const authToken = process.env.TWILIO_AUTH_TOKEN;
+      const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+
+      const response = await fetch(lead.media_url, {
+        headers: {
+          Authorization: `Basic ${auth}`,
+        },
+      });
+
+      if (!response.ok) {
+        return res.status(response.status).send("Failed to load Twilio audio");
+      }
+
+      res.setHeader("Content-Type", lead.media_content_type || "audio/ogg");
+      response.body.pipe(res);
+    } catch (error) {
+      console.error("Audio proxy error:", error);
+      res.status(500).send("Failed to load audio");
+    }
+  },
+);
 
 app.get(
   "/api/clients/:clientId/actions",
