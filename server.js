@@ -7491,43 +7491,66 @@ async function cleanAndTranslateLeadTranscript(rawTranscript) {
   }
 
   const prompt = `
-You are cleaning and structuring a sales discovery call transcript.
+You are cleaning, translating, and structuring a lead call transcript.
 
 Return JSON only with EXACT structure:
 {
   "detected_language": "hindi|english|hinglish|unknown",
-  "cleaned_transcript": "Clean readable transcript preserving original meaning",
-  "translated_text": "English translation if needed, else same as cleaned_transcript",
+  "cleaned_transcript": "Full cleaned readable transcript preserving all meaningful spoken content",
+  "translated_text": "Full English translation preserving all meaningful spoken content. If already English, use the cleaned transcript.",
   "transcription_confidence": "low|medium|high",
   "conversation_rows": [
-    { "speaker": "Salesperson", "text": "..." },
-    { "speaker": "Lead", "text": "..." }
+    { "speaker": "Person A", "text": "..." },
+    { "speaker": "Person B", "text": "..." }
   ],
   "important_points": [
     "Important factual point from the call"
   ],
   "pain_points": [
-    "Business pain point mentioned by the lead"
+    "Pain point mentioned by the lead"
   ],
   "follow_up_questions": [
     "Question salesperson should ask next"
   ]
 }
 
-CRITICAL RULES:
-- Do NOT summarize or infer anything in conversation_rows.
-- Do NOT add conclusions like "you mentioned..." unless those exact words were spoken.
-- Do NOT merge multiple questions into one.
-- Preserve original conversational structure as much as possible.
-- Split STRICTLY based on speaker turns.
-- Each conversation_rows item should represent exactly one speaker speaking.
-- If the same question appears twice, keep both.
-- If speaker is unclear, use "Unknown".
-- Keep names, phone numbers, locations, company names, machine names exactly if mentioned.
-- If unclear, write [unclear].
-- Pay special attention to later chunks. Do not ignore the end of the call.
-- Capture manpower issues, payment/money-stuck issues, raw material sourcing, urgent order capacity, spare parts, technician availability, machine breakdown frequency, and production dependency.
-- important_points and pain_points can be summarized, but conversation_rows must stay close to the call.
+CRITICAL OUTPUT RULES:
+- Return valid JSON only. No markdown. No explanation.
+- Do NOT summarize conversation_rows.
+- Do NOT remove meaningful words from conversation_rows.
+- Do NOT merge unrelated speaker turns.
+- Do NOT invent names, roles, facts, intent, or conclusions.
+- Preserve the full call in cleaned_transcript and translated_text.
+- conversation_rows is an additional readable speaker-by-speaker view of the same call.
+- translated_text and conversation_rows should contain the same conversation content, just formatted differently.
+- If the transcript is already English, translated_text should still be polished readable English but must not lose meaning.
+
+SPEAKER RULES:
+- Split STRICTLY by speaker turns.
+- Each conversation_rows item must contain only one speaker's continuous turn.
+- Use real speaker names when clearly stated, such as Zoya, Jaya, Hannah.
+- Use role names only when clear, such as Salesperson, Receptionist, Manager, Owner, Lead.
+- If names/roles are not clear, use Person A, Person B, Person C.
+- If a speaker changes mid-sentence, split into separate rows.
+- If the same person speaks again later, use the same speaker label.
+- If unsure who spoke, use "Unknown".
+- Do not label both sides as Salesperson/Lead unless it is clearly a sales/business discovery call.
+- For Joolian-style activity-provider calls, prefer neutral labels like Parent Caller, Staff, Manager, Owner, or real names.
+
+CONTENT PRESERVATION RULES:
+- Keep repeated questions if they were repeated.
+- Keep short replies like "yes", "no", "okay", "sure", "hello", "I'm sorry".
+- Keep emails, phone numbers, locations, company names, business names, machine names, activity names, pricing, age groups, and membership details exactly if mentioned.
+- Use [unclear] only where the words are unclear.
+- Do not add phrases like "you mentioned" unless actually spoken.
+- Do not convert the conversation into bullet points.
+- Do not add analysis inside conversation_rows.
+
+BUSINESS EXTRACTION RULES:
+- important_points and pain_points may be summarized.
+- follow_up_questions should be practical next questions based only on the call.
+- For manufacturing/Rasset calls, pay attention to manpower issues, payment or money-stuck issues, raw material sourcing, urgent order capacity, spare parts, technician availability, machine breakdown frequency, and production dependency.
+- For Joolian/activity-provider calls, pay attention to age groups, activity type, membership/pricing model, group enrollment possibility, availability, scheduling, owner/manager availability, contact person, email, payment requirement, and whether custom classes are possible.
 `;
 
   const completion = await openai.chat.completions.create({
@@ -14749,6 +14772,69 @@ function renderLeadsOverviewPage(data) {
             font-size:11px; letter-spacing:0.16em; text-transform:uppercase;
             color:var(--primary); font-weight:700; margin-bottom:8px;
           }
+          
+          .chat-thread {
+  display: grid;
+  gap: 7px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 8px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.chat-row {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.speaker-label {
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--muted);
+  padding-top: 7px;
+}
+
+.chat-bubble {
+  width: fit-content;
+  max-width: 82%;
+  padding: 7px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.person-b .chat-bubble {
+  margin-left: auto;
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.person-b .speaker-label {
+  text-align: right;
+}
+
+.raw-transcript-box {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+}
+
+.hidden-textarea {
+  display: none !important;
+}
+          
           h1 { margin:0; font-size:30px; letter-spacing:-0.04em; }
           .subtitle { color:var(--muted); margin-top:8px; font-size:14px; }
           .stats { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:20px; }
@@ -15013,22 +15099,34 @@ ${rows
       <details class="voice-transcript" open>
         <summary>Conversation</summary>
 
-        <div class="chat-thread">
-          ${escapeHtml(lead.translated_text || "")
-            .split(/(?=Hello|Hi|Okay|Yes|No)/g)
-            .map(
-              (line) => `
-              <div class="chat-line">
-                <div class="chat-bubble">${line.trim()}</div>
+<div class="chat-thread">
+  ${
+    Array.isArray(lead.conversation_rows) && lead.conversation_rows.length
+      ? lead.conversation_rows
+          .map((row, index) => {
+            const speaker =
+              row.speaker ||
+              row.person ||
+              `Person ${index % 2 === 0 ? "A" : "B"}`;
+            const text = row.text || row.message || "";
+
+            return `
+              <div class="chat-row ${index % 2 === 0 ? "person-a" : "person-b"}">
+                <div class="speaker-label">${escapeHtml(speaker)}</div>
+                <div class="chat-bubble">${escapeHtml(text)}</div>
               </div>
-            `,
-            )
-            .join("")}
+            `;
+          })
+          .join("")
+      : `
+        <div class="raw-transcript-box">
+          ${escapeHtml(lead.translated_text || "No transcript yet.")}
         </div>
+      `
+  }
+</div>
 
-        <!-- hidden textarea for save -->
-        <textarea id="translated-${Number(lead.id)}" class="hidden-textarea">${escapeHtml(lead.translated_text || "")}</textarea>
-
+<textarea id="translated-${Number(lead.id)}" class="hidden-textarea">${escapeHtml(lead.translated_text || "")}</textarea>
       </details>
 
     </div>
