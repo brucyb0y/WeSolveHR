@@ -14756,37 +14756,40 @@ function renderBusinessLeadsPage(data) {
           </button>
         </div>
 
-        ${rows
-          .map(
-            (lead) => `
-            <div class="lead-card" id="lead-card-${Number(lead.id)}">
+${rows
+  .map(
+    (lead) => `
+    <div class="lead-card" id="lead-card-${Number(lead.id)}">
 
-              <div class="lead-card-top">
-                <div>
+      <div class="lead-card-top">
+        <div style="min-width:0; flex:1;">
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div class="lead-title">Voice Lead #${escapeHtml(lead.id)}</div>
 
-                  <label style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-                    <input type="checkbox" class="voice-delete-checkbox" value="${Number(lead.id)}">
-                    Select
-                  </label>
+            <label style="display:inline-flex; gap:7px; align-items:center; font-size:14px; color:var(--muted);">
+              <input type="checkbox" class="voice-delete-checkbox" value="${Number(lead.id)}">
+              Select
+            </label>
+          </div>
 
-                  <div class="lead-title">Voice Lead #${escapeHtml(lead.id)}</div>
+          <div class="muted">
+            ${escapeHtml(formatDateTime(lead.created_at))}
+            · Phone: ${escapeHtml(lead.lead_phone)}
+            · Uploaded by: ${escapeHtml(lead.sender_phone)}
+          </div>
+        </div>
 
-                  <div class="muted">
-                    ${escapeHtml(formatDateTime(lead.created_at))}
-                    · Phone: ${escapeHtml(lead.lead_phone)}
-                    · Uploaded by: ${escapeHtml(lead.sender_phone)}
-                  </div>
+        <span class="${badgeClass(lead.status)}">${escapeHtml(lead.status)}</span>
+      </div>
 
-                </div>
+      <div class="lead-actions" style="align-items:center;">
+        <audio controls preload="none" style="width:100%; max-width:520px;">
+          <source src="/api/lead-voice-uploads/${Number(lead.id)}/audio" type="${escapeHtml(lead.media_content_type || "audio/mpeg")}">
+        </audio>
 
-                <span class="${badgeClass(lead.status)}">${escapeHtml(lead.status)}</span>
-              </div>
-
-              <div class="lead-actions">
-
-                <audio controls preload="none" style="width:100%; max-width:520px;">
-                  <source src="/api/lead-voice-uploads/${Number(lead.id)}/audio" type="${escapeHtml(lead.media_content_type || "audio/mpeg")}">
-                </audio>
+        <button class="btn btn-danger" type="button" onclick="deleteVoiceUpload(${Number(lead.id)})">
+          Delete
+        </button>
 
                 ${
                   lead.status === "pending_transcription" ||
@@ -14815,17 +14818,15 @@ function renderBusinessLeadsPage(data) {
 
               </div>
 
-              <div class="transcript-grid">
-                <div class="form-field">
+<div class="transcript-grid" style="display:block; width:100%; margin-top:16px;">                <div class="form-field">
                   <label>English Translation</label>
-                  <textarea id="translated-${Number(lead.id)}">${escapeHtml(lead.translated_text || "")}</textarea>
-                </div>
+<textarea id="translated-${Number(lead.id)}" style="width:100%; min-height:180px;">${escapeHtml(lead.translated_text || "")}</textarea>                </div>
               </div>
 
             </div>
           `,
-          )
-          .join("")}
+  )
+  .join("")}
       `
         : `<div class="panel">No voice leads need review.</div>`
       : "";
