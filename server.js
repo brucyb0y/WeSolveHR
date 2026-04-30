@@ -19791,18 +19791,26 @@ app.get(
       const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
       const id = Number(req.params.id);
 
+      if (!id) return res.status(400).send("Invalid audio ID");
+
       const { data: lead, error } = await supabase
         .from("lead_voice_uploads")
-        .select("*")
+        .select("id, org_id, media_url, media_content_type")
         .eq("org_id", orgId)
         .eq("id", id)
         .maybeSingle();
 
       if (error) throw error;
-      if (!lead) return res.status(404).send("Audio not found");
+      if (!lead || !lead.media_url)
+        return res.status(404).send("Audio not found");
 
       const accountSid = process.env.TWILIO_ACCOUNT_SID;
       const authToken = process.env.TWILIO_AUTH_TOKEN;
+
+      if (!accountSid || !authToken) {
+        return res.status(500).send("Twilio credentials missing");
+      }
+
       const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
 
       const response = await fetch(lead.media_url, {
@@ -19812,14 +19820,22 @@ app.get(
       });
 
       if (!response.ok) {
+        const text = await response.text();
+        console.error("Twilio audio fetch failed:", response.status, text);
         return res.status(response.status).send("Failed to load Twilio audio");
       }
 
-      res.setHeader("Content-Type", lead.media_content_type || "audio/ogg");
-      response.body.pipe(res);
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      res.setHeader("Content-Type", lead.media_content_type || "audio/mpeg");
+      res.setHeader("Content-Length", buffer.length);
+      res.setHeader("Accept-Ranges", "bytes");
+
+      return res.send(buffer);
     } catch (error) {
       console.error("Audio proxy error:", error);
-      res.status(500).send("Failed to load audio");
+      return res.status(500).send("Failed to load audio: " + error.message);
     }
   },
 );
