@@ -5798,7 +5798,7 @@ async function createLeadUploadSession({
 }
 
 async function getLeadsOverviewData(orgId) {
-  const { data, error } = await supabase
+  const { data: voiceRows, error: voiceError } = await supabase
     .from("lead_voice_uploads")
     .select(
       "id, business, lead_phone, sender_phone, status, media_content_type, created_at",
@@ -5806,55 +5806,55 @@ async function getLeadsOverviewData(orgId) {
     .eq("org_id", orgId)
     .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error("getLeadsOverviewData error:", error);
-    throw error;
-  }
+  if (voiceError) throw voiceError;
 
-  const rows = data || [];
+  const businessTables = [
+    { business: "rasset", table: "rasset_leads" },
+    { business: "joolian", table: "joolian_leads" },
+    { business: "matrimonials", table: "matrimonials_leads" },
+  ];
 
-  const businessMap = new Map();
+  const businesses = [];
 
-  for (const row of rows) {
-    const business = row.business || "unknown";
+  for (const item of businessTables) {
+    let query = supabase
+      .from(item.table)
+      .select("id, status", { count: "exact" })
+      .eq("org_id", orgId);
 
-    if (!businessMap.has(business)) {
-      businessMap.set(business, {
-        business,
-        total: 0,
-        leads: 0,
-        in_progress: 0,
-        completed: 0,
-        pending_transcription: 0,
-      });
+    if (item.table === "rasset_leads") {
+      query = query.or("is_deleted.is.null,is_deleted.eq.false");
     }
 
-    const item = businessMap.get(business);
-    item.total += 1;
+    const { data, error, count } = await query;
 
-    if (row.status === "in_progress") item.in_progress += 1;
-    else if (row.status === "completed") item.completed += 1;
-    else item.leads += 1;
-
-    if (row.status === "pending_transcription") item.pending_transcription += 1;
+    if (!error) {
+      const rows = data || [];
+      businesses.push({
+        business: item.business,
+        total: count || rows.length,
+        leads: rows.filter(
+          (x) => !["in_progress", "completed"].includes(x.status),
+        ).length,
+        in_progress: rows.filter((x) => x.status === "in_progress").length,
+        completed: rows.filter((x) => x.status === "completed").length,
+        voice_uploads: (voiceRows || []).filter(
+          (x) => x.business === item.business,
+        ).length,
+      });
+    }
   }
 
   return {
     summary: {
-      total: rows.length,
-      leads: rows.filter(
-        (x) => !["in_progress", "completed"].includes(x.status),
-      ).length,
-      in_progress: rows.filter((x) => x.status === "in_progress").length,
-      completed: rows.filter((x) => x.status === "completed").length,
-      pending_transcription: rows.filter(
-        (x) => x.status === "pending_transcription",
-      ).length,
+      total: businesses.reduce((sum, x) => sum + x.total, 0),
+      leads: businesses.reduce((sum, x) => sum + x.leads, 0),
+      in_progress: businesses.reduce((sum, x) => sum + x.in_progress, 0),
+      completed: businesses.reduce((sum, x) => sum + x.completed, 0),
+      voice_uploads: (voiceRows || []).length,
     },
-    businesses: Array.from(businessMap.values()).sort((a, b) =>
-      a.business.localeCompare(b.business),
-    ),
-    recent: rows.slice(0, 20),
+    businesses,
+    recent: (voiceRows || []).slice(0, 20),
   };
 }
 
@@ -14433,13 +14433,13 @@ function renderBusinessLeadsPage(data) {
             .map(
               (lead) => `
               <tr>
-                <td>
-                  <div style="font-weight:900;">
+                <td class="lead-name-cell">
+                  <div class="lead-company-name">
                     ${escapeHtml(lead.company || lead.business_name || "Lead #" + lead.id)}
-                    ${lead.factory_setup === "multiple_sites" ? " · Multi-site" : ""}
+                    ${lead.factory_setup === "multiple_sites" ? `<span class="mini-chip">Multi-site</span>` : ""}
                   </div>
-                  <div class="muted">
-                    ${escapeHtml(lead.contact_name || lead.owner_name || "-")} · ${escapeHtml(lead.phone || "-")}
+                  <div class="muted lead-contact-line">
+                    ${escapeHtml([lead.contact_name || lead.owner_name, lead.phone].filter(Boolean).join(" · ") || "-")}
                   </div>
                 </td>
 
@@ -14455,8 +14455,14 @@ function renderBusinessLeadsPage(data) {
 
                 <td>
                   <div>${escapeHtml(lead.industry || "-")}</div>
-                  <div class="muted">Employees: ${escapeHtml(lead.number_of_employees || lead.company_size || "-")}</div>
+                  <div class="muted">Emp: ${escapeHtml(lead.number_of_employees || lead.company_size || "-")}</div>
                   <div class="muted">Machines: ${escapeHtml(lead.machine_count_range || "-")}</div>
+                </td>
+
+                <td>
+                  <button class="btn" type="button" onclick="openCallSummaryModal('${escapeHtml(business)}', '${escapeHtml(lead.phone || "")}')">
+                    Calls
+                  </button>
                 </td>
 
                 <td>
@@ -14465,20 +14471,22 @@ function renderBusinessLeadsPage(data) {
                   </span>
                 </td>
 
-                <td>
-                  <button class="btn" type="button" onclick="openLeadEditModal(${Number(lead.id)})">Edit</button>
-                  <button class="btn btn-danger" type="button" onclick="deleteBusinessLead('${escapeHtml(business)}', ${Number(lead.id)})">Delete</button>
-                  <select class="lead-status-select" onchange="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, this.value)">
-                    <option value="new" ${lead.status === "new" ? "selected" : ""}>New</option>
-                    <option value="in_progress" ${lead.status === "in_progress" ? "selected" : ""}>Progress</option>
-                    <option value="completed" ${lead.status === "completed" ? "selected" : ""}>Done</option>
-                  </select>
+                <td class="actions-cell">
+                  <button class="kebab-btn" type="button" onclick="toggleLeadActions(event, ${Number(lead.id)})">...</button>
+
+                  <div id="leadActions-${Number(lead.id)}" class="lead-actions-menu">
+                    <button type="button" onclick="openLeadEditModal(${Number(lead.id)})">Edit</button>
+                    <button type="button" onclick="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, 'new')">Mark New</button>
+                    <button type="button" onclick="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, 'in_progress')">Mark In Progress</button>
+                    <button type="button" onclick="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, 'completed')">Mark Completed</button>
+                    <button type="button" class="danger-menu-item" onclick="deleteBusinessLead('${escapeHtml(business)}', ${Number(lead.id)})">Delete</button>
+                  </div>
                 </td>
               </tr>
             `,
             )
             .join("")
-        : `<tr><td colspan="6" class="empty-cell">No leads found.</td></tr>`
+        : `<tr><td colspan="7" class="empty-cell">No leads found.</td></tr>`
       : "";
 
   const voiceInboxHtml =
@@ -14607,6 +14615,85 @@ function renderBusinessLeadsPage(data) {
             border-color:color-mix(in srgb, var(--primary) 55%, transparent);
             color:var(--text-strong);
           }
+          
+          .lead-name-cell {
+  min-width: 520px;
+  max-width: 620px;
+}
+
+.lead-company-name {
+  font-weight: 900;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.lead-contact-line {
+  margin-top: 4px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.mini-chip {
+  display: inline-flex;
+  margin-left: 8px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--info-soft);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.actions-cell {
+  position: relative;
+  width: 70px;
+}
+
+.kebab-btn {
+  padding: 8px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.lead-actions-menu {
+  display: none;
+  position: fixed;
+  min-width: 180px;
+  z-index: 9999;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  padding: 8px;
+}
+
+.lead-actions-menu.open {
+  display: block;
+}
+
+.lead-actions-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 11px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--text);
+  background: transparent;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.lead-actions-menu button:hover {
+  background: rgba(255,255,255,0.07);
+}
+
+.danger-menu-item {
+  color: #ffd7da !important;
+}
 
           .panel { padding:18px; margin-bottom:16px; }
           .lead-list { display:grid; gap:14px; }
@@ -14758,6 +14845,7 @@ function renderBusinessLeadsPage(data) {
 <th>Location</th>
 <th>Web / Maps</th>
 <th>Industry / Size</th>
+<th>Call Summary</th>
 <th>Stage</th>
 <th>Actions</th>
                       </tr>
@@ -15342,6 +15430,31 @@ async function enrichLeadUrl() {
               closeLeadModal();
             }
           });
+          
+          function toggleLeadActions(event, leadId) {
+  event.stopPropagation();
+
+  document.querySelectorAll(".lead-actions-menu.open").forEach(function(menu) {
+    if (menu.id !== "leadActions-" + leadId) {
+      menu.classList.remove("open");
+    }
+  });
+
+  const menu = document.getElementById("leadActions-" + leadId);
+  if (!menu) return;
+
+  const rect = event.currentTarget.getBoundingClientRect();
+  menu.style.top = rect.bottom + 6 + "px";
+  menu.style.left = Math.max(12, rect.right - 180) + "px";
+  menu.classList.toggle("open");
+}
+
+document.addEventListener("click", function() {
+  document.querySelectorAll(".lead-actions-menu.open").forEach(function(menu) {
+    menu.classList.remove("open");
+  });
+});
+
         </script>
       </body>
     </html>
