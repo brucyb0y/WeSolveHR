@@ -5930,6 +5930,12 @@ async function saveLeadVoiceUpload({
     console.error("saveLeadVoiceUpload error:", error);
     throw error;
   }
+  await ensureBusinessLeadExistsForVoiceUpload({
+    orgId,
+    business,
+    leadPhone,
+    senderPhone,
+  });
 
   return data;
 }
@@ -6163,6 +6169,51 @@ function parseLocalDateTimeForToday(timeText) {
 
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
+}
+
+async function ensureBusinessLeadExistsForVoiceUpload({
+  orgId,
+  business,
+  leadPhone,
+  senderPhone,
+}) {
+  const normalizedBusiness = getBusinessCanonicalName(business);
+  const tableName = getBusinessLeadTableName(normalizedBusiness);
+
+  if (!tableName || !leadPhone) return null;
+
+  const { data: existing, error: existingError } = await supabase
+    .from(tableName)
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("phone", leadPhone)
+    .maybeSingle();
+
+  if (existingError) throw existingError;
+  if (existing) return existing;
+
+  const { data, error } = await supabase
+    .from(tableName)
+    .insert([
+      {
+        org_id: orgId,
+        phone: leadPhone,
+        lead_category: normalizedBusiness === "rasset" ? "b2b" : "b2c",
+        status: "new",
+        lead_stage: "prospect",
+        lead_source: "voice",
+        notes:
+          "Auto-created from voice upload by " + (senderPhone || "unknown"),
+        latest_transcript: null,
+        updated_at: new Date().toISOString(),
+      },
+    ])
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return data;
 }
 
 async function getUserWorkProfile(userId, orgId) {
@@ -14698,75 +14749,84 @@ function renderBusinessLeadsPage(data) {
   const voiceInboxHtml =
     selectedTab === "voice_inbox"
       ? rows.length
-        ? rows
-            .map(
-              (lead) => `
-                <div class="lead-card" id="lead-card-${Number(lead.id)}">
-                  <div class="lead-card-top">
-                    <div>
-                      <div class="lead-title">Voice Lead #${escapeHtml(lead.id)}</div>
-                      <div class="muted">
-                        ${escapeHtml(formatDateTime(lead.created_at))}
-                        · Phone: ${escapeHtml(lead.lead_phone)}
-                        · Uploaded by: ${escapeHtml(lead.sender_phone)}
-                      </div>
-                    </div>
-                    <span class="${badgeClass(lead.status)}">${escapeHtml(lead.status)}</span>
+        ? `
+        <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+          <button class="btn btn-danger" type="button" onclick="deleteSelectedVoiceUploads()">
+            Delete Selected Voice Messages
+          </button>
+        </div>
+
+        ${rows
+          .map(
+            (lead) => `
+            <div class="lead-card" id="lead-card-${Number(lead.id)}">
+
+              <div class="lead-card-top">
+                <div>
+
+                  <label style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                    <input type="checkbox" class="voice-delete-checkbox" value="${Number(lead.id)}">
+                    Select
+                  </label>
+
+                  <div class="lead-title">Voice Lead #${escapeHtml(lead.id)}</div>
+
+                  <div class="muted">
+                    ${escapeHtml(formatDateTime(lead.created_at))}
+                    · Phone: ${escapeHtml(lead.lead_phone)}
+                    · Uploaded by: ${escapeHtml(lead.sender_phone)}
                   </div>
 
-                  <div class="lead-actions">
-<a class="btn" href="/api/lead-voice-uploads/${Number(lead.id)}/audio" target="_blank" rel="noopener noreferrer">Play Audio</a>
-                    ${
-                      lead.status === "pending_transcription" ||
-                      lead.status === "transcribing"
-                        ? `<button class="btn btn-primary" type="button" onclick="transcribeLead(${Number(lead.id)})">Transcribe</button>`
-                        : ""
-                    }
-
-                    ${
-                      lead.status === "pending_review"
-                        ? `
-                          <button class="btn btn-primary" type="button" onclick="saveTranscript(${Number(lead.id)})">Save Transcript</button>
-<button class="btn btn-success" type="button" onclick="approveLead(${Number(lead.id)})">Approve Transcript</button>
-<button class="btn btn-danger" type="button" onclick="rejectLead(${Number(lead.id)})">Reject</button>
-<button class="btn btn-danger" type="button" onclick="deleteVoiceTranscript(${Number(lead.id)})">Delete Transcription</button>
-<button class="btn btn-danger" type="button" onclick="deleteVoiceUpload(${Number(lead.id)})">Delete Voice Lead</button>
-                        `
-                        : ""
-                    }
-
-                    ${
-                      lead.status === "rejected"
-                        ? `<button class="btn btn-primary" type="button" onclick="saveTranscript(${Number(lead.id)})">Edit & Reopen Review</button>`
-                        : ""
-                    }
-                  </div>
-
-                  <div class="transcript-grid">
-                    <div class="form-field">
-                      <label>Original Transcript</label>
-                      <textarea readonly>${escapeHtml(lead.raw_transcript || "")}</textarea>
-                    </div>
-
-                    <div class="form-field">
-                      <label>Cleaned Transcript / Review Version</label>
-                      <textarea id="cleaned-${Number(lead.id)}">${escapeHtml(lead.cleaned_transcript || "")}</textarea>
-                    </div>
-
-                    <div class="form-field">
-                      <label>English Translation</label>
-                      <textarea id="translated-${Number(lead.id)}">${escapeHtml(lead.translated_text || "")}</textarea>
-                    </div>
-
-                    <div class="form-field">
-                      <label>Review Notes</label>
-                      <textarea id="notes-${Number(lead.id)}">${escapeHtml(lead.review_notes || "")}</textarea>
-                    </div>
-                  </div>
                 </div>
-              `,
-            )
-            .join("")
+
+                <span class="${badgeClass(lead.status)}">${escapeHtml(lead.status)}</span>
+              </div>
+
+              <div class="lead-actions">
+
+                <audio controls preload="none" style="width:100%; max-width:520px;">
+                  <source src="/api/lead-voice-uploads/${Number(lead.id)}/audio" type="${escapeHtml(lead.media_content_type || "audio/mpeg")}">
+                </audio>
+
+                ${
+                  lead.status === "pending_transcription" ||
+                  lead.status === "transcribing"
+                    ? `<button class="btn btn-primary" type="button" onclick="transcribeLead(${Number(lead.id)})">Transcribe</button>`
+                    : ""
+                }
+
+                ${
+                  lead.status === "pending_review"
+                    ? `
+                      <button class="btn btn-primary" type="button" onclick="saveTranscript(${Number(lead.id)})">Save Transcript</button>
+                      <button class="btn btn-success" type="button" onclick="approveLead(${Number(lead.id)})">Approve Transcript</button>
+                      <button class="btn btn-danger" type="button" onclick="rejectLead(${Number(lead.id)})">Reject</button>
+                      <button class="btn btn-danger" type="button" onclick="deleteVoiceTranscript(${Number(lead.id)})">Delete Transcription</button>
+                      <button class="btn btn-danger" type="button" onclick="deleteVoiceUpload(${Number(lead.id)})">Delete Voice Lead</button>
+                    `
+                    : ""
+                }
+
+                ${
+                  lead.status === "rejected"
+                    ? `<button class="btn btn-primary" type="button" onclick="saveTranscript(${Number(lead.id)})">Edit & Reopen Review</button>`
+                    : ""
+                }
+
+              </div>
+
+              <div class="transcript-grid">
+                <div class="form-field">
+                  <label>English Translation</label>
+                  <textarea id="translated-${Number(lead.id)}">${escapeHtml(lead.translated_text || "")}</textarea>
+                </div>
+              </div>
+
+            </div>
+          `,
+          )
+          .join("")}
+      `
         : `<div class="panel">No voice leads need review.</div>`
       : "";
 
@@ -15717,6 +15777,38 @@ async function deleteVoiceTranscript(id) {
   window.location.reload();
 }
 
+async function deleteSelectedVoiceUploads() {
+  const ids = Array.from(document.querySelectorAll(".voice-delete-checkbox:checked"))
+    .map(function(el) {
+      return Number(el.value);
+    })
+    .filter(Boolean);
+
+  if (!ids.length) {
+    alert("Select at least one voice message.");
+    return;
+  }
+
+  if (!confirm("Delete " + ids.length + " selected voice message(s)? This cannot be undone.")) {
+    return;
+  }
+
+  const res = await fetch("/api/lead-voice-uploads/bulk-delete", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: ids })
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    alert(json.error || "Failed to delete selected voice messages");
+    return;
+  }
+
+  window.location.reload();
+}
+
 async function deleteVoiceUpload(id) {
   if (!confirm("Delete this voice lead completely? This removes audio link, transcript, notes, and review data.")) {
     return;
@@ -15757,36 +15849,35 @@ async function deleteVoiceUpload(id) {
             window.location.reload();
           }
 
-          async function saveTranscript(id) {
-            const cleaned = document.getElementById("cleaned-" + id)?.value || "";
-            const translated = document.getElementById("translated-" + id)?.value || "";
-            const notes = document.getElementById("notes-" + id)?.value || "";
+async function saveTranscript(id) {
+  const translated = document.getElementById("translated-" + id)?.value || "";
+  const notes = document.getElementById("notes-" + id)?.value || "";
 
-            if (!cleaned.trim()) {
-              alert("Cleaned transcript is required.");
-              return;
-            }
+  if (!translated.trim()) {
+    alert("English translation is required.");
+    return;
+  }
 
-            const res = await fetch("/api/leads/" + id + "/transcript", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                cleaned_transcript: cleaned,
-                translated_text: translated,
-                review_notes: notes
-              })
-            });
+  const res = await fetch("/api/leads/" + id + "/transcript", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      cleaned_transcript: translated,
+      translated_text: translated,
+      review_notes: notes
+    })
+  });
 
-            const json = await res.json();
+  const json = await res.json();
 
-            if (!json.ok) {
-              alert(json.error || "Failed to save transcript");
-              return;
-            }
+  if (!json.ok) {
+    alert(json.error || "Failed to save transcript");
+    return;
+  }
 
-            alert("Transcript saved.");
-            window.location.reload();
-          }
+  alert("Transcript saved.");
+  window.location.reload();
+}
 
           async function approveLead(id) {
             if (!confirm("Approve this transcript and create/update business lead?")) return;
@@ -29284,6 +29375,40 @@ app.get(
         res,
         500,
         err.message || "Failed to load call summaries",
+      );
+    }
+  },
+);
+
+app.delete(
+  "/api/lead-voice-uploads/bulk-delete",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const ids = Array.isArray(req.body.ids)
+        ? req.body.ids.map(Number).filter(Boolean)
+        : [];
+
+      if (!ids.length) {
+        return sendApiError(res, 400, "No voice message IDs provided");
+      }
+
+      const { error } = await supabase
+        .from("lead_voice_uploads")
+        .delete()
+        .eq("org_id", orgId)
+        .in("id", ids);
+
+      if (error) throw error;
+
+      return sendApiSuccess(res, { deleted: ids.length });
+    } catch (error) {
+      console.error("DELETE /api/lead-voice-uploads/bulk-delete error:", error);
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to delete selected voice messages",
       );
     }
   },
