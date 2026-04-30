@@ -226,6 +226,11 @@ async function getBusinessLeadsData(
           `number_of_employees.ilike.%${q}%`,
           `company_size.ilike.%${q}%`,
           `lead_stage.ilike.%${q}%`,
+          `age_group.ilike.%${q}%`,
+          `activity_category.ilike.%${q}%`,
+          `sub_activity_category.ilike.%${q}%`,
+          `type_of_business.ilike.%${q}%`,
+          `pricing_approx.ilike.%${q}%`,
         ].join(","),
       );
     }
@@ -7345,21 +7350,22 @@ function getBusinessLeadTableName(business) {
   const map = {
     rasset: "rasset_leads",
     joolian: "joolian_leads",
-    julian: "joolian_leads",
     matrimonials: "matrimonials_leads",
-    matrimonial: "matrimonials_leads",
   };
 
   return map[key] || null;
 }
 
-function getBusinessCanonicalName(business) {
-  const key = normalizeText(business);
+function getBusinessCanonicalName(input) {
+  const value = normalizeText(input);
 
-  if (key === "julian") return "joolian";
-  if (key === "matrimonial") return "matrimonials";
+  if (["rasset", "rassetai", "rasset.ai"].includes(value)) return "rasset";
+  if (["joolian", "joolianai", "joolian.ai", "julian"].includes(value))
+    return "joolian";
+  if (["matrimonials", "matrimonialsai", "matrimonials.ai"].includes(value))
+    return "matrimonials";
 
-  return key;
+  return value;
 }
 
 function guessFilenameFromContentType(contentType) {
@@ -8320,6 +8326,212 @@ async function importRassetLeadsFromExcel({ orgId, buffer }) {
         results.updated += 1;
       } else {
         const { error } = await supabase.from("rasset_leads").insert([
+          {
+            org_id: orgId,
+            ...payload,
+          },
+        ]);
+
+        if (error) throw error;
+        results.inserted += 1;
+      }
+    } catch (error) {
+      results.errors.push({
+        row: i + 2,
+        error: error.message,
+      });
+    }
+  }
+
+  return results;
+}
+
+function mapExcelRowToJoolianB2BLead(row) {
+  const normalized = {};
+
+  for (const [key, value] of Object.entries(row || {})) {
+    normalized[normalizeExcelHeader(key)] = value;
+  }
+
+  const get = (...keys) => {
+    for (const key of keys) {
+      const value = normalized[normalizeExcelHeader(key)];
+      if (
+        value !== undefined &&
+        value !== null &&
+        String(value).trim() !== ""
+      ) {
+        return String(value).trim();
+      }
+    }
+    return "";
+  };
+
+  const company = get(
+    "AP Name",
+    "Activity Provider Name",
+    "Company",
+    "Business Name",
+  );
+  const owner = get("Owner / Founder", "Owner", "Founder", "Contact Name");
+  const activityCategory = get(
+    "Activity category",
+    "Activity Category",
+    "Category",
+  );
+  const subActivityCategory = get(
+    "Sub Activity Category",
+    "Sub Activity",
+    "Sub Category",
+  );
+  const typeOfBusiness = get("Type of Business", "Business Type");
+  const ageGroup = get("Age Group", "Ages");
+  const specialNormalBoth = get(
+    "Special/Normal/both",
+    "Special Normal Both",
+    "Special Normal",
+  );
+  const isHardRare = get("Is hard/Rare", "Hard Rare", "Rare", "Is Rare");
+  const pricing = get("Pricing (Approx)", "Pricing", "Approx Pricing");
+  const otherDetails = get("Other important details", "Other Details", "Notes");
+
+  const smartNotes = [
+    ageGroup ? `Age group: ${ageGroup}` : "",
+    activityCategory ? `Category: ${activityCategory}` : "",
+    subActivityCategory ? `Sub-category: ${subActivityCategory}` : "",
+    typeOfBusiness ? `Business type: ${typeOfBusiness}` : "",
+    specialNormalBoth ? `Special/Normal: ${specialNormalBoth}` : "",
+    isHardRare ? `Hard/Rare: ${isHardRare}` : "",
+    pricing ? `Pricing: ${pricing}` : "",
+    otherDetails ? `Details: ${otherDetails}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    company,
+    business_name: company,
+    contact_name: owner,
+    owner_name: owner,
+
+    phone: normalizePhoneForLogin(get("Phone Number", "Phone", "Mobile")),
+    email: get("Email", "Email Address"),
+
+    city: get("City"),
+    pin_code: get("Zip code", "Zip", "Postal Code"),
+    country: get("Country") || "USA",
+
+    google_maps_url: get("Google map link", "Google Map", "Google Maps URL"),
+    yelp_url: get("Yelp link", "Yelp URL", "Yelp"),
+    website: get("Website", "Website URL"),
+
+    industry: activityCategory,
+    company_size: typeOfBusiness,
+
+    age_group: ageGroup,
+    activity_category: activityCategory,
+    sub_activity_category: subActivityCategory,
+    type_of_business: typeOfBusiness,
+    special_normal_both: specialNormalBoth,
+    is_hard_rare: isHardRare,
+    pricing_approx: pricing,
+    year_of_establishment: get("Year Established", "Year of Establishment"),
+
+    notes: smartNotes,
+    enrichment_status: "imported",
+
+    lead_category: "b2b",
+    lead_stage: normalizeText(get("lead_stage", "stage") || "prospect"),
+    lead_source: "excel",
+    status: normalizeText(get("status") || "new"),
+  };
+}
+
+async function importJoolianB2BLeadsFromExcel({ orgId, buffer }) {
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const sheetName = workbook.SheetNames[0];
+
+  if (!sheetName) {
+    throw new Error("Excel file has no sheets");
+  }
+
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+  const results = {
+    total: rows.length,
+    inserted: 0,
+    updated: 0,
+    skipped: 0,
+    errors: [],
+  };
+
+  for (let i = 0; i < rows.length; i += 1) {
+    try {
+      const payload = mapExcelRowToJoolianB2BLead(rows[i]);
+
+      if (
+        !payload.company &&
+        !payload.phone &&
+        !payload.website &&
+        !payload.google_maps_url
+      ) {
+        results.skipped += 1;
+        continue;
+      }
+
+      let existing = null;
+
+      if (payload.phone) {
+        const { data, error } = await supabase
+          .from("joolian_leads")
+          .select("*")
+          .eq("org_id", orgId)
+          .eq("phone", payload.phone)
+          .maybeSingle();
+
+        if (error) throw error;
+        existing = data;
+      }
+
+      if (!existing && payload.website) {
+        const { data, error } = await supabase
+          .from("joolian_leads")
+          .select("*")
+          .eq("org_id", orgId)
+          .eq("website", payload.website)
+          .maybeSingle();
+
+        if (error) throw error;
+        existing = data;
+      }
+
+      if (!existing && payload.company) {
+        const { data, error } = await supabase
+          .from("joolian_leads")
+          .select("*")
+          .eq("org_id", orgId)
+          .ilike("company", payload.company)
+          .maybeSingle();
+
+        if (error) throw error;
+        existing = data;
+      }
+
+      if (existing) {
+        const { error } = await supabase
+          .from("joolian_leads")
+          .update({
+            ...payload,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("org_id", orgId)
+          .eq("id", existing.id);
+
+        if (error) throw error;
+        results.updated += 1;
+      } else {
+        const { error } = await supabase.from("joolian_leads").insert([
           {
             org_id: orgId,
             ...payload,
@@ -14712,10 +14924,21 @@ function renderBusinessLeadsPage(data) {
                 </td>
 
                 <td>
-                  <div>${escapeHtml(lead.industry || "-")}</div>
-                  <div class="muted">Emp: ${escapeHtml(lead.number_of_employees || lead.company_size || "-")}</div>
-                  <div class="muted">Machines: ${escapeHtml(lead.machine_count_range || "-")}</div>
-                </td>
+                  ${
+                    business === "joolian"
+                      ? `
+      <div>${escapeHtml(lead.activity_category || lead.industry || "-")}</div>
+      <div class="muted">${escapeHtml(lead.sub_activity_category || "")}</div>
+      <div class="muted">Ages: ${escapeHtml(lead.age_group || "-")}</div>
+      <div class="muted">Type: ${escapeHtml(lead.type_of_business || lead.company_size || "-")}</div>
+      <div class="muted">Price: ${escapeHtml(lead.pricing_approx || "-")}</div>
+    `
+                      : `
+      <div>${escapeHtml(lead.industry || "-")}</div>
+      <div class="muted">Emp: ${escapeHtml(lead.number_of_employees || "-")}</div>
+      <div class="muted">Machines: ${escapeHtml(lead.machine_count || "-")}</div>
+    `
+                  }                </td>
 
                 <td>
                   <button class="btn" type="button" onclick="openCallSummaryModal('${escapeHtml(business)}', '${escapeHtml(lead.phone || "")}')">
@@ -15097,20 +15320,35 @@ ${rows
                   </form>
                 </div>
                 
-                ${
-                  business === "rasset" && selectedTab !== "voice_inbox"
-                    ? `
-      <div class="panel">
-        <h2 style="margin-top:0;">Import Rasset Excel</h2>
-        <div class="search-row">
-          <input id="rassetExcelFile" type="file" accept=".xlsx,.xls,.csv" />
-          <button class="btn btn-primary" type="button" onclick="uploadRassetExcel()">Upload Excel</button>
-          <span class="muted">Columns supported: Company, website, Email, Industry, Pin code, city, Location, Phone, year of estb., ownwer, No of Employe, Company Size, Google Map, country</span>
-        </div>
-      </div>
-    `
-                    : ""
-                }
+${
+  business === "rasset"
+    ? `
+  <div class="panel" style="margin-bottom:16px; padding:14px;">
+    <div style="font-weight:800; margin-bottom:8px;">Import Rasset Excel</div>
+    <input id="rassetExcelFile" type="file" accept=".xlsx,.xls,.csv" />
+    <button class="btn btn-primary" type="button" onclick="uploadRassetExcel()">Upload Excel</button>
+    <div class="muted" style="margin-top:8px;">
+      Columns supported: Company, website, Email, Industry, Pin code, city, Location, Phone, year of estb., owner, No of Employee, Company Size, Google Map, country
+    </div>
+  </div>
+`
+    : ""
+}
+
+${
+  business === "joolian"
+    ? `
+  <div class="panel" style="margin-bottom:16px; padding:14px;">
+    <div style="font-weight:800; margin-bottom:8px;">Import Joolian B2B Excel</div>
+    <input id="joolianB2BExcelFile" type="file" accept=".xlsx,.xls,.csv" />
+    <button class="btn btn-primary" type="button" onclick="uploadJoolianB2BExcel()">Upload Excel</button>
+    <div class="muted" style="margin-top:8px;">
+      Columns supported: AP Name, Phone Number, Email, City, Zip code, Google map link, Yelp link, Website, Age Group, Activity category, Sub Activity Category, Owner / Founder, Type of Business, Special/Normal/both, Is hard/Rare, Other important details, Pricing Approx, Year Established
+    </div>
+  </div>
+`
+    : ""
+}
 
                 <div class="panel">
                   <table>
@@ -15496,6 +15734,42 @@ console.error("Excel import failed:", json);
   window.location.reload();
 }
 
+async function uploadJoolianB2BExcel() {
+  const input = document.getElementById("joolianB2BExcelFile");
+
+  if (!input || !input.files || !input.files[0]) {
+    alert("Choose an Excel file first.");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", input.files[0]);
+
+  const res = await fetch("/api/joolian-leads/import-b2b-excel", {
+    method: "POST",
+    body: formData
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    alert("Joolian B2B Excel import failed:\n" + (json.error || JSON.stringify(json)));
+    console.error("Joolian import failed:", json);
+    return;
+  }
+
+  const d = json.data || {};
+  alert(
+    "Joolian B2B import complete\n" +
+    "Total: " + d.total + "\n" +
+    "Inserted: " + d.inserted + "\n" +
+    "Updated: " + d.updated + "\n" +
+    "Skipped: " + d.skipped + "\n" +
+    "Errors: " + (d.errors || []).length
+  );
+
+  window.location.reload();
+}
 
           function getLeadPayloadFromForm() {
             return {
@@ -20580,6 +20854,35 @@ app.post(
     } catch (error) {
       console.error("POST /api/rasset-leads/import-excel error:", error);
       return sendApiError(res, 500, error.message || "Failed to import Excel");
+    }
+  },
+);
+
+app.post(
+  "/api/joolian-leads/import-b2b-excel",
+  requireDashboardAuth,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+
+      if (!req.file?.buffer) {
+        return sendApiError(res, 400, "Excel file is required");
+      }
+
+      const data = await importJoolianB2BLeadsFromExcel({
+        orgId,
+        buffer: req.file.buffer,
+      });
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error("POST /api/joolian-leads/import-b2b-excel error:", error);
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to import Joolian B2B Excel",
+      );
     }
   },
 );
