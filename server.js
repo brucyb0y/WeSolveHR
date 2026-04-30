@@ -14525,8 +14525,7 @@ function renderBusinessLeadsPage(data) {
                   </div>
 
                   <div class="lead-actions">
-                    <a class="btn" href="/api/lead-voice-uploads/${Number(item.id)}/audio"" target="_blank" rel="noopener noreferrer">Play Audio</a>
-
+<a class="btn" href="/api/lead-voice-uploads/${Number(lead.id)}/audio" target="_blank" rel="noopener noreferrer">Play Audio</a>
                     ${
                       lead.status === "pending_transcription" ||
                       lead.status === "transcribing"
@@ -15449,10 +15448,10 @@ async function openCallSummaryModal(business, phone) {
             '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
 
               (item.media_url
-                ? '<a class="btn" href="' +
-                  escapeHtmlClient(item.media_url) +
-                  '" target="_blank">Audio</a>'
-                : '') +
+  ? '<a class="btn" href="/api/lead-voice-uploads/' +
+    Number(item.id) +
+    '/audio" target="_blank" rel="noopener noreferrer">Audio</a>'
+  : '') +
 
 '<button class="btn btn-danger" type="button" data-call-id="' +
   Number(item.id) +
