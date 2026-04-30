@@ -9,6 +9,11 @@ import session from "express-session";
 import crypto from "crypto";
 import multer from "multer";
 import XLSX from "xlsx";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import ffmpeg from "fluent-ffmpeg";
+import ffmpegStatic from "ffmpeg-static";
 
 dotenv.config();
 
@@ -37,6 +42,7 @@ const openai = process.env.OPENAI_API_KEY
   : null;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+ffmpeg.setFfmpegPath(ffmpegStatic);
 
 app.use(
   express.urlencoded({
@@ -7341,21 +7347,152 @@ async function downloadTwilioMediaToBuffer(mediaUrl) {
   return Buffer.from(arrayBuffer);
 }
 
-async function transcribeAudioBuffer({ buffer, contentType }) {
+async function splitAudioBufferIntoMp3Chunks({
+  buffer,
+  contentType,
+  chunkSeconds = 120,
+}) {
+  const tempDir = await fs.promises.mkdtemp(
+    path.join(os.tmpdir(), "lead-audio-"),
+  );
+
+  const inputExt =
+    guessFilenameFromContentType(contentType).split(".").pop() || "ogg";
+  const inputPath = path.join(tempDir, `input.${inputExt}`);
+  const outputPattern = path.join(tempDir, "chunk-%03d.mp3");
+
+  await fs.promises.writeFile(inputPath, buffer);
+
+  await new Promise((resolve, reject) => {
+    ffmpeg(inputPath)
+      .outputOptions([
+        "-f segment",
+        `-segment_time ${chunkSeconds}`,
+        "-reset_timestamps 1",
+        "-ac 1",
+        "-ar 16000",
+        "-b:a 64k",
+      ])
+      .output(outputPattern)
+      .on("end", resolve)
+      .on("error", reject)
+      .run();
+  });
+
+  const files = (await fs.promises.readdir(tempDir))
+    .filter((name) => name.startsWith("chunk-") && name.endsWith(".mp3"))
+    .sort();
+
+  const chunks = [];
+
+  for (let i = 0; i < files.length; i += 1) {
+    const filePath = path.join(tempDir, files[i]);
+    const chunkBuffer = await fs.promises.readFile(filePath);
+
+    chunks.push({
+      index: i + 1,
+      startSeconds: i * chunkSeconds,
+      endSeconds: (i + 1) * chunkSeconds,
+      buffer: chunkBuffer,
+      contentType: "audio/mpeg",
+      fileName: files[i],
+    });
+  }
+
+  return {
+    tempDir,
+    chunks,
+  };
+}
+
+async function cleanupTempDir(tempDir) {
+  if (!tempDir) return;
+
+  try {
+    await fs.promises.rm(tempDir, {
+      recursive: true,
+      force: true,
+    });
+  } catch (error) {
+    console.error("cleanupTempDir error:", error);
+  }
+}
+
+function formatChunkTime(seconds) {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const mins = Math.floor(safeSeconds / 60);
+  const secs = safeSeconds % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+async function transcribeAudioBuffer({ buffer, contentType, fileName }) {
   if (!openai) {
     throw new Error("OpenAI client is not configured");
   }
 
-  const fileName = guessFilenameFromContentType(contentType);
+  const safeFileName = fileName || guessFilenameFromContentType(contentType);
 
   const transcription = await openai.audio.transcriptions.create({
     model: "gpt-4o-transcribe",
-    file: await toFile(buffer, fileName, {
+    file: await toFile(buffer, safeFileName, {
       type: contentType || "audio/ogg",
     }),
   });
 
   return transcription.text || "";
+}
+
+async function transcribeAudioBufferInChunks({
+  buffer,
+  contentType,
+  chunkSeconds = 120,
+}) {
+  let tempDir = null;
+
+  try {
+    const splitResult = await splitAudioBufferIntoMp3Chunks({
+      buffer,
+      contentType,
+      chunkSeconds,
+    });
+
+    tempDir = splitResult.tempDir;
+    const chunks = splitResult.chunks || [];
+
+    if (!chunks.length) {
+      return await transcribeAudioBuffer({
+        buffer,
+        contentType,
+      });
+    }
+
+    const transcriptParts = [];
+
+    for (const chunk of chunks) {
+      console.log("Transcribing audio chunk:", {
+        chunk: chunk.index,
+        start: formatChunkTime(chunk.startSeconds),
+        end: formatChunkTime(chunk.endSeconds),
+        size: chunk.buffer.length,
+      });
+
+      const text = await transcribeAudioBuffer({
+        buffer: chunk.buffer,
+        contentType: chunk.contentType,
+        fileName: chunk.fileName,
+      });
+
+      transcriptParts.push(
+        `[${formatChunkTime(chunk.startSeconds)}-${formatChunkTime(
+          chunk.endSeconds,
+        )}]\n${text || "[no speech detected]"}`,
+      );
+    }
+
+    return transcriptParts.join("\n\n");
+  } finally {
+    await cleanupTempDir(tempDir);
+  }
 }
 
 async function cleanAndTranslateLeadTranscript(rawTranscript) {
@@ -7397,6 +7534,9 @@ Rules:
 - If the transcript looks incomplete or jumps abruptly, set transcription_confidence to "low".
 - Keep important_points factual and concise.
 - Keep pain_points specific.
+- Raw transcript may contain chunk timestamps like [00:00-02:00]. Preserve useful timing context in important points where helpful.
+- Pay special attention to later chunks. Do not ignore the end of the call.
+- Capture manpower issues, payment/money-stuck issues, raw material sourcing, urgent order capacity, spare parts, technician availability, machine breakdown frequency, and production dependency.
 `;
 
   const completion = await openai.chat.completions.create({
@@ -7459,9 +7599,10 @@ async function transcribeLeadVoiceUploadById({ leadVoiceId, orgId }) {
 
   const buffer = await downloadTwilioMediaToBuffer(lead.media_url);
 
-  const rawTranscript = await transcribeAudioBuffer({
+  const rawTranscript = await transcribeAudioBufferInChunks({
     buffer,
     contentType: lead.media_content_type,
+    chunkSeconds: 120,
   });
 
   const cleaned = await cleanAndTranslateLeadTranscript(rawTranscript);
@@ -7475,10 +7616,8 @@ async function transcribeLeadVoiceUploadById({ leadVoiceId, orgId }) {
       detected_language: cleaned.detected_language,
       conversation_rows: cleaned.conversation_rows || [],
       transcription_model: "gpt-4o-transcribe",
-      transcription_confidence: cleaned.transcription_confidence || "medium",
-      important_points: cleaned.important_points || [],
-      pain_points: cleaned.pain_points || [],
-      follow_up_questions: cleaned.follow_up_questions || [],
+      transcription_chunk_seconds: 120,
+      transcription_chunked: true,
       status: "pending_review",
       updated_at: new Date().toISOString(),
     })
