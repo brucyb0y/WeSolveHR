@@ -1888,65 +1888,72 @@ function buildTopNavCss() {
       top: 0;
       z-index: 100;
       backdrop-filter: blur(18px);
-      background: rgba(13, 18, 33, 0.82);
+      background: rgba(13, 18, 33, 0.88);
       border-bottom: 1px solid rgba(255,255,255,0.08);
     }
 
     .top-nav-inner {
-      max-width: 1600px;
+      width: 100%;
       margin: 0 auto;
-      padding: 12px 18px;
+      padding: 10px 14px;
       display: grid;
-      grid-template-columns: 180px minmax(0, 1fr) auto;
+      grid-template-columns: 56px minmax(0, 1fr) auto;
       align-items: center;
-      gap: 16px;
-      min-height: 72px;
+      gap: 12px;
+      min-height: 64px;
     }
 
     .brand {
-      font-size: 20px;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      color: var(--text);
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -0.06em;
+      color: var(--text-strong);
+      background: var(--primary-soft);
+      border: 1px solid color-mix(in srgb, var(--primary) 55%, transparent);
+      text-decoration: none;
       white-space: nowrap;
     }
 
     .nav-links {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 10px;
+      justify-content: flex-start;
+      gap: 8px;
       flex-wrap: nowrap;
       min-width: 0;
-      overflow-x: auto;
-      overflow-y: hidden;
-      scrollbar-width: none;
-    }
-
-    .nav-links::-webkit-scrollbar {
-      display: none;
+      overflow: hidden;
     }
 
     .nav-links a,
     .nav-links button {
       color: var(--text);
       text-decoration: none;
-      padding: 10px 14px;
-      border-radius: 12px;
+      padding: 9px 13px;
+      border-radius: 13px;
       border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
       background: var(--secondary-soft);
-      font-weight: 600;
+      font-weight: 750;
       transition: all 0.15s ease;
       font: inherit;
       cursor: pointer;
       white-space: nowrap;
       flex: 0 0 auto;
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .nav-links a:hover,
     .nav-links button:hover {
       color: var(--text-strong);
       border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
+      transform: translateY(-1px);
     }
 
     .nav-links a.active {
@@ -1955,19 +1962,16 @@ function buildTopNavCss() {
       color: var(--text-strong);
     }
 
+    .nav-icon-link {
+      width: 42px;
+      padding: 0 !important;
+      font-size: 18px;
+      font-weight: 900;
+    }
+
     .nav-links a.logout-link {
       background: rgba(255,255,255,0.05);
       border-color: rgba(255,255,255,0.12);
-    }
-
-    .nav-links a.logout-link:hover {
-      background: rgba(255,255,255,0.10);
-    }
-
-    .quick-action-btn {
-      background: var(--primary-soft) !important;
-      border-color: color-mix(in srgb, var(--primary) 55%, transparent) !important;
-      color: var(--text-strong) !important;
     }
 
     .top-nav-status {
@@ -1976,22 +1980,25 @@ function buildTopNavCss() {
       justify-content: flex-end;
       gap: 8px;
       flex-wrap: nowrap;
-      min-width: 220px;
+      min-width: 0;
     }
 
     .top-nav-pill {
-      padding: 8px 12px;
+      padding: 8px 11px;
       border-radius: 999px;
       background: rgba(255,255,255,0.06);
       border: 1px solid rgba(255,255,255,0.10);
       color: var(--text);
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 800;
       white-space: nowrap;
       line-height: 1;
       min-height: 34px;
       display: inline-flex;
       align-items: center;
+      max-width: 190px;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .top-nav-pill.loading,
@@ -1999,6 +2006,59 @@ function buildTopNavCss() {
       color: var(--muted);
     }
 
+    .quick-action-btn {
+      background: var(--primary-soft) !important;
+      border-color: color-mix(in srgb, var(--primary) 55%, transparent) !important;
+      color: var(--text-strong) !important;
+    }
+
+    @media (max-width: 1180px) {
+      .nav-text-optional {
+        display: none !important;
+      }
+
+      .nav-links {
+        gap: 7px;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .top-nav-inner {
+        grid-template-columns: 48px minmax(0, 1fr);
+      }
+
+      .top-nav-status {
+        grid-column: 1 / -1;
+        justify-content: flex-start;
+        overflow-x: auto;
+      }
+
+      .nav-links {
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+
+      .nav-links::-webkit-scrollbar {
+        display: none;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .top-nav-inner {
+        padding: 9px 10px;
+      }
+
+      .nav-links a {
+        padding: 8px 10px;
+        font-size: 13px;
+      }
+
+      .nav-icon-link {
+        width: 38px;
+      }
+    }
+
+    /* keep existing quick action modal styles */
     .quick-action-overlay {
       position: fixed;
       inset: 0;
@@ -2011,9 +2071,7 @@ function buildTopNavCss() {
       padding: 18px;
     }
 
-    .quick-action-overlay.open {
-      display: flex;
-    }
+    .quick-action-overlay.open { display: flex; }
 
     .quick-action-modal {
       width: min(920px, 100%);
@@ -2024,152 +2082,6 @@ function buildTopNavCss() {
       border-radius: 22px;
       box-shadow: var(--shadow-soft);
       padding: 18px;
-    }
-
-    .quick-action-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 14px;
-    }
-
-    .quick-action-title {
-      font-size: 22px;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-    }
-
-    .quick-action-close {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 12px;
-      color: var(--text);
-      padding: 10px 12px;
-      cursor: pointer;
-      font: inherit;
-    }
-
-    .quick-action-input {
-      width: 100%;
-      padding: 16px 18px;
-      border-radius: 16px;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,0.04);
-      color: var(--text);
-      font-size: 16px;
-      outline: none;
-      margin-bottom: 14px;
-    }
-
-    .quick-action-input:focus {
-      border-color: color-mix(in srgb, var(--primary) 55%, transparent);
-      box-shadow: 0 0 0 3px rgba(139,124,246,0.14);
-    }
-
-    .quick-action-grid {
-      display: grid;
-      grid-template-columns: 1.15fr 0.85fr;
-      gap: 16px;
-    }
-
-    .quick-action-panel {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 16px;
-      padding: 14px;
-    }
-
-    .quick-action-panel h3 {
-      margin: 0 0 10px;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.10em;
-      color: var(--muted);
-    }
-
-    .quick-action-chips {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .quick-action-chip {
-      padding: 9px 12px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.10);
-      background: rgba(255,255,255,0.05);
-      color: var(--text);
-      cursor: pointer;
-      font: inherit;
-    }
-
-    .quick-action-preview,
-    .quick-action-result {
-      white-space: pre-wrap;
-      line-height: 1.55;
-      color: var(--text);
-      font-size: 14px;
-      min-height: 70px;
-    }
-
-    .quick-action-preview.muted,
-    .quick-action-result.muted {
-      color: var(--muted);
-    }
-
-    .quick-action-actions {
-      display: flex;
-      gap: 10px;
-      justify-content: flex-end;
-      margin-top: 14px;
-    }
-
-    .quick-action-submit,
-    .quick-action-secondary {
-      padding: 11px 14px;
-      border-radius: 12px;
-      font: inherit;
-      cursor: pointer;
-      border: 1px solid rgba(255,255,255,0.10);
-    }
-
-    .quick-action-submit {
-      background: var(--primary-soft);
-      color: var(--text-strong);
-    }
-
-    .quick-action-secondary {
-      background: rgba(255,255,255,0.05);
-      color: var(--text);
-    }
-
-    @media (max-width: 1100px) {
-      .top-nav-inner {
-        grid-template-columns: 1fr;
-        gap: 12px;
-        min-height: auto;
-      }
-
-      .brand {
-        text-align: center;
-      }
-
-      .nav-links {
-        justify-content: flex-start;
-      }
-
-
-      .top-nav-status {
-        justify-content: flex-start;
-        min-width: 0;
-      }
-    }
-
-    @media (max-width: 820px) {
-      .quick-action-grid {
-        grid-template-columns: 1fr;
-      }
     }
   `;
 }
@@ -5498,41 +5410,62 @@ function renderClientViewOnlyPage({
 
 function renderTopNav(active = "") {
   const items = [
-    { href: "/dashboard", label: "Dashboard", key: "dashboard" },
-    { href: "/tasks", label: "Tasks", key: "tasks" },
-    { href: "/attendance", label: "Attendance", key: "attendance" },
-    { href: "/logs", label: "Logs", key: "logs" },
-    { href: "/bugs", label: "Bug Board", key: "bugs" },
-    { href: "/reports", label: "Reports", key: "reports" },
-    { href: "/leads", label: "Leads", key: "leads" },
-    { href: "/clients", label: "Clients", key: "clients" },
-    { href: "/account", label: "My Account", key: "account" },
-    { href: "/logout", label: "Logout", key: "logout" },
+    { href: "/dashboard", label: "Dashboard", short: "Home", key: "dashboard" },
+    { href: "/tasks", label: "Tasks", short: "Tasks", key: "tasks" },
+    {
+      href: "/attendance",
+      label: "Attendance",
+      short: "Attend",
+      key: "attendance",
+    },
+    { href: "/logs", label: "Logs", short: "?", key: "logs", icon: true },
+    { href: "/reports", label: "Reports", short: "Reports", key: "reports" },
+    { href: "/leads", label: "Leads", short: "Leads", key: "leads" },
+    { href: "/clients", label: "Clients", short: "Clients", key: "clients" },
+    {
+      href: "/account",
+      label: "My Account",
+      short: "Me",
+      key: "account",
+      optional: true,
+    },
+    { href: "/logout", label: "Logout", short: "⏻", key: "logout", icon: true },
   ];
 
   return `
     <div class="top-nav">
       <div class="top-nav-inner">
-        <div class="brand">WeSolveHR</div>
+        <a class="brand" href="/dashboard" title="WeSolveHR">W</a>
 
         <div class="nav-links">
           ${items
-            .map(
-              (item) => `
+            .map((item) => {
+              const classes = [
+                active === item.key ? "active" : "",
+                item.key === "logout" ? "logout-link" : "",
+                item.icon ? "nav-icon-link" : "",
+                item.optional ? "nav-text-optional" : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
+
+              return `
                 <a
                   href="${item.href}"
-                  class="${active === item.key ? "active" : ""} ${item.key === "logout" ? "logout-link" : ""}"
+                  class="${classes}"
+                  title="${escapeHtml(item.label)}"
+                  aria-label="${escapeHtml(item.label)}"
                 >
-                  ${item.label}
+                  ${escapeHtml(item.short || item.label)}
                 </a>
-              `,
-            )
+              `;
+            })
             .join("")}
         </div>
 
         <div class="top-nav-status" id="topNavStatus">
-          <span class="top-nav-pill loading">Off today: ...</span>
-          <span class="top-nav-pill loading">On break: ...</span>
+          <span class="top-nav-pill loading">Off: ...</span>
+          <span class="top-nav-pill loading">Break: ...</span>
         </div>
       </div>
     </div>
@@ -5547,8 +5480,8 @@ function renderTopNav(active = "") {
           .then((json) => {
             if (!json.ok || !json.data) {
               mount.innerHTML =
-                '<span class="top-nav-pill muted">Off today: -</span>' +
-                '<span class="top-nav-pill muted">On break: -</span>';
+                '<span class="top-nav-pill muted">Off: -</span>' +
+                '<span class="top-nav-pill muted">Break: -</span>';
               return;
             }
 
@@ -5564,17 +5497,17 @@ function renderTopNav(active = "") {
 
             const offLabel =
               (data.offCount || 0) === 0
-                ? "Off today: 0"
+                ? "Off: 0"
                 : (data.offCount || 0) <= 2
-                  ? "Off today: " + data.offNames.join(", ")
-                  : "Off today: " + data.offCount;
+                  ? "Off: " + data.offNames.join(", ")
+                  : "Off: " + data.offCount;
 
             const breakLabel =
               (data.breakCount || 0) === 0
-                ? "On break: 0"
+                ? "Break: 0"
                 : (data.breakCount || 0) <= 2
-                  ? "On break: " + data.breakNames.join(", ")
-                  : "On break: " + data.breakCount;
+                  ? "Break: " + data.breakNames.join(", ")
+                  : "Break: " + data.breakCount;
 
             mount.innerHTML =
               '<span class="top-nav-pill" title="' + escapeHtmlClient(offTitle) + '">' + escapeHtmlClient(offLabel) + '</span>' +
@@ -5582,8 +5515,8 @@ function renderTopNav(active = "") {
           })
           .catch(() => {
             mount.innerHTML =
-              '<span class="top-nav-pill muted">Off today: -</span>' +
-              '<span class="top-nav-pill muted">On break: -</span>';
+              '<span class="top-nav-pill muted">Off: -</span>' +
+              '<span class="top-nav-pill muted">Break: -</span>';
           });
       })();
 
