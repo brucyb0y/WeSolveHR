@@ -15693,18 +15693,18 @@ async function uploadJoolianB2BExcel() {
   const json = await res.json();
 
   if (!json.ok) {
-    alert("Joolian B2B Excel import failed:\n" + (json.error || JSON.stringify(json)));
+    alert("Joolian B2B Excel import failed:\\n" + (json.error || JSON.stringify(json)));
     console.error("Joolian import failed:", json);
     return;
   }
 
   const d = json.data || {};
   alert(
-    "Joolian B2B import complete\n" +
-    "Total: " + d.total + "\n" +
-    "Inserted: " + d.inserted + "\n" +
-    "Updated: " + d.updated + "\n" +
-    "Skipped: " + d.skipped + "\n" +
+    "Joolian B2B import complete\\n" +
+    "Total: " + d.total + "\\n" +
+    "Inserted: " + d.inserted + "\\n" +
+    "Updated: " + d.updated + "\\n" +
+    "Skipped: " + d.skipped + "\\n" +
     "Errors: " + (d.errors || []).length
   );
 
