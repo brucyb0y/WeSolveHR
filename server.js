@@ -7366,18 +7366,24 @@ async function cleanAndTranslateLeadTranscript(rawTranscript) {
   const prompt = `
 You are cleaning a sales lead voice note.
 
-Return JSON only with:
+Return JSON only with EXACT structure:
 {
   "detected_language": "hindi|english|hinglish|unknown",
-  "cleaned_transcript": "Clean readable version in the original meaning",
-  "translated_text": "English translation if needed, otherwise same as cleaned_transcript"
+  "cleaned_transcript": "Clean readable version in original meaning",
+  "translated_text": "English translation if needed, else same as cleaned_transcript",
+  "conversation_rows": [
+    { "speaker": "Salesperson", "text": "..." },
+    { "speaker": "Lead", "text": "..." }
+  ]
 }
 
 Rules:
-- Do not invent details.
-- Keep phone numbers, names, locations, company names exactly if mentioned.
-- If unclear, write [unclear].
-- Make it easy for a sales/admin person to review.
+- Do NOT invent details
+- Keep names, phone numbers, locations exact
+- If unclear, write [unclear]
+- Split conversation logically into turns
+- If speaker unclear → use "Unknown"
+- Keep it short and readable
 `;
 
   const completion = await openai.chat.completions.create({
@@ -7390,7 +7396,14 @@ Rules:
   });
 
   const text = completion.choices?.[0]?.message?.content || "{}";
-  const parsed = safeParseJson(text) || {};
+
+  let parsed = {};
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    console.error("Failed to parse AI response:", text);
+    parsed = {};
+  }
 
   return {
     detected_language: parsed.detected_language || "unknown",
@@ -7400,6 +7413,9 @@ Rules:
       parsed.cleaned_transcript ||
       rawTranscript ||
       "",
+    conversation_rows: Array.isArray(parsed.conversation_rows)
+      ? parsed.conversation_rows
+      : [],
   };
 }
 
@@ -7443,6 +7459,7 @@ async function transcribeLeadVoiceUploadById({ leadVoiceId, orgId }) {
       cleaned_transcript: cleaned.cleaned_transcript,
       translated_text: cleaned.translated_text,
       detected_language: cleaned.detected_language,
+      conversation_rows: cleaned.conversation_rows || [],
       status: "pending_review",
       updated_at: new Date().toISOString(),
     })
@@ -15380,21 +15397,75 @@ async function openCallSummaryModal(business, phone) {
         item.raw_transcript ||
         "No transcript available yet.";
 
+      const conversationRows = Array.isArray(item.conversation_rows)
+        ? item.conversation_rows
+        : [];
+
+      const conversationHtml = conversationRows.length
+        ? (
+            '<table style="width:100%; border-collapse:collapse; margin-top:12px;">' +
+              '<thead>' +
+                '<tr>' +
+                  '<th style="text-align:left; padding:6px;">Speaker</th>' +
+                  '<th style="text-align:left; padding:6px;">What was said</th>' +
+                '</tr>' +
+              '</thead>' +
+              '<tbody>' +
+                conversationRows.map(function(row) {
+                  return (
+                    '<tr>' +
+                      '<td style="width:140px; font-weight:900; padding:6px;">' +
+                        escapeHtmlClient(row.speaker || "Unknown") +
+                      '</td>' +
+                      '<td style="white-space:pre-wrap; padding:6px;">' +
+                        escapeHtmlClient(row.text || "") +
+                      '</td>' +
+                    '</tr>'
+                  );
+                }).join("") +
+              '</tbody>' +
+            '</table>'
+          )
+        : (
+            '<div style="white-space:pre-wrap; margin-top:12px; line-height:1.55;">' +
+              escapeHtmlClient(summary) +
+            '</div>'
+          );
+
       return (
         '<div class="call-summary-card">' +
+
           '<div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">' +
+
             '<div>' +
               '<div style="font-weight:900;">Call #' + escapeHtmlClient(item.id) + '</div>' +
-              '<div class="muted">' + escapeHtmlClient(item.created_at || "-") + ' · ' + escapeHtmlClient(item.status || "-") + '</div>' +
+              '<div class="muted">' +
+                escapeHtmlClient(item.created_at || "-") +
+                ' · ' +
+                escapeHtmlClient(item.status || "-") +
+              '</div>' +
             '</div>' +
+
             '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
-              (item.media_url ? '<a class="btn" href="' + escapeHtmlClient(item.media_url) + '" target="_blank" rel="noopener noreferrer">Audio</a>' : '') +
-              '<button class="btn btn-danger" type="button" onclick="deleteCallSummary(' + Number(item.id) + ', \\'' + escapeHtmlClient(business) + '\\', \\'' + escapeHtmlClient(phone) + '\\')">Delete</button>' +
+
+              (item.media_url
+                ? '<a class="btn" href="' +
+                  escapeHtmlClient(item.media_url) +
+                  '" target="_blank">Audio</a>'
+                : '') +
+
+              '<button class="btn btn-danger" type="button" onclick="deleteCallSummary(' +
+                Number(item.id) +
+                ', \'' + escapeHtmlClient(business) +
+                '\', \'' + escapeHtmlClient(phone) +
+              '\')">Delete</button>' +
+
             '</div>' +
+
           '</div>' +
-          '<div style="white-space:pre-wrap; margin-top:12px; line-height:1.55;">' +
-            escapeHtmlClient(summary) +
-          '</div>' +
+
+          conversationHtml +
+
         '</div>'
       );
     })
@@ -28884,7 +28955,7 @@ app.get(
       const { data, error } = await supabase
         .from("lead_voice_uploads")
         .select(
-          "id, business, lead_phone, status, raw_transcript, cleaned_transcript, translated_text, review_notes, media_url, created_at",
+          "id, business, lead_phone, status, raw_transcript, cleaned_transcript, translated_text, conversation_rows, review_notes, media_url, created_at",
         )
         .eq("org_id", orgId)
         .eq("business", business)
