@@ -7491,15 +7491,14 @@ async function cleanAndTranslateLeadTranscript(rawTranscript) {
   }
 
   const prompt = `
-You are cleaning, translating, and structuring a lead call transcript.
+You are cleaning, translating, and extracting key details from a lead call transcript.
 
 Return JSON only with EXACT structure:
 {
   "detected_language": "hindi|english|hinglish|unknown",
   "cleaned_transcript": "Full cleaned readable transcript preserving all meaningful spoken content",
   "translated_text": "Full English translation preserving all meaningful spoken content. If already English, use the cleaned transcript.",
-  "transcription_confidence": "low|medium|high"
-  ],
+  "transcription_confidence": "low|medium|high",
   "important_points": [
     "Important factual point from the call"
   ],
@@ -7513,33 +7512,27 @@ Return JSON only with EXACT structure:
 
 CRITICAL OUTPUT RULES:
 - Return valid JSON only. No markdown. No explanation.
-- Do NOT summarize conversation_rows.
-- Do NOT remove meaningful words from conversation_rows.
-- Do NOT merge unrelated speaker turns.
+- Do NOT summarize the transcript.
+- Do NOT lose meaningful spoken content.
 - Do NOT invent names, roles, facts, intent, or conclusions.
 - Preserve the full call in cleaned_transcript and translated_text.
-- conversation_rows is an additional readable speaker-by-speaker view of the same call.
-- translated_text and conversation_rows should contain the same conversation content, just formatted differently.
-- If the transcript is already English, translated_text should still be polished readable English but must not lose meaning.
-
-SPEAKER RULES:
-- cleaned_transcript and translated_text must preserve the full call.
-- Do not summarize.
-- Do not lose meaningful words.
+- If the transcript is already English, translated_text should be polished readable English but must not lose meaning.
+- Remove obvious transcription junk only when it is clearly noise.
+- Keep the conversation readable as a continuous transcript.
 
 CONTENT PRESERVATION RULES:
 - Keep repeated questions if they were repeated.
 - Keep short replies like "yes", "no", "okay", "sure", "hello", "I'm sorry".
-- Keep emails, phone numbers, locations, company names, business names, machine names, activity names, pricing, age groups, and membership details exactly if mentioned.
+- Keep emails, phone numbers, locations, company names, business names, machine names, activity names, pricing, age groups, membership details, and payment details exactly if mentioned.
 - Use [unclear] only where the words are unclear.
 - Do not add phrases like "you mentioned" unless actually spoken.
-- Do not convert the conversation into bullet points.
-- Do not add analysis inside conversation_rows.
+- Do not convert cleaned_transcript or translated_text into bullet points.
+- Do not add analysis inside cleaned_transcript or translated_text.
 
 BUSINESS EXTRACTION RULES:
 - important_points and pain_points may be summarized.
 - follow_up_questions should be practical next questions based only on the call.
-- For manufacturing/Rasset calls, pay attention to manpower issues, payment or money-stuck issues, raw material sourcing, urgent order capacity, spare parts, technician availability, machine breakdown frequency, and production dependency.
+- For manufacturing/Rasset calls, pay attention to manpower issues, payment or money-stuck issues, raw material sourcing, urgent order capacity, spare parts, technician availability, machine breakdown frequency, maintenance schedule, and production dependency.
 - For Joolian/activity-provider calls, pay attention to age groups, activity type, membership/pricing model, group enrollment possibility, availability, scheduling, owner/manager availability, contact person, email, payment requirement, and whether custom classes are possible.
 `;
 
@@ -15047,58 +15040,59 @@ ${rows
     (lead) => `
     <div class="lead-card compact-voice-card" id="lead-card-${Number(lead.id)}">
 
-      <!-- HEADER -->
-      <div class="voice-header">
-        <div class="voice-left">
-          <label class="voice-select">
-            <input type="checkbox" class="voice-delete-checkbox" value="${Number(lead.id)}">
-            <span class="voice-id">#${escapeHtml(lead.id)}</span>
-          </label>
+<!-- HEADER -->
+<div class="voice-header">
+  <div class="voice-main">
+    <div class="voice-title-row">
+      <label class="voice-check" title="Select for bulk delete">
+        <input type="checkbox" class="voice-delete-checkbox" value="${Number(lead.id)}">
+      </label>
 
-          <div class="voice-meta">
-            ${escapeHtml(formatDateTime(lead.created_at))}
-            · ${escapeHtml(lead.lead_phone)}
-            · ${escapeHtml(lead.sender_phone)}
-          </div>
-        </div>
-
-        <div class="voice-right">
-          <span class="${badgeClass(lead.status)}">${escapeHtml(lead.status)}</span>
-
-          <button class="kebab-btn" onclick="toggleVoiceActions(event, ${Number(lead.id)})">⋯</button>
-
-          <div id="voiceActions-${Number(lead.id)}" class="lead-actions-menu">
-
-            <button onclick="deleteVoiceUpload(${Number(lead.id)})">Delete Voice</button>
-
-            ${
-              lead.status === "pending_transcription" ||
-              lead.status === "transcribing"
-                ? `<button onclick="window.transcribeLead(${Number(lead.id)})">Transcribe</button>`
-                : ""
-            }
-
-            ${
-              lead.status === "pending_review"
-                ? `
-                  <button onclick="saveTranscript(${Number(lead.id)})">Save</button>
-                  <button onclick="approveLead(${Number(lead.id)})">Approve</button>
-                  <button onclick="rejectLead(${Number(lead.id)})">Reject</button>
-                  <button onclick="deleteVoiceTranscript(${Number(lead.id)})">Delete Transcript</button>
-                `
-                : ""
-            }
-
-            ${
-              lead.status === "rejected"
-                ? `<button onclick="saveTranscript(${Number(lead.id)})">Edit & Reopen</button>`
-                : ""
-            }
-
-          </div>
+      <div>
+        <div class="voice-title">Voice Lead #${escapeHtml(lead.id)}</div>
+        <div class="voice-meta">
+          ${escapeHtml(formatDateTime(lead.created_at))}
+          · ${escapeHtml(lead.lead_phone)}
+          · ${escapeHtml(lead.sender_phone)}
         </div>
       </div>
+    </div>
+  </div>
 
+  <div class="voice-side">
+    <span class="${badgeClass(lead.status)}">${escapeHtml(lead.status)}</span>
+
+    <button class="kebab-btn" type="button" onclick="toggleVoiceActions(event, ${Number(lead.id)})">⋯</button>
+
+    <div id="voiceActions-${Number(lead.id)}" class="lead-actions-menu">
+      <button type="button" onclick="deleteVoiceUpload(${Number(lead.id)})">Delete Voice</button>
+
+      ${
+        lead.status === "pending_transcription" ||
+        lead.status === "transcribing"
+          ? `<button type="button" data-transcribe-id="${Number(lead.id)}" onclick="window.transcribeLead(${Number(lead.id)})">Transcribe</button>`
+          : ""
+      }
+
+      ${
+        lead.status === "pending_review"
+          ? `
+            <button type="button" onclick="saveTranscript(${Number(lead.id)})">Save</button>
+            <button type="button" onclick="approveLead(${Number(lead.id)})">Approve</button>
+            <button type="button" onclick="rejectLead(${Number(lead.id)})">Reject</button>
+            <button type="button" onclick="deleteVoiceTranscript(${Number(lead.id)})">Delete Transcript</button>
+          `
+          : ""
+      }
+
+      ${
+        lead.status === "rejected"
+          ? `<button type="button" onclick="saveTranscript(${Number(lead.id)})">Edit & Reopen</button>`
+          : ""
+      }
+    </div>
+  </div>
+</div>
       <!-- AUDIO -->
       <div class="voice-audio">
         <audio controls preload="none">
@@ -15181,117 +15175,113 @@ ${rows
           }
           
           
-          .compact-voice-card {
-  padding: 14px 16px;
+.compact-voice-card {
+  padding: 16px 18px;
 }
 
-.voice-card-header {
+.voice-header {
   display: flex;
   justify-content: space-between;
-  gap: 14px;
+  gap: 18px;
   align-items: flex-start;
-  margin-bottom: 10px;
 }
 
-.voice-main-info {
+.voice-main {
   min-width: 0;
+  flex: 1;
 }
 
-.voice-select-line {
+.voice-title-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.voice-check {
+  margin-top: 4px;
+  display: inline-flex;
 }
 
 .voice-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 900;
 }
 
 .voice-meta {
+  margin-top: 4px;
   color: var(--muted);
   font-size: 13px;
-  margin-top: 4px;
-  line-height: 1.4;
 }
 
-.voice-right-actions {
+.voice-side {
   display: flex;
   align-items: center;
   gap: 8px;
   position: relative;
+  flex-shrink: 0;
 }
 
-.voice-audio-row {
-  margin: 8px 0 10px;
+.kebab-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 900;
+  cursor: pointer;
 }
 
-.voice-audio-row audio {
+.voice-audio {
+  margin-top: 12px;
+}
+
+.voice-audio audio {
   width: 100%;
-  max-width: 430px;
+  max-width: 420px;
   height: 38px;
 }
 
-.transcript-details {
+.voice-transcript {
+  margin-top: 10px;
+  padding-top: 8px;
   border-top: 1px solid rgba(255,255,255,0.08);
-  padding-top: 10px;
 }
 
-.transcript-details summary {
+.voice-transcript summary {
   cursor: pointer;
-  font-weight: 900;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   color: var(--text);
   font-size: 13px;
-  margin-bottom: 10px;
+  font-weight: 800;
 }
 
-.conversation-thread {
-  display: grid;
-  gap: 8px;
-  max-height: 360px;
-  overflow: auto;
-  padding-right: 4px;
-}
-
-.conversation-row {
-  display: grid;
-  grid-template-columns: 110px 1fr;
-  gap: 10px;
-  align-items: start;
-}
-
-.speaker-pill {
-  position: sticky;
-  top: 0;
+.transcript-preview {
+  color: var(--muted);
   font-size: 12px;
-  font-weight: 900;
-  color: var(--text-strong);
-  background: var(--primary-soft);
-  border: 1px solid color-mix(in srgb, var(--primary) 45%, transparent);
-  border-radius: 999px;
-  padding: 6px 8px;
-  text-align: center;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.conversation-text {
-  background: rgba(255,255,255,0.035);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
-  padding: 9px 11px;
-  font-size: 14px;
-  line-height: 1.55;
-  white-space: pre-wrap;
-}
-
-.compact-transcript-textarea {
+.transcript-textarea {
   width: 100%;
-  min-height: 220px;
-  font-size: 14px;
-  line-height: 1.55;
-}
-
-.hidden-transcript {
-  display: none;
+  min-height: 180px;
+  max-height: 320px;
+  margin-top: 10px;
+  padding: 12px 13px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.045);
+  color: var(--text);
+  font: 13px/1.5 Inter, ui-sans-serif, system-ui;
+  resize: vertical;
 }
 
 @media (max-width: 760px) {
