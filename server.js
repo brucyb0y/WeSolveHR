@@ -15161,8 +15161,8 @@ function renderBusinessLeadsPage(data) {
       <input
         type="checkbox"
         style="margin:0; width:auto;"
-        ${(lead.lead_stage || "prospect") === "prospect" ? "checked" : ""}
-        onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'lead_stage', this.checked ? 'prospect' : '')"
+${lead.lead_stage === "prospect" ? "checked" : ""}
+onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'lead_stage', this.checked ? 'prospect' : '')"
       />
       <span>Prospect</span>
     </label>
@@ -16140,12 +16140,11 @@ document.getElementById("leadOwnerName").value = lead.owner_name || "";
 document.getElementById("leadNumberOfEmployees").value = lead.number_of_employees || "";
 document.getElementById("leadCompanySize").value = lead.company_size || "";
 document.getElementById("leadEnrichmentNotes").value = lead.enrichment_notes || "";
-document.getElementById("leadQualificationDone").checked = !!lead.qualification_done;
-document.getElementById("leadWorthTalking").checked = !!lead.worth_talking;
+
 document.getElementById("leadL2Done").checked = !!lead.l2_done;
 document.getElementById("leadQualified").checked = !!lead.qualified;
-document.getElementById("leadProspect").checked = (lead.lead_stage || "prospect") === "prospect";
-          }
+document.getElementById("leadProspect").checked = lead.lead_stage === "prospect";
+}
 
           function closeLeadModal(event) {
             if (event && event.target && event.target.id !== "leadModal") return;
@@ -16190,11 +16189,9 @@ document.getElementById("leadProspect").checked = (lead.lead_stage || "prospect"
             document.getElementById("leadStatus").value = "new";
             document.getElementById("leadSource").value = "manual";
             document.getElementById("leadStage").value = "prospect";
-            document.getElementById("leadQualificationDone").checked = false;
-document.getElementById("leadWorthTalking").checked = false;
 document.getElementById("leadL2Done").checked = false;
 document.getElementById("leadQualified").checked = false;
-document.getElementById("leadProspect").checked = true;
+document.getElementById("leadProspect").checked = false;
           }
           
           async function toggleLeadCheckbox(event, business, id, field, value) {
