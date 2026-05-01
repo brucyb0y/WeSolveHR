@@ -5753,9 +5753,16 @@ async function getLeadsOverviewData(orgId) {
   if (voiceError) throw voiceError;
 
   const businessTables = [
-    { business: "rasset", table: "rasset_leads" },
-    { business: "joolian", table: "joolian_leads" },
-    { business: "matrimonials", table: "matrimonials_leads" },
+    { business: "rasset", label: "Rasset", table: "rasset_leads" },
+    { business: "joolian", label: "Joolian", table: "joolian_leads" },
+    {
+      business: "matrimonials",
+      label: "Matrimonials",
+      table: "matrimonials_leads",
+    },
+
+    // Add future businesses here:
+    // { business: "jewelry", label: "Jewelry", table: "jewelry_leads" },
   ];
 
   const businesses = [];
@@ -5776,6 +5783,7 @@ async function getLeadsOverviewData(orgId) {
       const rows = data || [];
       businesses.push({
         business: item.business,
+        label: item.label || item.business,
         total: count || rows.length,
         leads: rows.filter(
           (x) => !["in_progress", "completed"].includes(x.status),
@@ -14696,24 +14704,37 @@ function renderLeadsOverviewPage(data) {
   const businesses = data?.businesses || [];
   const recent = data?.recent || [];
 
-  const businessCardsHtml = businesses.length
+  const businessRowsHtml = businesses.length
     ? businesses
-        .map(
-          (b) => `
-            <div class="stat-card">
-              <div class="stat-label">${escapeHtml(b.business)}</div>
-              <div class="stat-value">${escapeHtml(b.total)}</div>
-              <div class="muted" style="margin-top:8px;">
-                Leads: ${escapeHtml(b.leads)} · In Progress: ${escapeHtml(b.in_progress)} · Completed: ${escapeHtml(b.completed)}
-              </div>
-              <div style="margin-top:12px;">
-                <a class="action-btn" href="/leads/${encodeURIComponent(b.business)}">Open ${escapeHtml(b.business)}</a>
-              </div>
-            </div>
-          `,
-        )
+        .map((b) => {
+          const attention =
+            Number(b.in_progress || 0) > 0 || Number(b.leads || 0) > 0;
+          return `
+            <tr class="business-row" onclick="window.location.href='/leads/${encodeURIComponent(b.business)}'">
+              <td>
+                <div class="business-name">${escapeHtml(b.label || b.business)}</div>
+                <div class="business-subtitle">${escapeHtml(b.business)}</div>
+              </td>
+              <td><strong>${escapeHtml(b.total || 0)}</strong></td>
+              <td>${escapeHtml(b.leads || 0)}</td>
+              <td>
+                <span class="${Number(b.in_progress || 0) > 0 ? "badge badge-warn" : "badge badge-muted"}">
+                  ${escapeHtml(b.in_progress || 0)}
+                </span>
+              </td>
+              <td>
+                <span class="badge badge-ok">${escapeHtml(b.completed || 0)}</span>
+              </td>
+              <td>
+                <span class="${attention ? "attention-dot active" : "attention-dot"}"></span>
+                ${attention ? "Needs review" : "Clean"}
+              </td>
+              <td class="open-cell">Open →</td>
+            </tr>
+          `;
+        })
         .join("")
-    : `<div class="panel" style="padding:18px;">No leads yet.</div>`;
+    : `<tr><td colspan="7" class="empty-cell">No businesses found.</td></tr>`;
 
   const recentRowsHtml = recent.length
     ? recent
@@ -14740,129 +14761,226 @@ function renderLeadsOverviewPage(data) {
           ${buildBasePageCss()}
           ${buildTopNavCss()}
 
-          .wrap { max-width: 1600px; margin: 0 auto; padding: 24px 18px 36px; }
+          .wrap {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 18px 16px 32px;
+          }
+
           .topbar, .panel, .stat-card {
             background: linear-gradient(180deg, var(--panel), var(--panel-strong));
             border: 1px solid var(--line);
             border-radius: var(--radius-lg);
             box-shadow: var(--shadow-soft);
           }
+
           .topbar {
-            display:flex; justify-content:space-between; align-items:center;
-            gap:16px; flex-wrap:wrap; margin-bottom:20px; padding:18px 20px;
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            gap:16px;
+            flex-wrap:wrap;
+            margin-bottom:14px;
+            padding:18px 20px;
           }
+
           .eyebrow {
-            font-size:11px; letter-spacing:0.16em; text-transform:uppercase;
-            color:var(--primary); font-weight:700; margin-bottom:8px;
+            font-size:11px;
+            letter-spacing:0.16em;
+            text-transform:uppercase;
+            color:var(--primary);
+            font-weight:800;
+            margin-bottom:8px;
           }
 
-          
-          h1 { margin:0; font-size:30px; letter-spacing:-0.04em; }
-          .subtitle { color:var(--muted); margin-top:8px; font-size:14px; }
-          .stats { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:20px; }
-          .business-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; margin-bottom:20px; }
-          .stat-card { padding:14px; }
-          .stat-label { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:0.08em; font-weight:700; }
-          .stat-value { margin-top:10px; font-size:28px; font-weight:800; }
-          .panel { padding:18px; }
-          table { width:100%; border-collapse:collapse; }
-          th, td { padding:12px; border-bottom:1px solid rgba(255,255,255,0.08); text-align:left; font-size:14px; }
-          th { color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; font-size:12px; }
-          .action-btn {
-            display:inline-flex; align-items:center; text-decoration:none; color:var(--text-strong);
-            padding:10px 13px; border-radius:12px; background:var(--primary-soft);
-            border:1px solid color-mix(in srgb, var(--primary) 55%, transparent); font-weight:800;
+          h1 {
+            margin:0;
+            font-size:32px;
+            letter-spacing:-0.04em;
           }
+
+          .subtitle {
+            color:var(--muted);
+            margin-top:8px;
+            font-size:14px;
+          }
+
+          .stats {
+            display:grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap:10px;
+            margin-bottom:14px;
+          }
+
+          .stat-card {
+            padding:12px 14px;
+          }
+
+          .stat-label {
+            color:var(--muted);
+            font-size:11px;
+            text-transform:uppercase;
+            letter-spacing:0.10em;
+            font-weight:800;
+          }
+
+          .stat-value {
+            margin-top:6px;
+            font-size:34px;
+            line-height:1;
+            font-weight:950;
+          }
+
+          .toolbar {
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            gap:12px;
+            margin-bottom:12px;
+            flex-wrap:wrap;
+          }
+
+          .toolbar-title {
+            font-size:18px;
+            font-weight:900;
+          }
+
+          .toolbar-actions {
+            display:flex;
+            gap:8px;
+            flex-wrap:wrap;
+          }
+
+          .filter-chip {
+            padding:8px 11px;
+            border-radius:999px;
+            border:1px solid rgba(255,255,255,0.12);
+            background:rgba(255,255,255,0.05);
+            color:var(--text);
+            font-size:12px;
+            font-weight:800;
+          }
+
+          .panel {
+            padding:16px;
+            margin-bottom:14px;
+          }
+
+          table {
+            width:100%;
+            border-collapse:collapse;
+          }
+
+          th, td {
+            padding:12px 14px;
+            border-bottom:1px solid rgba(255,255,255,0.08);
+            text-align:left;
+            font-size:14px;
+            vertical-align:middle;
+          }
+
+          th {
+            color:var(--muted);
+            text-transform:uppercase;
+            letter-spacing:0.08em;
+            font-size:11px;
+            font-weight:900;
+          }
+
+          .business-row {
+            cursor:pointer;
+            transition: background 0.12s ease, transform 0.12s ease;
+          }
+
+          .business-row:hover {
+            background:rgba(255,255,255,0.045);
+          }
+
+          .business-name {
+            font-size:16px;
+            font-weight:950;
+            color:var(--text-strong);
+            text-transform:capitalize;
+          }
+
+          .business-subtitle {
+            margin-top:3px;
+            color:var(--muted);
+            font-size:12px;
+          }
+
+          .open-cell {
+            color:var(--primary);
+            font-weight:900;
+            white-space:nowrap;
+          }
+
+          .badge {
+            display:inline-flex;
+            padding:6px 9px;
+            border-radius:999px;
+            font-size:12px;
+            font-weight:900;
+          }
+
+          .badge-ok {
+            background:var(--success-soft);
+            color:var(--text-strong);
+          }
+
+          .badge-warn {
+            background:var(--accent-soft);
+            color:var(--text-strong);
+          }
+
+          .badge-muted {
+            background:rgba(255,255,255,0.08);
+            color:var(--text);
+          }
+
+          .attention-dot {
+            width:8px;
+            height:8px;
+            border-radius:999px;
+            display:inline-block;
+            margin-right:7px;
+            background:rgba(255,255,255,0.25);
+          }
+
+          .attention-dot.active {
+            background:var(--accent);
+            box-shadow:0 0 0 4px rgba(243,181,98,0.12);
+          }
+
+          .recent-panel {
+            margin-top:14px;
+          }
+
           @media (max-width: 900px) {
-            .stats, .business-grid { grid-template-columns:1fr; }
-            .panel { overflow-x:auto; }
+            .stats {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .panel {
+              overflow-x:auto;
+            }
+
+            table {
+              min-width:760px;
+            }
           }
-          
-.compact-voice-card {
-  padding: 16px 18px;
-  border-radius: 18px;
-}
 
-.voice-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: start;
-}
-
-.voice-select {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 18px;
-  font-weight: 900;
-}
-
-.voice-meta {
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.voice-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.voice-audio {
-  margin-top: 12px;
-}
-
-.voice-audio audio {
-  width: 100%;
-  max-width: 420px;
-  height: 38px;
-}
-
-.voice-transcript {
-  margin-top: 12px;
-  border-top: 1px solid rgba(255,255,255,0.08);
-  padding-top: 10px;
-}
-
-.voice-transcript summary {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  font-weight: 900;
-  color: var(--text);
-}
-
-.transcript-preview {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 760px;
-}
-
-.transcript-textarea {
-  width: 100%;
-  min-height: 180px;
-  max-height: 320px;
-  margin-top: 10px;
-  padding: 12px 13px;
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.10);
-  background: rgba(255,255,255,0.045);
-  color: var(--text);
-  font: 13px/1.5 Inter, ui-sans-serif, system-ui;
-  resize: vertical;
-}
+          @media (max-width: 600px) {
+            .stats {
+              grid-template-columns:1fr;
+            }
+          }
         </style>
       </head>
+
       <body>
         ${renderTopNav("leads")}
+
         <div class="wrap">
           <div class="topbar">
             <div>
@@ -14879,12 +14997,40 @@ function renderLeadsOverviewPage(data) {
             <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value">${summary.completed || 0}</div></div>
           </div>
 
-          <div class="business-grid">
-            ${businessCardsHtml}
+          <div class="panel">
+            <div class="toolbar">
+              <div>
+                <div class="toolbar-title">Businesses</div>
+                <div class="subtitle">Click any row to open that business lead inbox.</div>
+              </div>
+
+              <div class="toolbar-actions">
+                <span class="filter-chip">All: ${businesses.length}</span>
+                <span class="filter-chip">Needs Review: ${businesses.filter((b) => Number(b.in_progress || 0) > 0 || Number(b.leads || 0) > 0).length}</span>
+              </div>
+            </div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>Business</th>
+                  <th>Total</th>
+                  <th>Leads</th>
+                  <th>In Progress</th>
+                  <th>Completed</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>${businessRowsHtml}</tbody>
+            </table>
           </div>
 
-          <div class="panel">
-            <h2 style="margin-top:0;">Recent Voice Uploads</h2>
+          <div class="panel recent-panel">
+            <div class="toolbar">
+              <div class="toolbar-title">Recent Voice Uploads</div>
+            </div>
+
             <table>
               <thead>
                 <tr>
