@@ -15139,24 +15139,30 @@ function renderBusinessLeadsPage(data) {
                   <div class="muted">${escapeHtml(lead.pin_code || lead.location || "")}</div>
                 </td>
 
-<td>
-  <label style="display:block; cursor:pointer;">
-    <input
-      type="checkbox"
-      ${lead.l2_done ? "checked" : ""}
-      onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'l2_done', this.checked)"
-    />
-    L2 Done
-  </label>
+<td style="text-align:left; padding:10px 12px;">
+  <div style="display:flex; flex-direction:column; gap:6px;">
 
-  <label style="display:block; cursor:pointer; margin-top:6px;">
-    <input
-      type="checkbox"
-      ${lead.qualified ? "checked" : ""}
-      onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'qualified', this.checked)"
-    />
-    Qualified
-  </label>
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+      <input
+        type="checkbox"
+        style="margin:0;"
+        ${lead.l2_done ? "checked" : ""}
+        onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'l2_done', this.checked)"
+      />
+      <span>L2 Done</span>
+    </label>
+
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+      <input
+        type="checkbox"
+        style="margin:0;"
+        ${lead.qualified ? "checked" : ""}
+        onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'qualified', this.checked)"
+      />
+      <span>Qualified</span>
+    </label>
+
+  </div>
 </td>
 
                 <td>
@@ -15913,34 +15919,35 @@ ${
                 </select>
               </div>
               
+<div class="form-field">
+  <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+    <input id="leadQualificationDone" type="checkbox" style="margin:0; width:auto;" />
+    <span>Qualification Done</span>
+  </label>
+</div>
+
+<div class="form-field">
+  <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+    <input id="leadWorthTalking" type="checkbox" style="margin:0; width:auto;" />
+    <span>Worth Talking</span>
+  </label>
+</div>
+
+<div class="form-field">
+  <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+    <input id="leadL2Done" type="checkbox" style="margin:0; width:auto;" />
+    <span>L2 Done</span>
+  </label>
+</div>
+
+<div class="form-field">
+  <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+    <input id="leadQualified" type="checkbox" style="margin:0; width:auto;" />
+    <span>Qualified</span>
+  </label>
+</div>
               <div class="form-field">
-              <div class="form-field">
-  <label>
-    <input id="leadQualificationDone" type="checkbox" style="width:auto;" />
-    Qualification Done
-  </label>
-</div>
 
-<div class="form-field">
-  <label>
-    <input id="leadWorthTalking" type="checkbox" style="width:auto;" />
-    Worth Talking
-  </label>
-</div>
-
-<div class="form-field">
-  <label>
-    <input id="leadL2Done" type="checkbox" style="width:auto;" />
-    L2 Done
-  </label>
-</div>
-
-<div class="form-field">
-  <label>
-    <input id="leadQualified" type="checkbox" style="width:auto;" />
-    Qualified
-  </label>
-</div>
   <label>Lead Stage</label>
   <select id="leadStage">
     <option value="prospect">Prospect</option>
