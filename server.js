@@ -21413,6 +21413,48 @@ app.post(
     }
   },
 );
+
+app.get(
+  "/api/business-leads/:business/call-summaries",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const business = getBusinessCanonicalName(req.params.business);
+      const phone = (req.query.phone || "").trim();
+
+      if (!business) {
+        return sendApiError(res, 400, "Invalid business");
+      }
+
+      if (!phone) {
+        return sendApiError(res, 400, "Phone is required");
+      }
+
+      const { data, error } = await supabase
+        .from("lead_voice_uploads")
+        .select(
+          "id, business, lead_phone, sender_phone, status, raw_transcript, cleaned_transcript, translated_text, conversation_rows, transcription_model, transcription_confidence, important_points, pain_points, follow_up_questions, review_notes, media_url, created_at, updated_at, verified_by, verified_at",
+        )
+        .eq("org_id", orgId)
+        .eq("business", business)
+        .eq("lead_phone", phone)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      return sendApiSuccess(res, data || []);
+    } catch (err) {
+      console.error("call summaries error:", err);
+      return sendApiError(
+        res,
+        500,
+        err.message || "Failed to load call summaries",
+      );
+    }
+  },
+);
+
 app.get(
   "/api/business-leads/:business/:id",
   requireDashboardAuth,
@@ -30146,47 +30188,6 @@ app.post("/api/leads/:id/reject", requireDashboardAuth, async (req, res) => {
     return sendApiError(res, 500, error.message || "Failed to reject lead");
   }
 });
-
-app.get(
-  "/api/business-leads/:business/call-summaries",
-  requireDashboardAuth,
-  async (req, res) => {
-    try {
-      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
-      const business = getBusinessCanonicalName(req.params.business);
-      const phone = (req.query.phone || "").trim();
-
-      if (!business) {
-        return sendApiError(res, 400, "Invalid business");
-      }
-
-      if (!phone) {
-        return sendApiError(res, 400, "Phone is required");
-      }
-
-      const { data, error } = await supabase
-        .from("lead_voice_uploads")
-        .select(
-          "id, business, lead_phone, sender_phone, status, raw_transcript, cleaned_transcript, translated_text, conversation_rows, transcription_model, transcription_confidence, important_points, pain_points, follow_up_questions, review_notes, media_url, created_at, updated_at, verified_by, verified_at",
-        )
-        .eq("org_id", orgId)
-        .eq("business", business)
-        .eq("lead_phone", phone)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      return sendApiSuccess(res, data || []);
-    } catch (err) {
-      console.error("call summaries error:", err);
-      return sendApiError(
-        res,
-        500,
-        err.message || "Failed to load call summaries",
-      );
-    }
-  },
-);
 
 app.delete(
   "/api/lead-voice-uploads/bulk-delete",
