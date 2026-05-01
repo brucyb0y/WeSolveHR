@@ -16328,6 +16328,23 @@ async function enrichLeadUrl() {
   if (d.enrichment_notes) document.getElementById("leadEnrichmentNotes").value = d.enrichment_notes;
 }
 
+function formatHumanDateTime(value) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleString("en-US", {
+    timeZone: "America/Los_Angeles",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 async function openCallSummaryModal(business, phone) {
   const modal = document.getElementById("callSummaryModal");
   const title = document.getElementById("callSummaryTitle");
@@ -16421,19 +16438,20 @@ async function openCallSummaryModal(business, phone) {
             '<div>' +
               '<div style="font-weight:900;">Call #' + escapeHtmlClient(item.id) + '</div>' +
               '<div class="muted" style="line-height:1.6; margin-top:4px;">' +
-                'Created: ' + escapeHtmlClient(item.created_at || "-") + '<br>' +
+                'Created: ' + escapeHtmlClient(formatHumanDateTime(item.created_at)) + '<br>' +
                 'Uploaded by: ' + escapeHtmlClient(item.sender_phone || "-") + '<br>' +
                 'Verified by: ' + escapeHtmlClient(item.verified_by || "Not verified") + '<br>' +
-                'Verified at: ' + escapeHtmlClient(item.verified_at || "-") + '<br>' +
+                'Verified at: ' + escapeHtmlClient(formatHumanDateTime(item.verified_at)) + '<br>' +
                 'Status: ' + escapeHtmlClient(item.status || "-") +
               '</div>' +
             '</div>' +
 
             '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
 
-              '<a class="btn" href="/api/lead-voice-uploads/' +
-                Number(item.id) +
-                '/audio" target="_blank" rel="noopener noreferrer">Audio</a>' +
+              '<audio controls preload="none" style="max-width:260px; height:36px;">' +
+  '<source src="/api/lead-voice-uploads/' + Number(item.id) + '/audio">' +
+  'Your browser does not support audio playback.' +
+'</audio>' +
 
               '<button class="btn btn-danger" type="button" data-call-id="' +
                 Number(item.id) +
