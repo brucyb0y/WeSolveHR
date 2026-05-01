@@ -5645,31 +5645,36 @@ function monthNameToNumber(monthText) {
 }
 
 function parseLeadUploadCommand(text) {
-  const raw = normalizeText(text).replace(/\s+/g, " ");
+  const raw = String(text || "").trim();
 
-  const match = raw.match(/^lead\s+([a-z0-9_-]+)\s+upload\s+(.+)$/i);
+  const match = raw.match(
+    /^lead\s+(\S+)\s+upload\s+(\+?\d[\d\s().-]{7,}\d)(?:\s+name\s+(.+))?$/i,
+  );
+
   if (!match) return null;
 
-  const business = match[1].trim().toLowerCase();
-  const leadPhone = normalizePhoneForLogin(match[2].trim());
+  const business = getBusinessCanonicalName(match[1]);
+  const leadPhone = normalizePhoneForLogin(match[2]);
+  const spokeToName = String(match[3] || "").trim() || null;
 
-  if (!business) {
+  if (!getBusinessLeadTableName(business)) {
     return {
       error:
-        "❌ Business name is missing.\nUse: lead rasset upload +14085551234",
+        "❌ Unsupported business. Use: lead joolian upload +12129816238 name Jaya",
     };
   }
 
-  if (!leadPhone || leadPhone.length < 8) {
+  if (!leadPhone) {
     return {
       error:
-        "❌ Lead phone number is missing or invalid.\nUse: lead rasset upload +14085551234",
+        "❌ Missing lead phone. Example: lead joolian upload +12129816238 name Jaya",
     };
   }
 
   return {
     business,
     lead_phone: leadPhone,
+    spoke_to_name: spokeToName,
   };
 }
 
@@ -5707,6 +5712,7 @@ async function createLeadUploadSession({
   business,
   leadPhone,
   userId,
+  spokeToName,
 }) {
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
@@ -5725,6 +5731,7 @@ async function createLeadUploadSession({
         sender_phone: senderPhone,
         business,
         lead_phone: leadPhone,
+        spoke_to_name: spokeToName || null,
         status: "waiting_for_voice",
         expires_at: expiresAt,
         created_by_user_id: userId || null,
@@ -5853,6 +5860,7 @@ async function saveLeadVoiceUpload({
   twilioMessageSid,
   mediaUrl,
   mediaContentType,
+  spokeToName,
 }) {
   const { data, error } = await supabase
     .from("lead_voice_uploads")
@@ -5866,6 +5874,7 @@ async function saveLeadVoiceUpload({
         twilio_message_sid: twilioMessageSid || null,
         media_url: mediaUrl,
         media_content_type: mediaContentType || null,
+        spoke_to_name: spokeToName || null,
         status: "pending_transcription",
       },
     ])
@@ -5881,6 +5890,8 @@ async function saveLeadVoiceUpload({
     business,
     leadPhone,
     senderPhone,
+    uploadedByUserId,
+    spokeToName,
   });
 
   return data;
@@ -6122,6 +6133,8 @@ async function ensureBusinessLeadExistsForVoiceUpload({
   business,
   leadPhone,
   senderPhone,
+  uploadedByUserId,
+  spokeToName,
 }) {
   const normalizedBusiness = getBusinessCanonicalName(business);
   const tableName = getBusinessLeadTableName(normalizedBusiness);
@@ -6151,6 +6164,9 @@ async function ensureBusinessLeadExistsForVoiceUpload({
         notes:
           "Auto-created from voice upload by " + (senderPhone || "unknown"),
         latest_transcript: null,
+        last_spoke_to_name: spokeToName || null,
+        last_call_uploaded_by_phone: senderPhone || null,
+        last_call_uploaded_by_user_id: uploadedByUserId || null,
         updated_at: new Date().toISOString(),
       },
     ])
@@ -7729,6 +7745,11 @@ async function approveLeadVoiceUpload({
       .update({
         source_voice_upload_id: lead.id,
         latest_transcript: transcriptForLead,
+
+        last_spoke_to_name: lead.spoke_to_name || null,
+        last_call_uploaded_by_phone: lead.sender_phone || null,
+        last_call_uploaded_by_user_id: lead.uploaded_by_user_id || null,
+
         updated_at: new Date().toISOString(),
       })
       .eq("id", existingLead.id)
@@ -7747,6 +7768,9 @@ async function approveLeadVoiceUpload({
       source_voice_upload_id: lead.id,
       latest_transcript: transcriptForLead,
       status: "new",
+      last_spoke_to_name: lead.spoke_to_name || null,
+      last_call_uploaded_by_phone: lead.sender_phone || null,
+      last_call_uploaded_by_user_id: lead.uploaded_by_user_id || null,
     };
 
     if (tableName === "rasset_leads") {
@@ -15072,15 +15096,26 @@ function renderBusinessLeadsPage(data) {
             .map(
               (lead) => `
               <tr>
-                <td class="lead-name-cell">
-                  <div class="lead-company-name">
-                    ${escapeHtml(lead.company || lead.business_name || "Lead #" + lead.id)}
-                    ${lead.factory_setup === "multiple_sites" ? `<span class="mini-chip">Multi-site</span>` : ""}
-                  </div>
-                  <div class="muted lead-contact-line">
-                    ${escapeHtml([lead.contact_name || lead.owner_name, lead.phone].filter(Boolean).join(" · ") || "-")}
-                  </div>
-                </td>
+<td class="lead-name-cell">
+  <div class="lead-company-name">
+    ${escapeHtml(lead.company || lead.business_name || "Lead #" + lead.id)}
+    ${lead.factory_setup === "multiple_sites" ? `<span class="mini-chip">Multi-site</span>` : ""}
+  </div>
+
+  <div class="muted lead-contact-line">
+    ${escapeHtml([lead.contact_name || lead.owner_name, lead.phone].filter(Boolean).join(" · ") || "-")}
+  </div>
+
+  ${
+    lead.last_spoke_to_name
+      ? `
+    <div style="font-size:12px; margin-top:4px;">
+      <strong>Spoke to:</strong> ${escapeHtml(lead.last_spoke_to_name)}
+    </div>
+  `
+      : ""
+  }
+</td>
 
                 <td>
                   <div>${escapeHtml([lead.city, lead.state, lead.country].filter(Boolean).join(", ") || "-")}</div>
@@ -16373,6 +16408,13 @@ async function openCallSummaryModal(business, phone) {
 
       return (
         '<div class="call-summary-card">' +
+        
+        (item.spoke_to_name
+  ? '<div style="margin-bottom:8px;"><strong>Spoke to:</strong> ' +
+      escapeHtmlClient(item.spoke_to_name) +
+    '</div>'
+  : ''
+) +
 
           '<div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">' +
 
@@ -28990,6 +29032,7 @@ app.post("/whatsapp", async (req, res) => {
             business: leadCommand.business,
             leadPhone: leadCommand.lead_phone,
             userId: user?.id,
+            spokeToName: leadCommand.spoke_to_name,
           });
 
           return sendTwiml(
@@ -28998,9 +29041,14 @@ app.post("/whatsapp", async (req, res) => {
               "✅ Ready for lead voice upload.",
               `Business: ${leadCommand.business}`,
               `Lead phone: ${leadCommand.lead_phone}`,
+              leadCommand.spoke_to_name
+                ? `Spoke to: ${leadCommand.spoke_to_name}`
+                : null,
               "",
               "Now send the voice note within 10 minutes.",
-            ].join("\n"),
+            ]
+              .filter(Boolean)
+              .join("\n"),
           );
         },
       });
@@ -29053,6 +29101,7 @@ app.post("/whatsapp", async (req, res) => {
             twilioMessageSid: messageSid,
             mediaUrl: media.media_url,
             mediaContentType: media.media_content_type,
+            spokeToName: activeLeadSession.spoke_to_name,
           });
 
           await markLeadUploadSessionCompleted(activeLeadSession.id);
