@@ -6380,28 +6380,38 @@ function parseMarkAttendanceCommand(text) {
 function parseDirectManagerAttendanceCommand(text) {
   const raw = normalizeText(text);
 
+  // supports:
+  // login khateeba 3 pm
+  // login khateeba today 3 pm
+  // login khateeba mukhtar 3 pm
+  // logout khateeba 6:30 pm
+  // back khateeba today 4 pm
   let match = raw.match(
-    /^(login|logout|back)\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i,
+    /^(login|logout|back)\s+(.+?)(?:\s+(today))?\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))$/i,
   );
+
   if (match) {
     return {
-      target_name: match[2].trim(),
+      target_name: match[2].trim().replace(/\s+/g, " "),
       action: match[1].toLowerCase(),
       duration_min: null,
-      time_text: match[3].trim().replace(/\s+/g, " "),
+      time_text: match[4].trim().replace(/\s+/g, " "),
       reason: null,
     };
   }
 
+  // supports:
+  // login khateeba
+  // logout khateeba mukhtar
   match = raw.match(/^(login|logout|back)\s+(.+)$/i);
   if (match) {
-    const maybeName = match[2].trim();
+    const maybeName = match[2]
+      .replace(/\b(today|yesterday|tomorrow)\b/gi, "")
+      .replace(/\b\d{1,2}(?::\d{2})?\s*(am|pm)\b/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
 
-    if (
-      !/^(today|tomorrow|\d{1,2}:\d{2}\s*(?:am|pm)|for\b|because\b)/i.test(
-        maybeName,
-      )
-    ) {
+    if (maybeName) {
       return {
         target_name: maybeName,
         action: match[1].toLowerCase(),
@@ -6412,21 +6422,29 @@ function parseDirectManagerAttendanceCommand(text) {
     }
   }
 
-  match = raw.match(/^break\s+(.+?)\s+(\d+)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
+  // supports:
+  // break khateeba 30 3 pm
+  // break khateeba 30 3:15 pm
+  match = raw.match(
+    /^break\s+(.+?)(?:\s+(today))?\s+(\d+)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))$/i,
+  );
+
   if (match) {
     return {
-      target_name: match[1].trim(),
+      target_name: match[1].trim().replace(/\s+/g, " "),
       action: "break",
-      duration_min: Number(match[2]),
-      time_text: match[3].trim().replace(/\s+/g, " "),
+      duration_min: Number(match[3]),
+      time_text: match[4].trim().replace(/\s+/g, " "),
       reason: null,
     };
   }
 
+  // supports:
+  // break khateeba 30
   match = raw.match(/^break\s+(.+?)\s+(\d+)$/i);
   if (match) {
     return {
-      target_name: match[1].trim(),
+      target_name: match[1].trim().replace(/\s+/g, " "),
       action: "break",
       duration_min: Number(match[2]),
       time_text: null,
@@ -6434,27 +6452,34 @@ function parseDirectManagerAttendanceCommand(text) {
     };
   }
 
-  match = raw.match(/^break\s+(.+?)\s+(\d{1,2}:\d{2}\s*(?:am|pm))$/i);
+  // supports:
+  // break khateeba 3 pm
+  // break khateeba today 3 pm
+  match = raw.match(
+    /^break\s+(.+?)(?:\s+(today))?\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))$/i,
+  );
+
   if (match) {
     return {
-      target_name: match[1].trim(),
+      target_name: match[1].trim().replace(/\s+/g, " "),
       action: "break",
       duration_min: null,
-      time_text: match[2].trim().replace(/\s+/g, " "),
+      time_text: match[3].trim().replace(/\s+/g, " "),
       reason: null,
     };
   }
 
+  // supports:
+  // break khateeba
   match = raw.match(/^break\s+(.+)$/i);
   if (match) {
-    const maybeName = match[1].trim();
+    const maybeName = match[1]
+      .replace(/\b(today|yesterday|tomorrow)\b/gi, "")
+      .replace(/\b\d{1,2}(?::\d{2})?\s*(am|pm)\b/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
 
-    if (
-      !/^\d+$/.test(maybeName) &&
-      !/^(personal|lunch|tea|coffee|washroom|restroom|urgent|family|meeting)\b/i.test(
-        maybeName,
-      )
-    ) {
+    if (maybeName) {
       return {
         target_name: maybeName,
         action: "break",
@@ -6882,77 +6907,34 @@ function parseCompanyWorkDayOverrideCommand(text) {
 }
 
 function parseAttendanceCommand(text) {
-  const raw = normalizeText(text);
+  let raw = text.trim();
 
-  if (/^login$/i.test(raw)) {
-    return {
-      action: "login",
-      expected_duration_min: null,
-      reason: null,
-    };
+  const actionMatch = raw.match(/^(login|logout|break|back)\b/i);
+  if (!actionMatch) return null;
+
+  const action = actionMatch[1].toLowerCase();
+
+  let rest = raw.replace(/^(login|logout|break|back)\b/i, "").trim();
+
+  // remove date words from name area
+  rest = rest.replace(/\b(today|yesterday|tomorrow)\b/gi, "").trim();
+
+  // extract time like 3 pm, 3pm, 3:30 pm
+  const timeMatch = rest.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+
+  let timeText = null;
+  if (timeMatch) {
+    timeText = timeMatch[0];
+    rest = rest.replace(timeMatch[0], "").trim();
   }
 
-  if (/^back$/i.test(raw)) {
-    return {
-      action: "back",
-      expected_duration_min: null,
-      reason: null,
-    };
-  }
+  const employeeName = rest.replace(/\s+/g, " ").trim();
 
-  if (/^logout$/i.test(raw)) {
-    return {
-      action: "logout",
-      expected_duration_min: null,
-      reason: null,
-    };
-  }
-
-  let match = raw.match(/^logout\s+(.+)$/i);
-  if (match) {
-    return {
-      action: "logout",
-      expected_duration_min: null,
-      reason: match[1].trim(),
-    };
-  }
-
-  if (/^break$/i.test(raw)) {
-    return {
-      action: "break",
-      expected_duration_min: null,
-      reason: null,
-    };
-  }
-
-  match = raw.match(/^break\s+(\d+)$/i);
-  if (match) {
-    return {
-      action: "break",
-      expected_duration_min: Number(match[1]),
-      reason: null,
-    };
-  }
-
-  match = raw.match(/^break\s+(\d+)\s+(.+)$/i);
-  if (match) {
-    return {
-      action: "break",
-      expected_duration_min: Number(match[1]),
-      reason: match[2].trim(),
-    };
-  }
-
-  match = raw.match(/^break\s+(.+)$/i);
-  if (match) {
-    return {
-      action: "break",
-      expected_duration_min: null,
-      reason: match[1].trim(),
-    };
-  }
-
-  return null;
+  return {
+    action,
+    employeeName,
+    timeText,
+  };
 }
 
 function parseLateCommand(text) {
