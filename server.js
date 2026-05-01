@@ -15574,6 +15574,55 @@ ${rows
   background: rgba(255,255,255,0.035);
 }
 
+        
+        .upload-wrapper {
+  margin-bottom: 12px;
+}
+
+.upload-btn {
+  background: linear-gradient(135deg, #6b7cff, #8a5cff);
+  color: white;
+  border: none;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 800;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.upload-btn:hover {
+  opacity: 0.9;
+}
+
+.upload-box {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.hidden {
+  display: none;
+}
+
+.upload-note {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #aaa;
+}
+
+function toggleUploadBox(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+
+  if (el.style.display === "none" || el.style.display === "") {
+    el.style.display = "block";
+  } else {
+    el.style.display = "none";
+  }
+}
+
           .btn-primary {
             background:var(--primary-soft); color:var(--text-strong);
             border-color:color-mix(in srgb, var(--primary) 55%, transparent);
@@ -15661,13 +15710,23 @@ ${rows
 ${
   business === "rasset"
     ? `
-  <div class="panel" style="margin-bottom:16px; padding:14px;">
-    <div style="font-weight:800; margin-bottom:8px;">Import Rasset Excel</div>
-    <input id="rassetExcelFile" type="file" accept=".xlsx,.xls,.csv" />
-    <button class="btn btn-primary" type="button" onclick="uploadRassetExcel()">Upload Excel</button>
-    <div class="muted" style="margin-top:8px;">
-      Columns supported: Company, website, Email, Industry, Pin code, city, Location, Phone, year of estb., owner, No of Employee, Company Size, Google Map, country
+  <div style="margin-bottom:12px;">
+    
+    <button class="btn btn-primary" onclick="toggleUploadBox('rassetUploadBox')" 
+      title="Upload Excel with Company, Email, Phone, Industry, Location, etc.">
+      ＋ Import Rasset Excel
+    </button>
+
+    <div id="rassetUploadBox" style="display:none; margin-top:10px;">
+<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+  <input id="rassetExcelFile" type="file" accept=".xlsx,.xls,.csv" />
+  <button class="btn btn-primary" type="button" onclick="uploadRassetExcel()">Upload</button>
+</div>
+      <div class="muted" style="margin-top:6px; font-size:12px;">
+        Supports: Company, Website, Email, Industry, City, Phone, Owner, Employees, Size, Country
+      </div>
     </div>
+
   </div>
 `
     : ""
@@ -15676,13 +15735,24 @@ ${
 ${
   business === "joolian"
     ? `
-  <div class="panel" style="margin-bottom:16px; padding:14px;">
-    <div style="font-weight:800; margin-bottom:8px;">Import Joolian B2B Excel</div>
-    <input id="joolianB2BExcelFile" type="file" accept=".xlsx,.xls,.csv" />
-    <button class="btn btn-primary" type="button" onclick="uploadJoolianB2BExcel()">Upload Excel</button>
-    <div class="muted" style="margin-top:8px;">
-      Columns supported: AP Name, Phone Number, Email, City, Zip code, Google map link, Yelp link, Website, Age Group, Activity category, Sub Activity Category, Owner / Founder, Type of Business, Special/Normal/both, Is hard/Rare, Other important details, Pricing Approx, Year Established
+  <div style="margin-bottom:12px;">
+    
+    <button class="btn btn-primary" onclick="toggleUploadBox('joolianUploadBox')" 
+      title="Upload Excel with AP details, category, pricing, etc.">
+      ＋ Import Joolian Excel
+    </button>
+
+    <div id="joolianUploadBox" style="display:none; margin-top:10px;">
+<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+  <input id="joolianB2BExcelFile" type="file" accept=".xlsx,.xls,.csv" />
+  <button class="btn btn-primary" type="button" onclick="uploadJoolianB2BExcel()">Upload</button>
+</div>
+
+      <div class="muted" style="margin-top:6px; font-size:12px;">
+        Supports: AP Name, Phone, Email, City, Category, Pricing, Owner, etc.
+      </div>
     </div>
+
   </div>
 `
     : ""
@@ -15910,6 +15980,8 @@ ${
         </div>
 
         <script>
+
+
           const BUSINESS = ${JSON.stringify(business)};
 
           function escapeHtmlClient(value) {
