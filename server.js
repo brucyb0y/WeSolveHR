@@ -227,17 +227,12 @@ async function getBusinessLeadsData(
           `company_size.ilike.%${q}%`,
           `lead_stage.ilike.%${q}%`,
           ...(q.toLowerCase() === "qualified" ? ["qualified.eq.true"] : []),
-          ...(q.toLowerCase() === "l2 done" || q.toLowerCase() === "l2_done"
+          ...(q.toLowerCase() === "l2 done" ||
+          q.toLowerCase() === "l2" ||
+          q.toLowerCase() === "l2_done"
             ? ["l2_done.eq.true"]
             : []),
-          ...(q.toLowerCase() === "qualification done" ||
-          q.toLowerCase() === "qualification_done"
-            ? ["qualification_done.eq.true"]
-            : []),
-          ...(q.toLowerCase() === "worth talking" ||
-          q.toLowerCase() === "worth_talking"
-            ? ["worth_talking.eq.true"]
-            : []),
+          ...(q.toLowerCase() === "prospect" ? ["lead_stage.eq.prospect"] : []),
           `age_group.ilike.%${q}%`,
           `activity_category.ilike.%${q}%`,
           `sub_activity_category.ilike.%${q}%`,
@@ -15139,27 +15134,37 @@ function renderBusinessLeadsPage(data) {
                   <div class="muted">${escapeHtml(lead.pin_code || lead.location || "")}</div>
                 </td>
 
-<td style="text-align:left; padding:10px 12px;">
-  <div style="display:flex; flex-direction:column; gap:6px;">
+<td style="text-align:left; padding:10px 12px; min-width:135px;">
+  <div style="display:flex; flex-direction:column; gap:7px; align-items:flex-start;">
 
-    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; white-space:nowrap;">
       <input
         type="checkbox"
-        style="margin:0;"
+        style="margin:0; width:auto;"
         ${lead.l2_done ? "checked" : ""}
         onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'l2_done', this.checked)"
       />
       <span>L2 Done</span>
     </label>
 
-    <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; white-space:nowrap;">
       <input
         type="checkbox"
-        style="margin:0;"
+        style="margin:0; width:auto;"
         ${lead.qualified ? "checked" : ""}
         onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'qualified', this.checked)"
       />
       <span>Qualified</span>
+    </label>
+
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; white-space:nowrap;">
+      <input
+        type="checkbox"
+        style="margin:0; width:auto;"
+        ${(lead.lead_stage || "prospect") === "prospect" ? "checked" : ""}
+        onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'lead_stage', this.checked ? 'prospect' : '')"
+      />
+      <span>Prospect</span>
     </label>
 
   </div>
@@ -15186,12 +15191,6 @@ function renderBusinessLeadsPage(data) {
                   <button class="btn" type="button" onclick="openCallSummaryModal('${escapeHtml(business)}', '${escapeHtml(lead.phone || "")}')">
                     Calls
                   </button>
-                </td>
-
-                <td>
-                  <span class="${badgeClass(lead.lead_stage || lead.status)}">
-                    ${escapeHtml(lead.lead_stage || lead.status || "prospect")}
-                  </span>
                 </td>
 
                 <td class="actions-cell">
@@ -15829,7 +15828,6 @@ ${
 <th>Lead Check</th>
 <th>Industry / Size</th>
 <th>Call Summary</th>
-<th>Stage</th>
 <th>Actions</th>
                       </tr>
                     </thead>
@@ -15919,32 +15917,31 @@ ${
                 </select>
               </div>
               
-<div class="form-field">
-  <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
-    <input id="leadQualificationDone" type="checkbox" style="margin:0; width:auto;" />
-    <span>Qualification Done</span>
-  </label>
-</div>
+<div class="form-field" style="grid-column:1 / -1;">
+  <div style="
+    display:grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap:12px;
+    padding:12px;
+    border:1px solid rgba(255,255,255,0.10);
+    border-radius:12px;
+    background:rgba(255,255,255,0.03);
+  ">
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:800;">
+      <input id="leadL2Done" type="checkbox" style="margin:0; width:auto;" />
+      <span>L2 Done</span>
+    </label>
 
-<div class="form-field">
-  <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
-    <input id="leadWorthTalking" type="checkbox" style="margin:0; width:auto;" />
-    <span>Worth Talking</span>
-  </label>
-</div>
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:800;">
+      <input id="leadQualified" type="checkbox" style="margin:0; width:auto;" />
+      <span>Qualified</span>
+    </label>
 
-<div class="form-field">
-  <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
-    <input id="leadL2Done" type="checkbox" style="margin:0; width:auto;" />
-    <span>L2 Done</span>
-  </label>
-</div>
-
-<div class="form-field">
-  <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
-    <input id="leadQualified" type="checkbox" style="margin:0; width:auto;" />
-    <span>Qualified</span>
-  </label>
+    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:800;">
+      <input id="leadProspect" type="checkbox" style="margin:0; width:auto;" />
+      <span>Prospect</span>
+    </label>
+  </div>
 </div>
               <div class="form-field">
 
@@ -16147,6 +16144,7 @@ document.getElementById("leadQualificationDone").checked = !!lead.qualification_
 document.getElementById("leadWorthTalking").checked = !!lead.worth_talking;
 document.getElementById("leadL2Done").checked = !!lead.l2_done;
 document.getElementById("leadQualified").checked = !!lead.qualified;
+document.getElementById("leadProspect").checked = (lead.lead_stage || "prospect") === "prospect";
           }
 
           function closeLeadModal(event) {
@@ -16196,6 +16194,7 @@ document.getElementById("leadQualified").checked = !!lead.qualified;
 document.getElementById("leadWorthTalking").checked = false;
 document.getElementById("leadL2Done").checked = false;
 document.getElementById("leadQualified").checked = false;
+document.getElementById("leadProspect").checked = true;
           }
           
           async function toggleLeadCheckbox(event, business, id, field, value) {
@@ -16331,7 +16330,7 @@ async function uploadJoolianB2BExcel() {
               address: document.getElementById("leadAddress").value.trim(),
               notes: document.getElementById("leadNotes").value.trim(),
               company: document.getElementById("leadCompany")?.value.trim() || "",
-lead_stage: document.getElementById("leadStage")?.value || "prospect",
+lead_stage: document.getElementById("leadProspect")?.checked ? "prospect" : "",
 pin_code: document.getElementById("leadPinCode")?.value.trim() || "",
 location: document.getElementById("leadLocation")?.value.trim() || "",
 country: document.getElementById("leadCountry")?.value.trim() || "",
@@ -21656,10 +21655,12 @@ app.patch(
       const leadId = Number(req.params.id);
 
       const field = String(req.body.field || "").trim();
-      const value = req.body.value === true;
+      const value =
+        field === "lead_stage"
+          ? String(req.body.value || "").trim()
+          : req.body.value === true;
 
-      const allowedFields = ["l2_done", "qualified"];
-
+      const allowedFields = ["l2_done", "qualified", "lead_stage"];
       if (!tableName || !leadId) {
         return sendApiError(res, 400, "Invalid lead");
       }
