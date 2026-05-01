@@ -14772,67 +14772,38 @@ function renderLeadsOverviewPage(data) {
             font-size:11px; letter-spacing:0.16em; text-transform:uppercase;
             color:var(--primary); font-weight:700; margin-bottom:8px;
           }
+
           
-          .chat-thread {
-  display: grid;
-  gap: 7px;
-  max-height: 260px;
-  overflow-y: auto;
-  padding: 8px;
-  border-radius: 14px;
-  background: rgba(255,255,255,0.025);
-  border: 1px solid rgba(255,255,255,0.08);
-}
-
-.chat-row {
-  display: grid;
-  grid-template-columns: 74px minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
-}
-
-.speaker-label {
-  font-size: 11px;
-  font-weight: 900;
-  color: var(--muted);
-  padding-top: 7px;
-}
-
-.chat-bubble {
-  width: fit-content;
-  max-width: 82%;
-  padding: 7px 10px;
-  border-radius: 12px;
+          .inline-conversation {
   font-size: 13px;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  background: rgba(255,255,255,0.06);
+  line-height: 1.6;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
-}
-
-.person-b .chat-bubble {
-  margin-left: auto;
-  background: var(--primary-soft);
-  border-color: color-mix(in srgb, var(--primary) 35%, transparent);
-}
-
-.person-b .speaker-label {
-  text-align: right;
-}
-
-.raw-transcript-box {
   max-height: 220px;
   overflow-y: auto;
-  padding: 10px;
-  font-size: 13px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  border-radius: 12px;
-  background: rgba(255,255,255,0.04);
+  white-space: normal;
 }
 
-.hidden-textarea {
-  display: none !important;
+.conv-piece {
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+/* Speaker A (caller - Zoya) */
+.speaker-a {
+  color: #e6f0ff;
+}
+
+/* Speaker B (staff / Jaya) */
+.speaker-b {
+  color: #7cc5ff;
+}
+
+/* Optional: hover clarity */
+.conv-piece:hover {
+  background: rgba(255,255,255,0.06);
 }
           
           h1 { margin:0; font-size:30px; letter-spacing:-0.04em; }
@@ -14855,6 +14826,13 @@ function renderLeadsOverviewPage(data) {
             .stats, .business-grid { grid-template-columns:1fr; }
             .panel { overflow-x:auto; }
           }
+          
+          .voice-transcript summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
         </style>
       </head>
       <body>
@@ -15094,40 +15072,36 @@ ${rows
           <source src="/api/lead-voice-uploads/${Number(lead.id)}/audio" type="${escapeHtml(lead.media_content_type || "audio/mpeg")}">
         </audio>
       </div>
+      
+      <details class="voice-transcript">
+  <summary>🗣 Transcript</summary>
 
-      <!-- TRANSCRIPT -->
-      <details class="voice-transcript" open>
-        <summary>Conversation</summary>
-
-<div class="chat-thread">
+<div class="inline-conversation">
   ${
     Array.isArray(lead.conversation_rows) && lead.conversation_rows.length
       ? lead.conversation_rows
           .map((row, index) => {
-            const speaker =
-              row.speaker ||
-              row.person ||
-              `Person ${index % 2 === 0 ? "A" : "B"}`;
+            const speakerKey = (row.speaker || "").toLowerCase();
+
+            let cls = "speaker-a";
+            if (
+              speakerKey.includes("jaya") ||
+              speakerKey.includes("staff") ||
+              speakerKey.includes("unknown")
+            ) {
+              cls = "speaker-b";
+            }
+
             const text = row.text || row.message || "";
 
-            return `
-              <div class="chat-row ${index % 2 === 0 ? "person-a" : "person-b"}">
-                <div class="speaker-label">${escapeHtml(speaker)}</div>
-                <div class="chat-bubble">${escapeHtml(text)}</div>
-              </div>
-            `;
+            return `<span class="conv-piece ${cls}">${escapeHtml(text)}</span>`;
           })
-          .join("")
-      : `
-        <div class="raw-transcript-box">
-          ${escapeHtml(lead.translated_text || "No transcript yet.")}
-        </div>
-      `
+          .join(" ")
+      : `<span class="conv-piece speaker-a">${escapeHtml(lead.translated_text || "")}</span>`
   }
 </div>
 
-<textarea id="translated-${Number(lead.id)}" class="hidden-textarea">${escapeHtml(lead.translated_text || "")}</textarea>
-      </details>
+<textarea id="translated-${Number(lead.id)}" style="display:none;">${escapeHtml(lead.translated_text || "")}</textarea>
 
     </div>
   `,
