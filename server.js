@@ -226,6 +226,18 @@ async function getBusinessLeadsData(
           `number_of_employees.ilike.%${q}%`,
           `company_size.ilike.%${q}%`,
           `lead_stage.ilike.%${q}%`,
+          ...(q.toLowerCase() === "qualified" ? ["qualified.eq.true"] : []),
+          ...(q.toLowerCase() === "l2 done" || q.toLowerCase() === "l2_done"
+            ? ["l2_done.eq.true"]
+            : []),
+          ...(q.toLowerCase() === "qualification done" ||
+          q.toLowerCase() === "qualification_done"
+            ? ["qualification_done.eq.true"]
+            : []),
+          ...(q.toLowerCase() === "worth talking" ||
+          q.toLowerCase() === "worth_talking"
+            ? ["worth_talking.eq.true"]
+            : []),
           `age_group.ilike.%${q}%`,
           `activity_category.ilike.%${q}%`,
           `sub_activity_category.ilike.%${q}%`,
@@ -7884,6 +7896,11 @@ function buildBusinessLeadPayloadFromBody(body) {
     status: normalizeText(body.status || "new"),
     enrichment_status: normalizeText(body.enrichment_status || "not_enriched"),
     enrichment_notes: String(body.enrichment_notes || "").trim() || null,
+    qualification_done:
+      body.qualification_done === true || body.qualification_done === "true",
+    worth_talking: body.worth_talking === true || body.worth_talking === "true",
+    l2_done: body.l2_done === true || body.l2_done === "true",
+    qualified: body.qualified === true || body.qualified === "true",
   };
 }
 
@@ -15122,10 +15139,10 @@ function renderBusinessLeadsPage(data) {
                   <div class="muted">${escapeHtml(lead.pin_code || lead.location || "")}</div>
                 </td>
 
-                <td>
-                  ${lead.website ? `<a href="${escapeHtml(lead.website)}" target="_blank" rel="noopener noreferrer">Website</a>` : "-"}
-                  ${lead.google_maps_url ? `<div><a href="${escapeHtml(lead.google_maps_url)}" target="_blank" rel="noopener noreferrer">Google Map</a></div>` : ""}
-                </td>
+<td>
+  <div>L2: ${lead.l2_done ? "✅" : "⬜"}</div>
+  <div>Qualified: ${lead.qualified ? "✅" : "⬜"}</div>
+</td>
 
                 <td>
                   ${
@@ -15788,7 +15805,7 @@ ${
                       <tr>
 <th>Company / Contact</th>
 <th>Location</th>
-<th>Web / Maps</th>
+<th>Lead Check</th>
 <th>Industry / Size</th>
 <th>Call Summary</th>
 <th>Stage</th>
@@ -15882,6 +15899,33 @@ ${
               </div>
               
               <div class="form-field">
+              <div class="form-field">
+  <label>
+    <input id="leadQualificationDone" type="checkbox" style="width:auto;" />
+    Qualification Done
+  </label>
+</div>
+
+<div class="form-field">
+  <label>
+    <input id="leadWorthTalking" type="checkbox" style="width:auto;" />
+    Worth Talking
+  </label>
+</div>
+
+<div class="form-field">
+  <label>
+    <input id="leadL2Done" type="checkbox" style="width:auto;" />
+    L2 Done
+  </label>
+</div>
+
+<div class="form-field">
+  <label>
+    <input id="leadQualified" type="checkbox" style="width:auto;" />
+    Qualified
+  </label>
+</div>
   <label>Lead Stage</label>
   <select id="leadStage">
     <option value="prospect">Prospect</option>
@@ -16077,6 +16121,10 @@ document.getElementById("leadOwnerName").value = lead.owner_name || "";
 document.getElementById("leadNumberOfEmployees").value = lead.number_of_employees || "";
 document.getElementById("leadCompanySize").value = lead.company_size || "";
 document.getElementById("leadEnrichmentNotes").value = lead.enrichment_notes || "";
+document.getElementById("leadQualificationDone").checked = !!lead.qualification_done;
+document.getElementById("leadWorthTalking").checked = !!lead.worth_talking;
+document.getElementById("leadL2Done").checked = !!lead.l2_done;
+document.getElementById("leadQualified").checked = !!lead.qualified;
           }
 
           function closeLeadModal(event) {
@@ -16122,6 +16170,10 @@ document.getElementById("leadEnrichmentNotes").value = lead.enrichment_notes || 
             document.getElementById("leadStatus").value = "new";
             document.getElementById("leadSource").value = "manual";
             document.getElementById("leadStage").value = "prospect";
+            document.getElementById("leadQualificationDone").checked = false;
+document.getElementById("leadWorthTalking").checked = false;
+document.getElementById("leadL2Done").checked = false;
+document.getElementById("leadQualified").checked = false;
           }
           
 
@@ -16245,6 +16297,10 @@ owner_name: document.getElementById("leadOwnerName")?.value.trim() || "",
 number_of_employees: document.getElementById("leadNumberOfEmployees")?.value.trim() || "",
 company_size: document.getElementById("leadCompanySize")?.value.trim() || "",
 enrichment_notes: document.getElementById("leadEnrichmentNotes")?.value.trim() || "",
+qualification_done: document.getElementById("leadQualificationDone")?.checked || false,
+worth_talking: document.getElementById("leadWorthTalking")?.checked || false,
+l2_done: document.getElementById("leadL2Done")?.checked || false,
+qualified: document.getElementById("leadQualified")?.checked || false,
               latest_transcript: document.getElementById("leadLatestTranscript").value.trim()
             };
           }
