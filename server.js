@@ -15612,17 +15612,6 @@ ${rows
   color: #aaa;
 }
 
-function toggleUploadBox(id) {
-  const el = document.getElementById(id);
-  if (!el) return;
-
-  if (el.style.display === "none" || el.style.display === "") {
-    el.style.display = "block";
-  } else {
-    el.style.display = "none";
-  }
-}
-
           .btn-primary {
             background:var(--primary-soft); color:var(--text-strong);
             border-color:color-mix(in srgb, var(--primary) 55%, transparent);
@@ -15981,6 +15970,19 @@ ${
 
         <script>
 
+function toggleUploadBox(id) {
+  const el = document.getElementById(id);
+  if (!el) {
+    console.error("Upload box not found:", id);
+    return;
+  }
+
+  if (el.style.display === "none" || el.style.display === "") {
+    el.style.display = "block";
+  } else {
+    el.style.display = "none";
+  }
+}
 
           const BUSINESS = ${JSON.stringify(business)};
 
