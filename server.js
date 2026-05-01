@@ -7498,10 +7498,7 @@ Return JSON only with EXACT structure:
   "detected_language": "hindi|english|hinglish|unknown",
   "cleaned_transcript": "Full cleaned readable transcript preserving all meaningful spoken content",
   "translated_text": "Full English translation preserving all meaningful spoken content. If already English, use the cleaned transcript.",
-  "transcription_confidence": "low|medium|high",
-  "conversation_rows": [
-    { "speaker": "Person A", "text": "..." },
-    { "speaker": "Person B", "text": "..." }
+  "transcription_confidence": "low|medium|high"
   ],
   "important_points": [
     "Important factual point from the call"
@@ -7526,16 +7523,9 @@ CRITICAL OUTPUT RULES:
 - If the transcript is already English, translated_text should still be polished readable English but must not lose meaning.
 
 SPEAKER RULES:
-- Split STRICTLY by speaker turns.
-- Each conversation_rows item must contain only one speaker's continuous turn.
-- Use real speaker names when clearly stated, such as Zoya, Jaya, Hannah.
-- Use role names only when clear, such as Salesperson, Receptionist, Manager, Owner, Lead.
-- If names/roles are not clear, use Person A, Person B, Person C.
-- If a speaker changes mid-sentence, split into separate rows.
-- If the same person speaks again later, use the same speaker label.
-- If unsure who spoke, use "Unknown".
-- Do not label both sides as Salesperson/Lead unless it is clearly a sales/business discovery call.
-- For Joolian-style activity-provider calls, prefer neutral labels like Parent Caller, Staff, Manager, Owner, or real names.
+- cleaned_transcript and translated_text must preserve the full call.
+- Do not summarize.
+- Do not lose meaningful words.
 
 CONTENT PRESERVATION RULES:
 - Keep repeated questions if they were repeated.
@@ -14774,38 +14764,6 @@ function renderLeadsOverviewPage(data) {
           }
 
           
-          .inline-conversation {
-  font-size: 13px;
-  line-height: 1.6;
-  padding: 8px 10px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  max-height: 220px;
-  overflow-y: auto;
-  white-space: normal;
-}
-
-.conv-piece {
-  padding: 2px 4px;
-  border-radius: 6px;
-}
-
-/* Speaker A (caller - Zoya) */
-.speaker-a {
-  color: #e6f0ff;
-}
-
-/* Speaker B (staff / Jaya) */
-.speaker-b {
-  color: #7cc5ff;
-}
-
-/* Optional: hover clarity */
-.conv-piece:hover {
-  background: rgba(255,255,255,0.06);
-}
-          
           h1 { margin:0; font-size:30px; letter-spacing:-0.04em; }
           .subtitle { color:var(--muted); margin-top:8px; font-size:14px; }
           .stats { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:20px; }
@@ -14827,11 +14785,86 @@ function renderLeadsOverviewPage(data) {
             .panel { overflow-x:auto; }
           }
           
-          .voice-transcript summary {
-  cursor: pointer;
-  font-size: 12px;
+.compact-voice-card {
+  padding: 16px 18px;
+  border-radius: 18px;
+}
+
+.voice-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+}
+
+.voice-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.voice-meta {
+  margin-top: 6px;
   color: var(--muted);
-  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.voice-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-audio {
+  margin-top: 12px;
+}
+
+.voice-audio audio {
+  width: 100%;
+  max-width: 420px;
+  height: 38px;
+}
+
+.voice-transcript {
+  margin-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-top: 10px;
+}
+
+.voice-transcript summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--text);
+}
+
+.transcript-preview {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 760px;
+}
+
+.transcript-textarea {
+  width: 100%;
+  min-height: 180px;
+  max-height: 320px;
+  margin-top: 10px;
+  padding: 12px 13px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.045);
+  color: var(--text);
+  font: 13px/1.5 Inter, ui-sans-serif, system-ui;
+  resize: vertical;
 }
         </style>
       </head>
@@ -15073,35 +15106,17 @@ ${rows
         </audio>
       </div>
       
-      <details class="voice-transcript">
-  <summary>🗣 Transcript</summary>
+<details class="voice-transcript">
+  <summary>
+    <span>🗣 Transcript</span>
+    <span class="transcript-preview">
+      ${escapeHtml((lead.translated_text || "").slice(0, 160))}
+      ${(lead.translated_text || "").length > 160 ? "..." : ""}
+    </span>
+  </summary>
 
-<div class="inline-conversation">
-  ${
-    Array.isArray(lead.conversation_rows) && lead.conversation_rows.length
-      ? lead.conversation_rows
-          .map((row, index) => {
-            const speakerKey = (row.speaker || "").toLowerCase();
-
-            let cls = "speaker-a";
-            if (
-              speakerKey.includes("jaya") ||
-              speakerKey.includes("staff") ||
-              speakerKey.includes("unknown")
-            ) {
-              cls = "speaker-b";
-            }
-
-            const text = row.text || row.message || "";
-
-            return `<span class="conv-piece ${cls}">${escapeHtml(text)}</span>`;
-          })
-          .join(" ")
-      : `<span class="conv-piece speaker-a">${escapeHtml(lead.translated_text || "")}</span>`
-  }
-</div>
-
-<textarea id="translated-${Number(lead.id)}" style="display:none;">${escapeHtml(lead.translated_text || "")}</textarea>
+  <textarea id="translated-${Number(lead.id)}" class="transcript-textarea">${escapeHtml(lead.translated_text || "")}</textarea>
+</details>
 
     </div>
   `,
