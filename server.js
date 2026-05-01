@@ -15140,8 +15140,23 @@ function renderBusinessLeadsPage(data) {
                 </td>
 
 <td>
-  <div>L2: ${lead.l2_done ? "✅" : "⬜"}</div>
-  <div>Qualified: ${lead.qualified ? "✅" : "⬜"}</div>
+  <label style="display:block; cursor:pointer;">
+    <input
+      type="checkbox"
+      ${lead.l2_done ? "checked" : ""}
+      onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'l2_done', this.checked)"
+    />
+    L2 Done
+  </label>
+
+  <label style="display:block; cursor:pointer; margin-top:6px;">
+    <input
+      type="checkbox"
+      ${lead.qualified ? "checked" : ""}
+      onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'qualified', this.checked)"
+    />
+    Qualified
+  </label>
 </td>
 
                 <td>
@@ -16175,6 +16190,27 @@ document.getElementById("leadWorthTalking").checked = false;
 document.getElementById("leadL2Done").checked = false;
 document.getElementById("leadQualified").checked = false;
           }
+          
+          async function toggleLeadCheckbox(event, business, id, field, value) {
+  event.stopPropagation();
+
+  const res = await fetch("/api/business-leads/" + business + "/" + id + "/quick-toggle", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      field,
+      value
+    })
+  });
+
+  const json = await res.json();
+
+  if (!json.ok) {
+    alert(json.error || "Failed to update checkbox");
+    event.target.checked = !value;
+    return;
+  }
+}
           
 
 async function deleteBusinessLead(business, id) {
@@ -21598,6 +21634,57 @@ app.get(
     } catch (error) {
       console.error("GET /api/business-leads/:business/:id error:", error);
       return sendApiError(res, 500, error.message || "Failed to fetch lead");
+    }
+  },
+);
+
+app.patch(
+  "/api/business-leads/:business/:id/quick-toggle",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const business = getBusinessCanonicalName(req.params.business);
+      const tableName = getBusinessLeadTableName(business);
+      const leadId = Number(req.params.id);
+
+      const field = String(req.body.field || "").trim();
+      const value = req.body.value === true;
+
+      const allowedFields = ["l2_done", "qualified"];
+
+      if (!tableName || !leadId) {
+        return sendApiError(res, 400, "Invalid lead");
+      }
+
+      if (!allowedFields.includes(field)) {
+        return sendApiError(res, 400, "Invalid checkbox field");
+      }
+
+      const { data, error } = await supabase
+        .from(tableName)
+        .update({
+          [field]: value,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("org_id", orgId)
+        .eq("id", leadId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return sendApiSuccess(res, data);
+    } catch (error) {
+      console.error(
+        "PATCH /api/business-leads/:business/:id/quick-toggle error:",
+        error,
+      );
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to update lead checkbox",
+      );
     }
   },
 );
