@@ -13850,6 +13850,42 @@ function getMonthDateRangeForTimeZone(
   };
 }
 
+function getAttendanceMonthNavigation(monthQuery) {
+  const todayAttendanceDate = getAttendanceDayDateStringFromDate(new Date());
+  const currentMonth = todayAttendanceDate.slice(0, 7);
+
+  const selectedMonth = /^\d{4}-\d{2}$/.test(String(monthQuery || ""))
+    ? String(monthQuery)
+    : currentMonth;
+
+  const [year, month] = selectedMonth.split("-").map(Number);
+
+  const startDate = formatDateForDbFromParts(year, month, 1);
+
+  const nextMonthYear = month === 12 ? year + 1 : year;
+  const nextMonthNumber = month === 12 ? 1 : month + 1;
+  const endDateExclusive = formatDateForDbFromParts(
+    nextMonthYear,
+    nextMonthNumber,
+    1,
+  );
+
+  const prevMonthYear = month === 1 ? year - 1 : year;
+  const prevMonthNumber = month === 1 ? 12 : month - 1;
+  const prevMonth = `${prevMonthYear}-${String(prevMonthNumber).padStart(2, "0")}`;
+
+  const nextMonth = `${nextMonthYear}-${String(nextMonthNumber).padStart(2, "0")}`;
+
+  return {
+    selectedMonth,
+    currentMonth,
+    prevMonth,
+    nextMonth,
+    startDate,
+    endDateExclusive,
+  };
+}
+
 function getCurrentYearInTimeZone(timeZone = APP_TIMEZONE) {
   return getPartsInTimeZone(new Date(), timeZone).year;
 }
@@ -18696,13 +18732,13 @@ async function getEmployeeMonthlyAttendanceSummary(userId, orgId) {
   };
 }
 
-async function getEmployeeAttendanceOverview(userId, orgId) {
+async function getEmployeeAttendanceOverview(userId, orgId, options = {}) {
   const todayAttendanceDate = getAttendanceDayDateStringFromDate(new Date());
   const { startUtc, endUtc } = getCurrentAttendanceDayRange();
-  const { startDate, endDateExclusive } = getMonthDateRangeForTimeZone(
-    new Date(),
-    APP_TIMEZONE,
-  );
+  const monthNav =
+    options.monthNav || getAttendanceMonthNavigation(options.month);
+
+  const { startDate, endDateExclusive } = monthNav;
 
   const [
     userResult,
@@ -19022,6 +19058,9 @@ function renderEmployeeAttendancePage(data) {
   const employee = data?.employee || {};
   const today = data?.today || {};
   const monthly = data?.monthly || {};
+  const monthNav = data?.monthNav || getAttendanceMonthNavigation();
+  const selectedMonthLabel = monthNav.selectedMonth;
+  const monthQuery = `month=${encodeURIComponent(monthNav.selectedMonth)}`;
   const history = data?.history || [];
   const recentAudit = data?.recent_audit || [];
   const selectedDays = Number(data?.selectedDays) === 7 ? 7 : 1;
@@ -19472,6 +19511,9 @@ function renderEmployeeAttendancePage(data) {
               <div class="report-date" style="margin-top: 10px;">
                 <a href="/reports?userId=${encodeURIComponent(employee.id)}" class="mini-report-link">Today</a>
                 <a href="/reports?userId=${encodeURIComponent(employee.id)}&days=7" class="mini-report-link">Last 7 days</a>
+                <a class="btn" href="/attendance/${user.id}?days=${selectedDays}&month=${monthNav.prevMonth}">← Previous Month</a>
+<a class="btn" href="/attendance/${user.id}?days=${selectedDays}&month=${monthNav.currentMonth}">Current Month</a>
+<a class="btn" href="/attendance/${user.id}?days=${selectedDays}&month=${monthNav.nextMonth}">Next Month →</a>
               </div>
             </div>
           </div>
@@ -19616,7 +19658,7 @@ function renderEmployeeAttendancePage(data) {
 
           <div id="tab-history" class="tab-panel">
             <div class="panel">
-              <h2>Attendance history this month</h2>
+              <h2>Attendance history · ${escapeHtml(selectedMonthLabel)}</h2>
               <div class="table-wrap">
                 <table>
                   <thead>
@@ -19692,8 +19734,8 @@ function renderEmployeeAttendancePage(data) {
             </div>
 
             <div class="panel">
-              <h2>Leave rows in this month view</h2>
-              <div class="table-wrap">
+<h2>Leave rows · ${escapeHtml(selectedMonthLabel)}</h2>
+<div class="table-wrap">
                 <table>
                   <thead>
                     <tr>
@@ -19736,7 +19778,7 @@ function renderEmployeeAttendancePage(data) {
     if (!daysEl || !datesEl || !userId) return;
 
     try {
-      const res = await fetch('/api/attendance/' + userId + '/red-reports', {
+      const res = await fetch('/api/attendance/' + userId + '/red-reports?month=${monthNav.selectedMonth}', {
         headers: { Accept: "application/json" },
       });
 
@@ -22795,15 +22837,18 @@ app.get("/attendance/:userId", requireDashboardAuth, async (req, res) => {
     }
 
     const days = Number(req.query.days) === 7 ? 7 : 1;
+    const monthNav = getAttendanceMonthNavigation(req.query.month);
 
     const data = await getEmployeeAttendanceOverview(userId, DASHBOARD_ORG_ID, {
       days,
+      monthNav,
     });
 
     return res.status(200).send(
       renderEmployeeAttendancePage({
         ...data,
         selectedDays: days,
+        monthNav,
       }),
     );
   } catch (error) {
@@ -22858,15 +22903,19 @@ app.get(
         return sendApiError(res, 400, "Invalid user id");
       }
 
-      const nowAttendanceDate = getAttendanceDayDateStringFromDate(new Date());
-      const currentAttendanceDateAsDate = new Date(
-        `${nowAttendanceDate}T00:00:00${APP_TIMEZONE_OFFSET}`,
+      const monthNav = getAttendanceMonthNavigation(req.query.month);
+      const todayAttendanceDate = getAttendanceDayDateStringFromDate(
+        new Date(),
       );
-      const { startDate } = getMonthDateRangeForTimeZone(
-        currentAttendanceDateAsDate,
-        APP_TIMEZONE,
-      );
-      const endDateExclusive = addDaysToDateString(nowAttendanceDate, 1);
+
+      const startDate = monthNav.startDate;
+
+      // For current month, only check until today.
+      // For previous months, check whole month.
+      const endDateExclusive =
+        monthNav.selectedMonth === monthNav.currentMonth
+          ? addDaysToDateString(todayAttendanceDate, 1)
+          : monthNav.endDateExclusive;
 
       const redReportDates = await getMissingReportDatesForUserInRange({
         orgId: DASHBOARD_ORG_ID,
