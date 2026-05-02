@@ -5901,6 +5901,27 @@ async function saveLeadVoiceUpload({
     spokeToName,
   });
 
+  setImmediate(async () => {
+    try {
+      await transcribeLeadVoiceUploadById({
+        leadVoiceId: data.id,
+        orgId,
+      });
+    } catch (error) {
+      console.error("Auto transcription failed:", error);
+
+      await supabase
+        .from("lead_voice_uploads")
+        .update({
+          status: "pending_transcription",
+          transcription_error: String(error.message || error),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("org_id", orgId)
+        .eq("id", data.id);
+    }
+  });
+
   return data;
 }
 
@@ -6166,7 +6187,7 @@ async function ensureBusinessLeadExistsForVoiceUpload({
         phone: leadPhone,
         lead_category: normalizedBusiness === "rasset" ? "b2b" : "b2c",
         status: "new",
-        lead_stage: "prospect",
+        lead_stage: null,
         lead_source: "voice",
         notes:
           "Auto-created from voice upload by " + (senderPhone || "unknown"),
@@ -15266,13 +15287,6 @@ ${rows
 
     <div id="voiceActions-${Number(lead.id)}" class="lead-actions-menu">
       <button type="button" onclick="deleteVoiceUpload(${Number(lead.id)})">Delete Voice</button>
-
-      ${
-        lead.status === "pending_transcription" ||
-        lead.status === "transcribing"
-          ? `<button type="button" data-transcribe-id="${Number(lead.id)}" onclick="window.transcribeLead(${Number(lead.id)})">Transcribe</button>`
-          : ""
-      }
 
       ${
         lead.status === "pending_review"
