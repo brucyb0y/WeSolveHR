@@ -19511,9 +19511,9 @@ function renderEmployeeAttendancePage(data) {
               <div class="report-date" style="margin-top: 10px;">
                 <a href="/reports?userId=${encodeURIComponent(employee.id)}" class="mini-report-link">Today</a>
                 <a href="/reports?userId=${encodeURIComponent(employee.id)}&days=7" class="mini-report-link">Last 7 days</a>
-                <a class="btn" href="/attendance/${user.id}?days=${selectedDays}&month=${monthNav.prevMonth}">← Previous Month</a>
-<a class="btn" href="/attendance/${user.id}?days=${selectedDays}&month=${monthNav.currentMonth}">Current Month</a>
-<a class="btn" href="/attendance/${user.id}?days=${selectedDays}&month=${monthNav.nextMonth}">Next Month →</a>
+                <a class="btn" href="/attendance/${employee.id}?days=${selectedDays}&month=${monthNav.prevMonth}">← Previous Month</a>
+<a class="btn" href="/attendance/${employee.id}?days=${selectedDays}&month=${monthNav.currentMonth}">Current Month</a>
+<a class="btn" href="/attendance/${employee.id}?days=${selectedDays}&month=${monthNav.nextMonth}">Next Month →</a>
               </div>
             </div>
           </div>
