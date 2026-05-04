@@ -8236,7 +8236,105 @@ function mapExcelRowToRassetLead(row) {
   };
 }
 
-async function importRassetLeadsFromExcel({ orgId, buffer }) {
+async function createLeadImportLog({
+  orgId,
+  business,
+  fileName,
+  uploadedByUserId,
+  uploadedByName,
+  totalRows,
+}) {
+  const { data, error } = await supabase
+    .from("lead_import_logs")
+    .insert([
+      {
+        org_id: orgId,
+        business,
+        file_name: fileName || null,
+        uploaded_by_user_id: uploadedByUserId || null,
+        uploaded_by_name: uploadedByName || null,
+        total_rows: totalRows || 0,
+        status: "processing",
+      },
+    ])
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function addLeadImportRowLog({
+  importId,
+  orgId,
+  business,
+  rowNumber,
+  phone,
+  company,
+  website,
+  status,
+  message,
+  existingLeadId,
+}) {
+  const { error } = await supabase.from("lead_import_log_rows").insert([
+    {
+      import_id: importId,
+      org_id: orgId,
+      business,
+      row_number: rowNumber || null,
+      phone: phone || null,
+      company: company || null,
+      website: website || null,
+      status,
+      message: message || null,
+      existing_lead_id: existingLeadId || null,
+    },
+  ]);
+
+  if (error) {
+    console.error("addLeadImportRowLog error:", error);
+  }
+}
+
+async function finishLeadImportLog({
+  importId,
+  results,
+  status = "completed",
+  errorMessage = null,
+}) {
+  const { error } = await supabase
+    .from("lead_import_logs")
+    .update({
+      inserted_count: results.inserted || 0,
+      updated_count: results.updated || 0,
+      duplicate_count: results.duplicates || 0,
+      skipped_count: results.skipped || 0,
+      error_count: (results.errors || []).length,
+      status,
+      error_message: errorMessage,
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", importId);
+
+  if (error) {
+    console.error("finishLeadImportLog error:", error);
+  }
+}
+
+function normalizeLeadPhone(input) {
+  return String(input || "")
+    .trim()
+    .replace(/^whatsapp:/i, "")
+    .replace(/[^\d+]/g, "");
+}
+
+async function importRassetLeadsFromExcel({
+  orgId,
+  buffer,
+  fileName,
+  uploadedByUserId,
+  uploadedByName,
+}) {
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const sheetName = workbook.SheetNames[0];
 
@@ -8247,89 +8345,168 @@ async function importRassetLeadsFromExcel({ orgId, buffer }) {
   const sheet = workbook.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
 
+  const importLog = await createLeadImportLog({
+    orgId,
+    business: "rasset",
+    fileName,
+    uploadedByUserId,
+    uploadedByName,
+    totalRows: rows.length,
+  });
+
   const results = {
+    import_id: importLog.id,
     total: rows.length,
     inserted: 0,
     updated: 0,
+    duplicates: 0,
     skipped: 0,
     errors: [],
   };
 
-  for (let i = 0; i < rows.length; i += 1) {
-    try {
-      const payload = mapExcelRowToRassetLead(rows[i]);
+  try {
+    for (let i = 0; i < rows.length; i += 1) {
+      const rowNumber = i + 2;
 
-      if (
-        !payload.company &&
-        !payload.website &&
-        !payload.phone &&
-        !payload.google_maps_url
-      ) {
-        results.skipped += 1;
-        continue;
-      }
+      try {
+        const payload = mapExcelRowToRassetLead(rows[i]);
 
-      const matchPhone = payload.phone || null;
-      const matchWebsite = payload.website || null;
+        payload.phone = normalizeLeadPhone(payload.phone);
 
-      let existing = null;
+        if (
+          !payload.company &&
+          !payload.website &&
+          !payload.phone &&
+          !payload.google_maps_url
+        ) {
+          results.skipped += 1;
 
-      if (matchPhone) {
-        const { data, error } = await supabase
+          await addLeadImportRowLog({
+            importId: importLog.id,
+            orgId,
+            business: "rasset",
+            rowNumber,
+            phone: payload.phone,
+            company: payload.company,
+            website: payload.website,
+            status: "skipped",
+            message: "Empty row skipped",
+          });
+
+          continue;
+        }
+
+        if (!payload.phone) {
+          results.errors.push({
+            row: rowNumber,
+            error: "Missing phone number",
+          });
+
+          await addLeadImportRowLog({
+            importId: importLog.id,
+            orgId,
+            business: "rasset",
+            rowNumber,
+            phone: "",
+            company: payload.company,
+            website: payload.website,
+            status: "error",
+            message: "Missing phone number",
+          });
+
+          continue;
+        }
+
+        const { data: existingByPhone, error: phoneError } = await supabase
           .from("rasset_leads")
-          .select("*")
+          .select("id, phone, company, business_name")
           .eq("org_id", orgId)
-          .eq("phone", matchPhone)
+          .eq("phone", payload.phone)
+          .or("is_deleted.is.null,is_deleted.eq.false")
           .maybeSingle();
 
-        if (error) throw error;
-        existing = data;
-      }
+        if (phoneError) throw phoneError;
 
-      if (!existing && matchWebsite) {
-        const { data, error } = await supabase
+        if (existingByPhone) {
+          results.duplicates += 1;
+
+          await addLeadImportRowLog({
+            importId: importLog.id,
+            orgId,
+            business: "rasset",
+            rowNumber,
+            phone: payload.phone,
+            company: payload.company,
+            website: payload.website,
+            status: "duplicate",
+            message: "Duplicate phone number skipped",
+            existingLeadId: existingByPhone.id,
+          });
+
+          continue;
+        }
+
+        const { data: insertedLead, error: insertError } = await supabase
           .from("rasset_leads")
-          .select("*")
-          .eq("org_id", orgId)
-          .eq("website", matchWebsite)
-          .maybeSingle();
+          .insert([
+            {
+              org_id: orgId,
+              ...payload,
+            },
+          ])
+          .select("id")
+          .single();
 
-        if (error) throw error;
-        existing = data;
-      }
+        if (insertError) throw insertError;
 
-      if (existing) {
-        const { error } = await supabase
-          .from("rasset_leads")
-          .update({
-            ...payload,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("org_id", orgId)
-          .eq("id", existing.id);
-
-        if (error) throw error;
-        results.updated += 1;
-      } else {
-        const { error } = await supabase.from("rasset_leads").insert([
-          {
-            org_id: orgId,
-            ...payload,
-          },
-        ]);
-
-        if (error) throw error;
         results.inserted += 1;
-      }
-    } catch (error) {
-      results.errors.push({
-        row: i + 2,
-        error: error.message,
-      });
-    }
-  }
 
-  return results;
+        await addLeadImportRowLog({
+          importId: importLog.id,
+          orgId,
+          business: "rasset",
+          rowNumber,
+          phone: payload.phone,
+          company: payload.company,
+          website: payload.website,
+          status: "success",
+          message: "Lead inserted",
+          existingLeadId: insertedLead?.id || null,
+        });
+      } catch (error) {
+        results.errors.push({
+          row: rowNumber,
+          error: error.message || String(error),
+        });
+
+        await addLeadImportRowLog({
+          importId: importLog.id,
+          orgId,
+          business: "rasset",
+          rowNumber,
+          status: "error",
+          message: error.message || String(error),
+        });
+      }
+    }
+
+    await finishLeadImportLog({
+      importId: importLog.id,
+      results,
+      status: "completed",
+    });
+
+    return results;
+  } catch (error) {
+    await finishLeadImportLog({
+      importId: importLog.id,
+      results,
+      status: "failed",
+      errorMessage: error.message || String(error),
+    });
+
+    throw error;
+  }
 }
 
 function mapExcelRowToJoolianB2BLead(row) {
@@ -15889,10 +16066,12 @@ ${
     ? `
   <div style="margin-bottom:12px;">
     
-    <button class="btn btn-primary" onclick="toggleUploadBox('rassetUploadBox')" 
-      title="Upload Excel with Company, Email, Phone, Industry, Location, etc.">
-      ＋ Import Rasset Excel
-    </button>
+<button class="btn btn-primary" onclick="toggleUploadBox('rassetUploadBox')" 
+  title="Upload Excel with Company, Email, Phone, Industry, Location, etc.">
+  ＋ Import Rasset Excel
+</button>
+
+<a class="btn" href="/leads/rasset/imports">Import Logs</a>
 
     <div id="rassetUploadBox" style="display:none; margin-top:10px;">
 <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
@@ -16375,15 +16554,18 @@ console.error("Excel import failed:", json);
     return;
   }
 
-  const d = json.data || {};
-  alert(
-    "Import complete\\n" +
-    "Total: " + d.total + "\\n" +
-    "Inserted: " + d.inserted + "\\n" +
-    "Updated: " + d.updated + "\\n" +
-    "Skipped: " + d.skipped + "\\n" +
-    "Errors: " + (d.errors || []).length
-  );
+const d = json.data || {};
+alert(
+  "Import complete\n" +
+  "Import ID: " + d.import_id + "\n" +
+  "Total: " + d.total + "\n" +
+  "Inserted: " + d.inserted + "\n" +
+  "Duplicates skipped: " + d.duplicates + "\n" +
+  "Skipped: " + d.skipped + "\n" +
+  "Errors: " + (d.errors || []).length
+);
+
+window.location.href = "/leads/rasset/imports?import_id=" + d.import_id;
 
   window.location.reload();
 }
@@ -21591,6 +21773,7 @@ app.post(
   async (req, res) => {
     try {
       const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const user = req.session?.user || req.loggedInUser || {};
 
       if (!req.file?.buffer) {
         return sendApiError(res, 400, "Excel file is required");
@@ -21599,12 +21782,19 @@ app.post(
       const data = await importRassetLeadsFromExcel({
         orgId,
         buffer: req.file.buffer,
+        fileName: req.file.originalname,
+        uploadedByUserId: user.id || null,
+        uploadedByName: user.name || user.phone_number || "Unknown",
       });
 
       return sendApiSuccess(res, data);
     } catch (error) {
       console.error("POST /api/rasset-leads/import-excel error:", error);
-      return sendApiError(res, 500, error.message || "Failed to import Excel");
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to import Rasset Excel",
+      );
     }
   },
 );
@@ -21616,14 +21806,18 @@ app.post(
   async (req, res) => {
     try {
       const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const user = req.session?.user || req.loggedInUser || {};
 
       if (!req.file?.buffer) {
         return sendApiError(res, 400, "Excel file is required");
       }
 
-      const data = await importJoolianB2BLeadsFromExcel({
+      const data = await importRassetLeadsFromExcel({
         orgId,
         buffer: req.file.buffer,
+        fileName: req.file.originalname,
+        uploadedByUserId: user.id || null,
+        uploadedByName: user.name || user.phone_number || "Unknown",
       });
 
       return sendApiSuccess(res, data);
@@ -24175,6 +24369,187 @@ async function getUserTaskWorkspaceData({ userId, orgId, tab = "pending" }) {
   };
 }
 
+function renderLeadImportLogsPage({
+  business,
+  logs = [],
+  rows = [],
+  selectedImportId = null,
+  search = "",
+  date = "",
+  status = "",
+  uploadedBy = "",
+}) {
+  const logRowsHtml = logs.length
+    ? logs
+        .map(
+          (log) => `
+          <tr>
+            <td>
+              <a href="/leads/${business}/imports?import_id=${log.id}&search=${encodeURIComponent(search)}&date=${encodeURIComponent(date)}&status=${encodeURIComponent(status)}&uploaded_by=${encodeURIComponent(uploadedBy)}">
+                #${escapeHtml(log.id)}
+              </a>
+              <div class="muted">${escapeHtml(log.file_name || "-")}</div>
+            </td>
+            <td>${escapeHtml(log.created_at ? formatDateTime(log.created_at) : "-")}</td>
+            <td>${escapeHtml(log.uploaded_by_name || "-")}</td>
+            <td><span class="badge badge-info">${escapeHtml(log.status || "-")}</span></td>
+            <td>${escapeHtml(log.total_rows || 0)}</td>
+            <td>${escapeHtml(log.inserted_count || 0)}</td>
+            <td>${escapeHtml(log.duplicate_count || 0)}</td>
+            <td>${escapeHtml(log.skipped_count || 0)}</td>
+            <td>${escapeHtml(log.error_count || 0)}</td>
+          </tr>
+        `,
+        )
+        .join("")
+    : `<tr><td colspan="9" class="empty-cell">No import logs found.</td></tr>`;
+
+  const detailRowsHtml = rows.length
+    ? rows
+        .map(
+          (r) => `
+          <tr>
+            <td>${escapeHtml(r.row_number || "-")}</td>
+            <td><span class="badge ${r.status === "success" ? "badge-ok" : r.status === "duplicate" ? "badge-warn" : r.status === "error" ? "badge-danger" : "badge-muted"}">${escapeHtml(r.status)}</span></td>
+            <td>${escapeHtml(r.phone || "-")}</td>
+            <td>${escapeHtml(r.company || "-")}</td>
+            <td>${escapeHtml(r.website || "-")}</td>
+            <td>${escapeHtml(r.message || "-")}</td>
+            <td>${escapeHtml(r.existing_lead_id || "-")}</td>
+          </tr>
+        `,
+        )
+        .join("")
+    : `<tr><td colspan="7" class="empty-cell">Select an import to view row details.</td></tr>`;
+
+  return `
+    <html>
+      <head>
+        <title>Lead Import Logs</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+          ${buildTopNavCss()}
+
+          .wrap { max-width: 1600px; margin: 0 auto; padding: 24px 18px 36px; }
+          .topbar, .panel {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+          .topbar {
+            display:flex; justify-content:space-between; align-items:center;
+            gap:16px; flex-wrap:wrap; margin-bottom:20px; padding:18px 20px;
+          }
+          h1 { margin:0; font-size:30px; letter-spacing:-0.04em; }
+          .subtitle { color:var(--muted); margin-top:8px; font-size:14px; }
+          .panel { padding:16px; margin-bottom:16px; overflow-x:auto; }
+          .search-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+          input, select {
+            padding:11px 12px; border-radius:12px; border:1px solid var(--line);
+            background:rgba(255,255,255,0.04); color:var(--text); font:inherit;
+          }
+          .btn {
+            display:inline-flex; align-items:center; text-decoration:none; color:var(--text);
+            padding:10px 13px; border-radius:12px; background:rgba(255,255,255,0.05);
+            border:1px solid rgba(255,255,255,0.12); font-weight:800; cursor:pointer;
+          }
+          .btn-primary {
+            background:var(--primary-soft); color:var(--text-strong);
+            border-color:color-mix(in srgb, var(--primary) 55%, transparent);
+          }
+          table { width:100%; border-collapse:collapse; }
+          th, td {
+            padding:12px; border-bottom:1px solid rgba(255,255,255,0.08);
+            text-align:left; vertical-align:top; font-size:13px;
+          }
+          th {
+            color:var(--muted); text-transform:uppercase; letter-spacing:0.08em;
+            font-size:11px;
+          }
+          .badge {
+            display:inline-flex; padding:6px 9px; border-radius:999px;
+            font-size:12px; font-weight:800;
+          }
+          .badge-ok { background:var(--success-soft); }
+          .badge-info { background:var(--info-soft); }
+          .badge-warn { background:var(--accent-soft); }
+          .badge-danger { background:var(--danger-soft); }
+          .badge-muted { background:rgba(255,255,255,0.08); }
+        </style>
+      </head>
+      <body>
+        ${renderTopNav("leads")}
+
+        <div class="wrap">
+          <div class="topbar">
+            <div>
+              <h1>${escapeHtml(business)} Import Logs</h1>
+              <div class="subtitle">Excel upload history, duplicates skipped, errors, day-wise search, and uploader tracking.</div>
+            </div>
+            <a class="btn" href="/leads/${encodeURIComponent(business)}">← Back to Leads</a>
+          </div>
+
+          <div class="panel">
+            <form class="search-row" method="GET" action="/leads/${encodeURIComponent(business)}/imports">
+              <input name="search" value="${escapeHtml(search)}" placeholder="Search file, uploader, phone, company..." />
+              <input type="date" name="date" value="${escapeHtml(date)}" />
+              <input name="uploaded_by" value="${escapeHtml(uploadedBy)}" placeholder="Uploaded by..." />
+              <select name="status">
+                <option value="">All statuses</option>
+                <option value="completed" ${status === "completed" ? "selected" : ""}>Completed</option>
+                <option value="processing" ${status === "processing" ? "selected" : ""}>Processing</option>
+                <option value="failed" ${status === "failed" ? "selected" : ""}>Failed</option>
+              </select>
+              <button class="btn btn-primary" type="submit">Search</button>
+              <a class="btn" href="/leads/${encodeURIComponent(business)}/imports">Clear</a>
+            </form>
+          </div>
+
+          <div class="panel">
+            <h2>Uploads</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Import</th>
+                  <th>Uploaded At</th>
+                  <th>Uploaded By</th>
+                  <th>Status</th>
+                  <th>Total</th>
+                  <th>Inserted</th>
+                  <th>Duplicates</th>
+                  <th>Skipped</th>
+                  <th>Errors</th>
+                </tr>
+              </thead>
+              <tbody>${logRowsHtml}</tbody>
+            </table>
+          </div>
+
+          <div class="panel">
+            <h2>Selected Import Details ${selectedImportId ? `#${escapeHtml(selectedImportId)}` : ""}</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Excel Row</th>
+                  <th>Status</th>
+                  <th>Phone</th>
+                  <th>Company</th>
+                  <th>Website</th>
+                  <th>Message</th>
+                  <th>Lead ID</th>
+                </tr>
+              </thead>
+              <tbody>${detailRowsHtml}</tbody>
+            </table>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
 function renderMyDashboardPage(data) {
   const user = data?.user || {};
   const taskData = data?.taskData || {};
@@ -24717,6 +25092,105 @@ app.get("/", (_req, res) => {
       </body>
     </html>
   `);
+});
+
+app.get("/leads/:business/imports", requireDashboardAuth, async (req, res) => {
+  try {
+    const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+    const business = getBusinessCanonicalName(req.params.business);
+
+    const search = String(req.query.search || "").trim();
+    const date = String(req.query.date || "").trim();
+    const status = String(req.query.status || "").trim();
+    const uploadedBy = String(req.query.uploaded_by || "").trim();
+    const selectedImportId = req.query.import_id
+      ? Number(req.query.import_id)
+      : null;
+
+    let query = supabase
+      .from("lead_import_logs")
+      .select("*")
+      .eq("org_id", orgId)
+      .eq("business", business)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (status) {
+      query = query.eq("status", status);
+    }
+
+    if (uploadedBy) {
+      query = query.ilike("uploaded_by_name", `%${uploadedBy}%`);
+    }
+
+    if (date) {
+      const nextDate = new Date(`${date}T00:00:00+05:30`);
+      nextDate.setDate(nextDate.getDate() + 1);
+
+      query = query
+        .gte("created_at", `${date}T00:00:00+05:30`)
+        .lt("created_at", nextDate.toISOString());
+    }
+
+    if (search) {
+      query = query.or(
+        [
+          `file_name.ilike.%${search}%`,
+          `uploaded_by_name.ilike.%${search}%`,
+        ].join(","),
+      );
+    }
+
+    const { data: logs, error: logsError } = await query;
+    if (logsError) throw logsError;
+
+    let rows = [];
+
+    if (selectedImportId) {
+      let rowQuery = supabase
+        .from("lead_import_log_rows")
+        .select("*")
+        .eq("org_id", orgId)
+        .eq("business", business)
+        .eq("import_id", selectedImportId)
+        .order("row_number", { ascending: true })
+        .limit(500);
+
+      if (search) {
+        rowQuery = rowQuery.or(
+          [
+            `phone.ilike.%${search}%`,
+            `company.ilike.%${search}%`,
+            `website.ilike.%${search}%`,
+            `message.ilike.%${search}%`,
+            `status.ilike.%${search}%`,
+          ].join(","),
+        );
+      }
+
+      const { data: rowData, error: rowError } = await rowQuery;
+      if (rowError) throw rowError;
+      rows = rowData || [];
+    }
+
+    return res.send(
+      renderLeadImportLogsPage({
+        business,
+        logs: logs || [],
+        rows,
+        selectedImportId,
+        search,
+        date,
+        status,
+        uploadedBy,
+      }),
+    );
+  } catch (error) {
+    console.error("GET /leads/:business/imports error:", error);
+    return res
+      .status(500)
+      .send("Failed to load import logs: " + (error.message || String(error)));
+  }
 });
 
 app.get("/clients", requireDashboardAuth, async (req, res) => {
