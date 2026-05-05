@@ -8036,7 +8036,7 @@ async function enrichLeadFromUrl({ url, googleMapsUrl = "" }) {
     google_maps_url: mapUrl || null,
     lead_source: websiteUrl ? "website" : "google_map",
     lead_category: "b2b",
-    lead_stage: "prospect",
+    lead_stage: null,
     enrichment_status: "partial",
   };
 
