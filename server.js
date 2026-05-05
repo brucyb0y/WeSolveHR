@@ -16557,26 +16557,26 @@ async function uploadRassetExcel() {
   const json = await res.json();
 
   if (!json.ok) {
-    alert("Excel import failed:\\n" + (json.error || JSON.stringify(json)));
-console.error("Excel import failed:", json);
+    alert(["Excel import failed:", json.error || JSON.stringify(json)].join(String.fromCharCode(10)));
+    console.error("Excel import failed:", json);
     return;
   }
 
-const d = json.data || {};
-alert(
-  "Import complete\n" +
-  "Import ID: " + d.import_id + "\n" +
-  "Total: " + d.total + "\n" +
-  "Inserted: " + d.inserted + "\n" +
-  "Duplicates skipped: " + d.duplicates + "\n" +
-  "Skipped: " + d.skipped + "\n" +
-  "Errors: " + (d.errors || []).length
-);
+  const d = json.data || {};
 
-window.location.href = "/leads/rasset/imports?import_id=" + d.import_id;
+  alert([
+    "Import complete",
+    "Import ID: " + d.import_id,
+    "Total: " + d.total,
+    "Inserted: " + d.inserted,
+    "Duplicates skipped: " + d.duplicates,
+    "Skipped: " + d.skipped,
+    "Errors: " + ((d.errors || []).length)
+  ].join(String.fromCharCode(10)));
 
-  window.location.reload();
+  window.location.href = "/leads/rasset/imports?import_id=" + d.import_id;
 }
+
 
 async function uploadJoolianB2BExcel() {
   const input = document.getElementById("joolianB2BExcelFile");
