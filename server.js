@@ -207,38 +207,46 @@ async function getBusinessLeadsData(
     }
 
     if (q) {
+      const commonSearchFields = [
+        `phone.ilike.%${q}%`,
+        `business_name.ilike.%${q}%`,
+        `contact_name.ilike.%${q}%`,
+        `email.ilike.%${q}%`,
+        `city.ilike.%${q}%`,
+        `industry.ilike.%${q}%`,
+        `notes.ilike.%${q}%`,
+        `latest_transcript.ilike.%${q}%`,
+        `company.ilike.%${q}%`,
+        `website.ilike.%${q}%`,
+        `pin_code.ilike.%${q}%`,
+        `location.ilike.%${q}%`,
+        `country.ilike.%${q}%`,
+        `owner_name.ilike.%${q}%`,
+        `number_of_employees.ilike.%${q}%`,
+        `company_size.ilike.%${q}%`,
+        `lead_stage.ilike.%${q}%`,
+        ...(q.toLowerCase() === "qualified" ? ["qualified.eq.true"] : []),
+        ...(q.toLowerCase() === "l2 done" ||
+        q.toLowerCase() === "l2" ||
+        q.toLowerCase() === "l2_done"
+          ? ["l2_done.eq.true"]
+          : []),
+        ...(q.toLowerCase() === "prospect" ? ["lead_stage.eq.prospect"] : []),
+      ];
+
+      const joolianOnlySearchFields =
+        tableName === "joolian_leads"
+          ? [
+              `age_group.ilike.%${q}%`,
+              `activity_category.ilike.%${q}%`,
+              `sub_activity_category.ilike.%${q}%`,
+              `type_of_business.ilike.%${q}%`,
+              `pricing_approx.ilike.%${q}%`,
+            ]
+          : [];
+
       query = query.or(
-        [
-          `phone.ilike.%${q}%`,
-          `business_name.ilike.%${q}%`,
-          `contact_name.ilike.%${q}%`,
-          `email.ilike.%${q}%`,
-          `city.ilike.%${q}%`,
-          `industry.ilike.%${q}%`,
-          `notes.ilike.%${q}%`,
-          `latest_transcript.ilike.%${q}%`,
-          `company.ilike.%${q}%`,
-          `website.ilike.%${q}%`,
-          `pin_code.ilike.%${q}%`,
-          `location.ilike.%${q}%`,
-          `country.ilike.%${q}%`,
-          `owner_name.ilike.%${q}%`,
-          `number_of_employees.ilike.%${q}%`,
-          `company_size.ilike.%${q}%`,
-          `lead_stage.ilike.%${q}%`,
-          ...(q.toLowerCase() === "qualified" ? ["qualified.eq.true"] : []),
-          ...(q.toLowerCase() === "l2 done" ||
-          q.toLowerCase() === "l2" ||
-          q.toLowerCase() === "l2_done"
-            ? ["l2_done.eq.true"]
-            : []),
-          ...(q.toLowerCase() === "prospect" ? ["lead_stage.eq.prospect"] : []),
-          `age_group.ilike.%${q}%`,
-          `activity_category.ilike.%${q}%`,
-          `sub_activity_category.ilike.%${q}%`,
-          `type_of_business.ilike.%${q}%`,
-          `pricing_approx.ilike.%${q}%`,
-        ].join(","),
+        [...commonSearchFields, ...joolianOnlySearchFields].join(","),
       );
     }
 
