@@ -8458,13 +8458,6 @@ async function finishLeadImportLog({
   }
 }
 
-function normalizeLeadPhone(input) {
-  return String(input || "")
-    .trim()
-    .replace(/^whatsapp:/i, "")
-    .replace(/[^\d+]/g, "");
-}
-
 async function importRassetLeadsFromExcel({
   orgId,
   buffer,
