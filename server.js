@@ -207,7 +207,7 @@ async function getBusinessLeadsData(
   if (tableName) {
     let query = supabase
       .from(tableName)
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("org_id", orgId)
       .order("created_at", { ascending: false });
 
@@ -315,10 +315,11 @@ async function getBusinessLeadsData(
         query = query.eq("worth_talking", false);
       }
     }
-    const { data, error } = await query;
+    const { data, error, count } = await query;
 
     if (error) throw error;
     businessRows = data || [];
+    const totalBusinessCount = count || businessRows.length;
   }
 
   const voice = voiceRows || [];
@@ -356,14 +357,14 @@ async function getBusinessLeadsData(
     businessRows,
     tableName,
     counts: {
-      all: businessRows.length,
+      all: totalBusinessCount,
       b2b: businessRows.filter((x) => x.lead_category === "b2b").length,
       b2c: businessRows.filter((x) => x.lead_category === "b2c").length,
       in_progress: businessRows.filter((x) => x.status === "in_progress")
         .length,
       completed: businessRows.filter((x) => x.status === "completed").length,
       voice_inbox: voiceInboxRows.length,
-      total: businessRows.length,
+      total: totalBusinessCount,
       pending_review: voice.filter((x) => x.status === "pending_review").length,
     },
     pagination: {
