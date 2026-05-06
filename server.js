@@ -16698,7 +16698,7 @@ function normalizePhoneClient(value) {
 }
 
 function extractPhoneFromText(text) {
-  const match = String(text || "").match(/(?:\+?\d[\d\s().-]{8,}\d)/);
+  const match = String(text || "").match(/(?:\\+?\\d[\\d\\s().-]{8,}\\d)/);
   return match ? match[0].trim() : "";
 }
 
