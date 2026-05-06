@@ -15600,25 +15600,6 @@ function renderBusinessLeadsPage(data) {
                       <span>L2 Done</span>
                     </label>
 
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; white-space:nowrap;">
-                      <input
-                        type="checkbox"
-                        style="margin:0; width:auto;"
-                        ${lead.qualified ? "checked" : ""}
-                        onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'qualified', this.checked)"
-                      />
-                      <span>Qualified</span>
-                    </label>
-
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; white-space:nowrap;">
-                      <input
-                        type="checkbox"
-                        style="margin:0; width:auto;"
-                        ${lead.lead_stage === "prospect" ? "checked" : ""}
-                        onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'lead_stage', this.checked ? 'prospect' : '')"
-                      />
-                      <span>Prospect</span>
-                    </label>
                   </div>
                 </td>
 
@@ -16581,17 +16562,15 @@ ${
 </div>
               <div class="form-field">
 
-  <label>Lead Stage</label>
-  <select id="leadStage">
-    <option value="prospect">Prospect</option>
-    <option value="qualified">Qualified</option>
-    <option value="not_fit">Not Fit</option>
-  </select>
-</div>
-
-<div class="form-field">
-  <label>Company</label>
-  <input id="leadCompany" />
+<label>Lead Stage</label>
+<select id="leadStage">
+  <option value="">Select stage</option>
+  <option value="new">New</option>
+  <option value="prospect">Prospect</option>
+  <option value="qualified">Qualified</option>
+  <option value="not_fit">Not Fit</option>
+  <option value="customer">Customer</option>
+</select>
 </div>
 
 <div class="form-field">
@@ -16883,11 +16862,9 @@ async function checkLeadPhoneDuplicate() {
             document.getElementById("leadAddress").value = lead.address || "";
             document.getElementById("leadNotes").value = lead.notes || "";
             document.getElementById("leadLatestTranscript").value = lead.latest_transcript || "";
-            document.getElementById("leadCompany").value = lead.company || lead.business_name || "";
 const leadStageEl = document.getElementById("leadStage");
-
 if (leadStageEl) {
-  leadStageEl.value = lead?.lead_stage || "";
+  leadStageEl.value = lead.lead_stage || "";
 }
 document.getElementById("leadPinCode").value = lead.pin_code || "";
 document.getElementById("leadLocation").value = lead.location || "";
@@ -16899,8 +16876,6 @@ document.getElementById("leadCompanySize").value = lead.company_size || "";
 document.getElementById("leadEnrichmentNotes").value = lead.enrichment_notes || "";
 
 document.getElementById("leadL2Done").checked = !!lead.l2_done;
-document.getElementById("leadQualified").checked = !!lead.qualified;
-document.getElementById("leadProspect").checked = lead.lead_stage === "prospect";
 }
 
           function closeLeadModal(event) {
@@ -16926,7 +16901,6 @@ document.getElementById("leadProspect").checked = lead.lead_stage === "prospect"
     "leadLatestTranscript",
     "enrichUrl",
     "enrichMessage",
-    "leadCompany",
     "leadSmartPaste",
     "leadStage",
     "leadPinCode",
@@ -16971,11 +16945,6 @@ if (leadStage) leadStage.value = "";
   const l2Done = document.getElementById("leadL2Done");
   if (l2Done) l2Done.checked = false;
 
-  const qualified = document.getElementById("leadQualified");
-  if (qualified) qualified.checked = false;
-
-  const prospect = document.getElementById("leadProspect");
-  if (prospect) prospect.checked = false;
 }
           
           async function toggleLeadCheckbox(event, business, id, field, value) {
@@ -17113,8 +17082,8 @@ async function uploadJoolianB2BExcel() {
               industry: document.getElementById("leadIndustry").value.trim(),
               address: document.getElementById("leadAddress").value.trim(),
               notes: document.getElementById("leadNotes").value.trim(),
-              company: document.getElementById("leadCompany")?.value.trim() || "",
-lead_stage: document.getElementById("leadProspect")?.checked ? "prospect" : "",
+company: document.getElementById("leadBusinessName")?.value.trim() || "",
+lead_stage: document.getElementById("leadStage")?.value || "",
 pin_code: document.getElementById("leadPinCode")?.value.trim() || "",
 location: document.getElementById("leadLocation")?.value.trim() || "",
 country: document.getElementById("leadCountry")?.value.trim() || "",
