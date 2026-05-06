@@ -16703,7 +16703,7 @@ function extractPhoneFromText(text) {
 }
 
 function extractUrlFromText(text) {
-  const match = String(text || "").match(/https?:\/\/[^\s]+/i);
+  const match = String(text || "").match(/https?:\\/\\/[^\\s]+/i);
   return match ? match[0].trim() : "";
 }
 
