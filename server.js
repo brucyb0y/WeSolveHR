@@ -97,6 +97,30 @@ function normalizePhoneForLogin(input) {
   return value;
 }
 
+function normalizeLeadPhone(input) {
+  if (!input) return "";
+
+  let digits = String(input)
+    .replace(/^whatsapp:/i, "")
+    .replace(/\D/g, "");
+
+  if (!digits) return "";
+
+  if (digits.startsWith("00")) {
+    digits = digits.slice(2);
+  }
+
+  if (digits.length === 10) {
+    digits = "91" + digits;
+  }
+
+  if (digits.length === 11 && digits.startsWith("0")) {
+    digits = "91" + digits.slice(1);
+  }
+
+  return digits;
+}
+
 app.use(express.json());
 
 app.use(
@@ -7974,7 +7998,7 @@ async function updateBusinessLeadStatus({ business, leadId, orgId, status }) {
 
 function buildBusinessLeadPayloadFromBody(body) {
   return {
-    phone: normalizePhoneForLogin(body.phone || ""),
+    phone: normalizeLeadPhone(body.phone || "") || null,
     lead_category: normalizeText(body.lead_category || "b2b"),
     lead_source: normalizeText(body.lead_source || "manual"),
     lead_stage: normalizeText(body.lead_stage || "prospect"),
@@ -22355,12 +22379,10 @@ app.get(
       const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
       const business = getBusinessCanonicalName(req.params.business);
       const tableName = getBusinessLeadTableName(business);
-      const phone = normalizePhoneForLogin(req.query.phone || "");
+      const digits = normalizeLeadPhone(req.query.phone || "");
 
       if (!tableName) return sendApiError(res, 400, "Invalid business");
-      if (!phone) return sendApiSuccess(res, { duplicate: false });
-
-      const digits = String(phone).replace(/\D/g, "");
+      if (!digits) return sendApiSuccess(res, { duplicate: false });
 
       const { data, error } = await supabase
         .from(tableName)
@@ -22372,7 +22394,7 @@ app.get(
       if (error) throw error;
 
       const duplicate = (data || []).find((row) => {
-        return String(row.phone || "").replace(/\D/g, "") === digits;
+        return normalizeLeadPhone(row.phone) === digits;
       });
 
       return sendApiSuccess(res, {
