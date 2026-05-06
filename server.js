@@ -204,6 +204,8 @@ async function getBusinessLeadsData(
 
   let businessRows = [];
   let totalBusinessCount = 0;
+  let b2bBusinessCount = 0;
+  let b2cBusinessCount = 0;
   if (tableName) {
     let query = supabase
       .from(tableName)
@@ -322,6 +324,32 @@ async function getBusinessLeadsData(
     totalBusinessCount = count || businessRows.length;
   }
 
+  if (tableName === "rasset_leads") {
+    const { count: b2bCount } = await supabase
+      .from(tableName)
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId)
+      .or("is_deleted.is.null,is_deleted.eq.false")
+      .eq("lead_category", "b2b");
+
+    const { count: b2cCount } = await supabase
+      .from(tableName)
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId)
+      .or("is_deleted.is.null,is_deleted.eq.false")
+      .eq("lead_category", "b2c");
+
+    b2bBusinessCount = b2bCount || 0;
+    b2cBusinessCount = b2cCount || 0;
+  } else {
+    b2bBusinessCount = businessRows.filter(
+      (x) => x.lead_category === "b2b",
+    ).length;
+    b2cBusinessCount = businessRows.filter(
+      (x) => x.lead_category === "b2c",
+    ).length;
+  }
+
   const voice = voiceRows || [];
 
   const voiceInboxRows = voice.filter((x) =>
@@ -358,8 +386,8 @@ async function getBusinessLeadsData(
     tableName,
     counts: {
       all: totalBusinessCount,
-      b2b: businessRows.filter((x) => x.lead_category === "b2b").length,
-      b2c: businessRows.filter((x) => x.lead_category === "b2c").length,
+      b2b: b2bBusinessCount,
+      b2c: b2cBusinessCount,
       in_progress: businessRows.filter((x) => x.status === "in_progress")
         .length,
       completed: businessRows.filter((x) => x.status === "completed").length,
