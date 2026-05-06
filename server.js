@@ -203,7 +203,7 @@ async function getBusinessLeadsData(
   if (voiceError) throw voiceError;
 
   let businessRows = [];
-
+  let totalBusinessCount = 0;
   if (tableName) {
     let query = supabase
       .from(tableName)
@@ -319,7 +319,7 @@ async function getBusinessLeadsData(
 
     if (error) throw error;
     businessRows = data || [];
-    const totalBusinessCount = count || businessRows.length;
+    totalBusinessCount = count || businessRows.length;
   }
 
   const voice = voiceRows || [];
