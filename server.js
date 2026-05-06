@@ -16855,7 +16855,11 @@ async function checkLeadPhoneDuplicate() {
             document.getElementById("leadNotes").value = lead.notes || "";
             document.getElementById("leadLatestTranscript").value = lead.latest_transcript || "";
             document.getElementById("leadCompany").value = lead.company || lead.business_name || "";
-document.getElementById("leadStage").value = lead.lead_stage || "prospect";
+const leadStageEl = document.getElementById("leadStage");
+
+if (leadStageEl) {
+  leadStageEl.value = lead?.lead_stage || "";
+}
 document.getElementById("leadPinCode").value = lead.pin_code || "";
 document.getElementById("leadLocation").value = lead.location || "";
 document.getElementById("leadCountry").value = lead.country || "";
@@ -16932,8 +16936,8 @@ document.getElementById("leadProspect").checked = lead.lead_stage === "prospect"
   const leadSource = document.getElementById("leadSource");
   if (leadSource) leadSource.value = "manual";
 
-  const leadStage = document.getElementById("leadStage");
-  if (leadStage) leadStage.value = "prospect";
+const leadStage = document.getElementById("leadStage");
+if (leadStage) leadStage.value = "";
 
   const l2Done = document.getElementById("leadL2Done");
   if (l2Done) l2Done.checked = false;
