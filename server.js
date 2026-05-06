@@ -15526,28 +15526,22 @@ function renderBusinessLeadsPage(data) {
                   }
                 </td>
 
-                <td>
-                  <div class="lead-chip-row">
-                    ${
-                      lead.lead_category
-                        ? `<span class="lead-chip primary">${escapeHtml(lead.lead_category)}</span>`
-                        : ""
-                    }
-
-                    ${
-                      lead.manufacturing_capabilities
-                        ? String(lead.manufacturing_capabilities)
-                            .split(",")
-                            .slice(0, 4)
-                            .map(
-                              (x) =>
-                                `<span class="lead-chip">${escapeHtml(x.trim())}</span>`,
-                            )
-                            .join("")
-                        : `<span class="muted">No capabilities</span>`
-                    }
-                  </div>
-                </td>
+<td>
+  <div class="lead-chip-row">
+    ${
+      lead.manufacturing_capabilities
+        ? String(lead.manufacturing_capabilities)
+            .split(",")
+            .filter(Boolean)
+            .slice(0, 4)
+            .map(
+              (x) => `<span class="lead-chip">${escapeHtml(x.trim())}</span>`,
+            )
+            .join("")
+        : `<span class="muted">No capabilities</span>`
+    }
+  </div>
+</td>
 
                 <td>
                   <div><strong>${escapeHtml(lead.industry_primary || lead.industry || "-")}</strong></div>
