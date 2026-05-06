@@ -174,6 +174,7 @@ async function getBusinessLeadsData(
   selectedTab = "all",
   search = "",
   page = 1,
+  filters = {},
 ) {
   const normalizedBusiness = getBusinessCanonicalName(business);
   const tableName = getBusinessLeadTableName(normalizedBusiness);
@@ -183,7 +184,15 @@ async function getBusinessLeadsData(
   const from = (safePage - 1) * pageSize;
   const to = from + pageSize - 1;
   const q = String(search || "").trim();
-
+  const industryFilter = String(filters.industry || "").trim();
+  const capabilityFilter = String(filters.capability || "").trim();
+  const entityTypeFilter = String(filters.entity_type || "").trim();
+  const statusFilter = String(filters.status || "").trim();
+  const cityFilter = String(filters.city || "").trim();
+  const stateFilter = String(filters.state || "").trim();
+  const assignedToFilter = String(filters.assigned_to || "").trim();
+  const qualifiedFilter = String(filters.qualified || "").trim();
+  const worthTalkingFilter = String(filters.worth_talking || "").trim();
   const { data: voiceRows, error: voiceError } = await supabase
     .from("lead_voice_uploads")
     .select("*")
@@ -208,6 +217,13 @@ async function getBusinessLeadsData(
 
     if (q) {
       const commonSearchFields = [
+        `industry_primary.ilike.%${q}%`,
+        `manufacturing_capabilities.ilike.%${q}%`,
+        `entity_type.ilike.%${q}%`,
+        `raw_industry.ilike.%${q}%`,
+        `assigned_to.ilike.%${q}%`,
+        `lead_source.ilike.%${q}%`,
+        `import_source.ilike.%${q}%`,
         `phone.ilike.%${q}%`,
         `business_name.ilike.%${q}%`,
         `contact_name.ilike.%${q}%`,
@@ -249,7 +265,56 @@ async function getBusinessLeadsData(
         [...commonSearchFields, ...joolianOnlySearchFields].join(","),
       );
     }
+    if (tableName === "rasset_leads") {
+      if (industryFilter) {
+        query = query.or(
+          `industry.ilike.%${industryFilter}%,industry_primary.ilike.%${industryFilter}%,raw_industry.ilike.%${industryFilter}%`,
+        );
+      }
 
+      if (capabilityFilter) {
+        query = query.ilike(
+          "manufacturing_capabilities",
+          `%${capabilityFilter}%`,
+        );
+      }
+
+      if (entityTypeFilter) {
+        query = query.eq("entity_type", entityTypeFilter);
+      }
+
+      if (statusFilter) {
+        query = query.eq("status", statusFilter);
+      }
+
+      if (cityFilter) {
+        query = query.ilike("city", `%${cityFilter}%`);
+      }
+
+      if (stateFilter) {
+        query = query.ilike("state", `%${stateFilter}%`);
+      }
+
+      if (assignedToFilter) {
+        query = query.ilike("assigned_to", `%${assignedToFilter}%`);
+      }
+
+      if (qualifiedFilter === "yes") {
+        query = query.eq("qualified", true);
+      }
+
+      if (qualifiedFilter === "no") {
+        query = query.eq("qualified", false);
+      }
+
+      if (worthTalkingFilter === "yes") {
+        query = query.eq("worth_talking", true);
+      }
+
+      if (worthTalkingFilter === "no") {
+        query = query.eq("worth_talking", false);
+      }
+    }
     const { data, error } = await query;
 
     if (error) throw error;
@@ -307,6 +372,17 @@ async function getBusinessLeadsData(
       pageSize,
       hasPrev: safePage > 1,
       hasNext: to + 1 < filteredBusinessRows.length,
+    },
+    filters: {
+      industry: industryFilter,
+      capability: capabilityFilter,
+      entity_type: entityTypeFilter,
+      status: statusFilter,
+      city: cityFilter,
+      state: stateFilter,
+      assigned_to: assignedToFilter,
+      qualified: qualifiedFilter,
+      worth_talking: worthTalkingFilter,
     },
   };
 }
@@ -15401,7 +15477,20 @@ function renderBusinessLeadsPage(data) {
   const counts = data.counts || {};
   const search = data.search || "";
   const pagination = data.pagination || {};
-
+  const filters = data.filters || {};
+  const filterQuery = new URLSearchParams({
+    tab: selectedTab,
+    search: search || "",
+    industry: filters.industry || "",
+    capability: filters.capability || "",
+    entity_type: filters.entity_type || "",
+    status: filters.status || "",
+    city: filters.city || "",
+    state: filters.state || "",
+    assigned_to: filters.assigned_to || "",
+    qualified: filters.qualified || "",
+    worth_talking: filters.worth_talking || "",
+  }).toString();
   const tabLink = (key, label, count) => `
     <a class="tab ${selectedTab === key ? "active" : ""}"
        href="/leads/${encodeURIComponent(business)}?tab=${key}&search=${encodeURIComponent(search)}">
@@ -15416,67 +15505,99 @@ function renderBusinessLeadsPage(data) {
             .map(
               (lead) => `
               <tr>
-<td class="lead-name-cell">
-  <div class="lead-company-name">
-    ${escapeHtml(lead.company || lead.business_name || "Lead #" + lead.id)}
-    ${lead.factory_setup === "multiple_sites" ? `<span class="mini-chip">Multi-site</span>` : ""}
-  </div>
+                <td class="lead-name-cell">
+                  <div class="lead-company-name">
+                    ${escapeHtml(lead.company || lead.business_name || lead.company_name || "Lead #" + lead.id)}
+                    ${lead.factory_setup === "multiple_sites" ? `<span class="mini-chip">Multi-site</span>` : ""}
+                  </div>
 
-  <div class="muted lead-contact-line">
-    ${escapeHtml([lead.contact_name || lead.owner_name, lead.phone].filter(Boolean).join(" · ") || "-")}
-  </div>
+                  <div class="muted lead-contact-line">
+                    ${escapeHtml([lead.contact_name || lead.owner_name, lead.phone].filter(Boolean).join(" · ") || "-")}
+                  </div>
 
-  ${
-    lead.last_spoke_to_name
-      ? `
-    <div style="font-size:12px; margin-top:4px;">
-      <strong>Spoke to:</strong> ${escapeHtml(lead.last_spoke_to_name)}
-    </div>
-  `
-      : ""
-  }
-</td>
+                  ${
+                    lead.last_spoke_to_name
+                      ? `
+                        <div style="font-size:12px; margin-top:4px;">
+                          <strong>Spoke to:</strong> ${escapeHtml(lead.last_spoke_to_name)}
+                        </div>
+                      `
+                      : ""
+                  }
+                </td>
+
+                <td>
+                  <div class="lead-chip-row">
+                    ${
+                      lead.lead_category
+                        ? `<span class="lead-chip primary">${escapeHtml(lead.lead_category)}</span>`
+                        : ""
+                    }
+
+                    ${
+                      lead.manufacturing_capabilities
+                        ? String(lead.manufacturing_capabilities)
+                            .split(",")
+                            .slice(0, 4)
+                            .map(
+                              (x) =>
+                                `<span class="lead-chip">${escapeHtml(x.trim())}</span>`,
+                            )
+                            .join("")
+                        : `<span class="muted">No capabilities</span>`
+                    }
+                  </div>
+                </td>
+
+                <td>
+                  <div><strong>${escapeHtml(lead.industry_primary || lead.industry || "-")}</strong></div>
+                  <div class="muted">${escapeHtml(lead.raw_industry || "")}</div>
+
+                  <div class="lead-chip-row">
+                    ${lead.entity_type ? `<span class="lead-chip">${escapeHtml(lead.entity_type)}</span>` : ""}
+                    ${lead.company_size ? `<span class="lead-chip">${escapeHtml(lead.company_size)}</span>` : ""}
+                    ${lead.assigned_to ? `<span class="lead-chip">${escapeHtml(lead.assigned_to)}</span>` : ""}
+                  </div>
+                </td>
 
                 <td>
                   <div>${escapeHtml([lead.city, lead.state, lead.country].filter(Boolean).join(", ") || "-")}</div>
                   <div class="muted">${escapeHtml(lead.pin_code || lead.location || "")}</div>
                 </td>
 
-<td style="text-align:left; padding:10px 12px; min-width:135px;">
-  <div style="display:flex; flex-direction:column; gap:7px; align-items:flex-start;">
+                <td style="text-align:left; padding:10px 12px; min-width:135px;">
+                  <div style="display:flex; flex-direction:column; gap:7px; align-items:flex-start;">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; white-space:nowrap;">
+                      <input
+                        type="checkbox"
+                        style="margin:0; width:auto;"
+                        ${lead.l2_done ? "checked" : ""}
+                        onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'l2_done', this.checked)"
+                      />
+                      <span>L2 Done</span>
+                    </label>
 
-    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; white-space:nowrap;">
-      <input
-        type="checkbox"
-        style="margin:0; width:auto;"
-        ${lead.l2_done ? "checked" : ""}
-        onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'l2_done', this.checked)"
-      />
-      <span>L2 Done</span>
-    </label>
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; white-space:nowrap;">
+                      <input
+                        type="checkbox"
+                        style="margin:0; width:auto;"
+                        ${lead.qualified ? "checked" : ""}
+                        onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'qualified', this.checked)"
+                      />
+                      <span>Qualified</span>
+                    </label>
 
-    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; white-space:nowrap;">
-      <input
-        type="checkbox"
-        style="margin:0; width:auto;"
-        ${lead.qualified ? "checked" : ""}
-        onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'qualified', this.checked)"
-      />
-      <span>Qualified</span>
-    </label>
-
-    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; white-space:nowrap;">
-      <input
-        type="checkbox"
-        style="margin:0; width:auto;"
-${lead.lead_stage === "prospect" ? "checked" : ""}
-onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'lead_stage', this.checked ? 'prospect' : '')"
-      />
-      <span>Prospect</span>
-    </label>
-
-  </div>
-</td>
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; white-space:nowrap;">
+                      <input
+                        type="checkbox"
+                        style="margin:0; width:auto;"
+                        ${lead.lead_stage === "prospect" ? "checked" : ""}
+                        onclick="toggleLeadCheckbox(event, '${escapeHtml(business)}', ${Number(lead.id)}, 'lead_stage', this.checked ? 'prospect' : '')"
+                      />
+                      <span>Prospect</span>
+                    </label>
+                  </div>
+                </td>
 
                 <td>
                   ${
@@ -15655,6 +15776,69 @@ ${rows
   padding: 8px;
   border-radius: 10px;
   font-size: 12px;
+}
+.advanced-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.advanced-filter-grid input,
+.advanced-filter-grid select {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font: inherit;
+}
+
+.lead-chip-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.lead-chip {
+  display: inline-flex;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.10);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.lead-chip.primary {
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.lead-chip.good {
+  background: var(--success-soft);
+}
+
+.lead-chip.warn {
+  background: var(--accent-soft);
+}
+
+.lead-chip.danger {
+  background: var(--danger-soft);
+}
+
+@media (max-width: 1200px) {
+  .advanced-filter-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .advanced-filter-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
           .wrap { max-width: 1600px; margin: 0 auto; padding: 24px 18px 36px; }
@@ -16061,14 +16245,123 @@ ${rows
             selectedTab !== "voice_inbox"
               ? `
                 <div class="panel">
-                  <form class="search-row" method="GET" action="/leads/${encodeURIComponent(business)}">
+                  <form method="GET" action="/leads/${encodeURIComponent(business)}">
                     <input type="hidden" name="tab" value="${escapeHtml(selectedTab)}" />
-                    <input name="search" value="${escapeHtml(search)}" placeholder="Search phone, business, contact, city, notes..." />
-                    <button class="btn btn-primary" type="submit">Search</button>
-                    <a class="btn" href="/leads/${encodeURIComponent(business)}?tab=${escapeHtml(selectedTab)}">Clear</a>
+
+                    ${
+                      business === "rasset"
+                        ? `
+                          <div class="advanced-filter-grid">
+                            <input
+                              name="search"
+                              value="${escapeHtml(search)}"
+                              placeholder="Search company, phone, city, CNC, laser, owner, notes..."
+                            />
+
+                            <input
+                              name="industry"
+                              value="${escapeHtml(filters.industry || "")}"
+                              placeholder="Industry e.g. Auto Components"
+                            />
+
+                            <input
+                              name="capability"
+                              value="${escapeHtml(filters.capability || "")}"
+                              placeholder="Capability e.g. CNC Machining"
+                            />
+
+                            <select name="entity_type">
+                              <option value="">All Entity Types</option>
+                              ${[
+                                "Factory",
+                                "Service Provider",
+                                "Trading Company",
+                                "Supplier",
+                                "Training Institute",
+                              ]
+                                .map(
+                                  (x) =>
+                                    `<option value="${escapeHtml(x)}" ${filters.entity_type === x ? "selected" : ""}>${escapeHtml(x)}</option>`,
+                                )
+                                .join("")}
+                            </select>
+
+                            <select name="status">
+                              <option value="">All Status</option>
+                              ${[
+                                "new",
+                                "working",
+                                "busy",
+                                "unreachable",
+                                "invalid",
+                                "unsure",
+                                "in_progress",
+                                "completed",
+                              ]
+                                .map(
+                                  (x) =>
+                                    `<option value="${escapeHtml(x)}" ${filters.status === x ? "selected" : ""}>${escapeHtml(x)}</option>`,
+                                )
+                                .join("")}
+                            </select>
+
+                            <input
+                              name="city"
+                              value="${escapeHtml(filters.city || "")}"
+                              placeholder="City"
+                            />
+
+                            <input
+                              name="state"
+                              value="${escapeHtml(filters.state || "")}"
+                              placeholder="State"
+                            />
+
+                            <input
+                              name="assigned_to"
+                              value="${escapeHtml(filters.assigned_to || "")}"
+                              placeholder="Assigned to"
+                            />
+
+                            <select name="qualified">
+                              <option value="">Qualified?</option>
+                              <option value="yes" ${filters.qualified === "yes" ? "selected" : ""}>Qualified</option>
+                              <option value="no" ${filters.qualified === "no" ? "selected" : ""}>Not Qualified</option>
+                            </select>
+
+                            <select name="worth_talking">
+                              <option value="">Worth Talking?</option>
+                              <option value="yes" ${filters.worth_talking === "yes" ? "selected" : ""}>Worth Talking</option>
+                              <option value="no" ${filters.worth_talking === "no" ? "selected" : ""}>Not Worth Talking</option>
+                            </select>
+                          </div>
+                        `
+                        : `
+                          <div class="search-row">
+                            <input
+                              name="search"
+                              value="${escapeHtml(search)}"
+                              placeholder="Search phone, business, contact, city, notes..."
+                            />
+                            <button class="btn btn-primary" type="submit">Search</button>
+                            <a class="btn" href="/leads/${encodeURIComponent(business)}?tab=${escapeHtml(selectedTab)}">Clear</a>
+                          </div>
+                        `
+                    }
+
+                    ${
+                      business === "rasset"
+                        ? `
+                          <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">
+                            <button class="btn btn-primary" type="submit">Search / Filter</button>
+                            <a class="btn" href="/leads/${encodeURIComponent(business)}?tab=${escapeHtml(selectedTab)}">Clear</a>
+                          </div>
+                        `
+                        : ""
+                    }
                   </form>
                 </div>
-                
+
 ${
   business === "rasset"
     ? `
@@ -16095,6 +16388,8 @@ ${
 `
     : ""
 }
+
+
 
 ${
   business === "joolian"
@@ -16127,9 +16422,10 @@ ${
                     <thead>
                       <tr>
 <th>Company / Contact</th>
+<th>Category / Capability</th>
+<th>Industry / Entity</th>
 <th>Location</th>
-<th>Lead Check</th>
-<th>Industry / Size</th>
+<th>Lead Quality</th>
 <th>Call Summary</th>
 <th>Actions</th>
                       </tr>
@@ -16138,17 +16434,17 @@ ${
                   </table>
 
                   <div class="pagination">
-                    ${
-                      pagination.hasPrev
-                        ? `<a class="btn" href="/leads/${encodeURIComponent(business)}?tab=${escapeHtml(selectedTab)}&search=${encodeURIComponent(search)}&page=${Number(pagination.page) - 1}">← Previous</a>`
-                        : ""
-                    }
-                    <span class="btn">Page ${escapeHtml(pagination.page || 1)}</span>
-                    ${
-                      pagination.hasNext
-                        ? `<a class="btn" href="/leads/${encodeURIComponent(business)}?tab=${escapeHtml(selectedTab)}&search=${encodeURIComponent(search)}&page=${Number(pagination.page) + 1}">Next →</a>`
-                        : ""
-                    }
+${
+  pagination.hasPrev
+    ? `<a class="btn" href="/leads/${encodeURIComponent(business)}?${filterQuery}&page=${Number(pagination.page) - 1}">← Previous</a>`
+    : ""
+}
+<span class="btn">Page ${escapeHtml(pagination.page || 1)}</span>
+${
+  pagination.hasNext
+    ? `<a class="btn" href="/leads/${encodeURIComponent(business)}?${filterQuery}&page=${Number(pagination.page) + 1}">Next →</a>`
+    : ""
+}
                   </div>
                 </div>
               `
@@ -21739,6 +22035,17 @@ app.get("/leads/:business", requireDashboardAuth, async (req, res) => {
       selectedTab,
       search,
       page,
+      {
+        industry: req.query.industry || "",
+        capability: req.query.capability || "",
+        entity_type: req.query.entity_type || "",
+        status: req.query.status || "",
+        city: req.query.city || "",
+        state: req.query.state || "",
+        assigned_to: req.query.assigned_to || "",
+        qualified: req.query.qualified || "",
+        worth_talking: req.query.worth_talking || "",
+      },
     );
 
     return res.send(renderBusinessLeadsPage(data));
