@@ -208,15 +208,15 @@ async function getBusinessLeadsData(
   const from = (safePage - 1) * pageSize;
   const to = from + pageSize - 1;
   const q = String(search || "").trim();
-  const industryFilter = String(filters.industry || "").trim();
-  const capabilityFilter = String(filters.capability || "").trim();
-  const entityTypeFilter = String(filters.entity_type || "").trim();
-  const statusFilter = String(filters.status || "").trim();
-  const cityFilter = String(filters.city || "").trim();
-  const stateFilter = String(filters.state || "").trim();
-  const assignedToFilter = String(filters.assigned_to || "").trim();
-  const qualifiedFilter = String(filters.qualified || "").trim();
-  const worthTalkingFilter = String(filters.worth_talking || "").trim();
+const industryFilter = String(filters.industry || "").trim();
+const capabilityFilter = String(filters.capability || "").trim();
+const entityTypeFilter = String(filters.entity_type || "").trim();
+const statusFilter = String(filters.status || "").trim();
+const cityFilter = String(filters.city || "").trim();
+const stateFilter = String(filters.state || "").trim();
+const assignedToFilter = String(filters.assigned_to || "").trim();
+const qualifiedFilter = String(filters.qualified || "").trim();
+const worthTalkingFilter = String(filters.worth_talking || "").trim();
   const { data: voiceRows, error: voiceError } = await supabase
     .from("lead_voice_uploads")
     .select("*")
@@ -227,15 +227,15 @@ async function getBusinessLeadsData(
   if (voiceError) throw voiceError;
 
   let businessRows = [];
-  let totalBusinessCount = 0;
-  let b2bBusinessCount = 0;
-  let b2cBusinessCount = 0;
+let totalBusinessCount = 0;
+let b2bBusinessCount = 0;
+let b2cBusinessCount = 0;
   if (tableName) {
-    let query = supabase
-      .from(tableName)
-      .select("*", { count: "exact" })
-      .eq("org_id", orgId)
-      .order("created_at", { ascending: false });
+let query = supabase
+  .from(tableName)
+  .select("*", { count: "exact" })
+  .eq("org_id", orgId)
+  .order("created_at", { ascending: false });
 
     if (tableName === "rasset_leads") {
       query = query.or("is_deleted.is.null,is_deleted.eq.false");
@@ -244,12 +244,12 @@ async function getBusinessLeadsData(
     if (q) {
       const commonSearchFields = [
         `industry_primary.ilike.%${q}%`,
-        `manufacturing_capabilities.ilike.%${q}%`,
-        `entity_type.ilike.%${q}%`,
-        `raw_industry.ilike.%${q}%`,
-        `assigned_to.ilike.%${q}%`,
-        `lead_source.ilike.%${q}%`,
-        `import_source.ilike.%${q}%`,
+`manufacturing_capabilities.ilike.%${q}%`,
+`entity_type.ilike.%${q}%`,
+`raw_industry.ilike.%${q}%`,
+`assigned_to.ilike.%${q}%`,
+`lead_source.ilike.%${q}%`,
+`import_source.ilike.%${q}%`,
         `phone.ilike.%${q}%`,
         `business_name.ilike.%${q}%`,
         `contact_name.ilike.%${q}%`,
@@ -291,88 +291,81 @@ async function getBusinessLeadsData(
         [...commonSearchFields, ...joolianOnlySearchFields].join(","),
       );
     }
-    if (tableName === "rasset_leads") {
-      if (industryFilter) {
-        query = query.or(
-          `industry.ilike.%${industryFilter}%,industry_primary.ilike.%${industryFilter}%,raw_industry.ilike.%${industryFilter}%`,
-        );
-      }
+if (tableName === "rasset_leads") {
+  if (industryFilter) {
+    query = query.or(
+      `industry.ilike.%${industryFilter}%,industry_primary.ilike.%${industryFilter}%,raw_industry.ilike.%${industryFilter}%`,
+    );
+  }
 
-      if (capabilityFilter) {
-        query = query.ilike(
-          "manufacturing_capabilities",
-          `%${capabilityFilter}%`,
-        );
-      }
+  if (capabilityFilter) {
+    query = query.ilike("manufacturing_capabilities", `%${capabilityFilter}%`);
+  }
 
-      if (entityTypeFilter) {
-        query = query.eq("entity_type", entityTypeFilter);
-      }
+  if (entityTypeFilter) {
+    query = query.eq("entity_type", entityTypeFilter);
+  }
 
-      if (statusFilter) {
-        query = query.eq("status", statusFilter);
-      }
+  if (statusFilter) {
+    query = query.eq("status", statusFilter);
+  }
 
-      if (cityFilter) {
-        query = query.ilike("city", `%${cityFilter}%`);
-      }
+  if (cityFilter) {
+    query = query.ilike("city", `%${cityFilter}%`);
+  }
 
-      if (stateFilter) {
-        query = query.ilike("state", `%${stateFilter}%`);
-      }
+  if (stateFilter) {
+    query = query.ilike("state", `%${stateFilter}%`);
+  }
 
-      if (assignedToFilter) {
-        query = query.ilike("assigned_to", `%${assignedToFilter}%`);
-      }
+  if (assignedToFilter) {
+    query = query.ilike("assigned_to", `%${assignedToFilter}%`);
+  }
 
-      if (qualifiedFilter === "yes") {
-        query = query.eq("qualified", true);
-      }
+  if (qualifiedFilter === "yes") {
+    query = query.eq("qualified", true);
+  }
 
-      if (qualifiedFilter === "no") {
-        query = query.eq("qualified", false);
-      }
+  if (qualifiedFilter === "no") {
+    query = query.eq("qualified", false);
+  }
 
-      if (worthTalkingFilter === "yes") {
-        query = query.eq("worth_talking", true);
-      }
+  if (worthTalkingFilter === "yes") {
+    query = query.eq("worth_talking", true);
+  }
 
-      if (worthTalkingFilter === "no") {
-        query = query.eq("worth_talking", false);
-      }
-    }
+  if (worthTalkingFilter === "no") {
+    query = query.eq("worth_talking", false);
+  }
+}
     const { data, error, count } = await query;
 
     if (error) throw error;
     businessRows = data || [];
     totalBusinessCount = count || businessRows.length;
   }
-
+  
   if (tableName === "rasset_leads") {
-    const { count: b2bCount } = await supabase
-      .from(tableName)
-      .select("id", { count: "exact", head: true })
-      .eq("org_id", orgId)
-      .or("is_deleted.is.null,is_deleted.eq.false")
-      .eq("lead_category", "b2b");
+  const { count: b2bCount } = await supabase
+    .from(tableName)
+    .select("id", { count: "exact", head: true })
+    .eq("org_id", orgId)
+    .or("is_deleted.is.null,is_deleted.eq.false")
+    .eq("lead_category", "b2b");
 
-    const { count: b2cCount } = await supabase
-      .from(tableName)
-      .select("id", { count: "exact", head: true })
-      .eq("org_id", orgId)
-      .or("is_deleted.is.null,is_deleted.eq.false")
-      .eq("lead_category", "b2c");
+  const { count: b2cCount } = await supabase
+    .from(tableName)
+    .select("id", { count: "exact", head: true })
+    .eq("org_id", orgId)
+    .or("is_deleted.is.null,is_deleted.eq.false")
+    .eq("lead_category", "b2c");
 
-    b2bBusinessCount = b2bCount || 0;
-    b2cBusinessCount = b2cCount || 0;
-  } else {
-    b2bBusinessCount = businessRows.filter(
-      (x) => x.lead_category === "b2b",
-    ).length;
-    b2cBusinessCount = businessRows.filter(
-      (x) => x.lead_category === "b2c",
-    ).length;
-  }
+  b2bBusinessCount = b2bCount || 0;
+  b2cBusinessCount = b2cCount || 0;
+} else {
+  b2bBusinessCount = businessRows.filter((x) => x.lead_category === "b2b").length;
+  b2cBusinessCount = businessRows.filter((x) => x.lead_category === "b2c").length;
+}
 
   const voice = voiceRows || [];
 
@@ -411,7 +404,7 @@ async function getBusinessLeadsData(
     counts: {
       all: totalBusinessCount,
       b2b: b2bBusinessCount,
-      b2c: b2cBusinessCount,
+b2c: b2cBusinessCount,
       in_progress: businessRows.filter((x) => x.status === "in_progress")
         .length,
       completed: businessRows.filter((x) => x.status === "completed").length,
@@ -427,16 +420,16 @@ async function getBusinessLeadsData(
       hasNext: to + 1 < filteredBusinessRows.length,
     },
     filters: {
-      industry: industryFilter,
-      capability: capabilityFilter,
-      entity_type: entityTypeFilter,
-      status: statusFilter,
-      city: cityFilter,
-      state: stateFilter,
-      assigned_to: assignedToFilter,
-      qualified: qualifiedFilter,
-      worth_talking: worthTalkingFilter,
-    },
+  industry: industryFilter,
+  capability: capabilityFilter,
+  entity_type: entityTypeFilter,
+  status: statusFilter,
+  city: cityFilter,
+  state: stateFilter,
+  assigned_to: assignedToFilter,
+  qualified: qualifiedFilter,
+  worth_talking: worthTalkingFilter,
+},
   };
 }
 
@@ -15523,20 +15516,20 @@ function renderBusinessLeadsPage(data) {
   const counts = data.counts || {};
   const search = data.search || "";
   const pagination = data.pagination || {};
-  const filters = data.filters || {};
-  const filterQuery = new URLSearchParams({
-    tab: selectedTab,
-    search: search || "",
-    industry: filters.industry || "",
-    capability: filters.capability || "",
-    entity_type: filters.entity_type || "",
-    status: filters.status || "",
-    city: filters.city || "",
-    state: filters.state || "",
-    assigned_to: filters.assigned_to || "",
-    qualified: filters.qualified || "",
-    worth_talking: filters.worth_talking || "",
-  }).toString();
+const filters = data.filters || {};
+const filterQuery = new URLSearchParams({
+  tab: selectedTab,
+  search: search || "",
+  industry: filters.industry || "",
+  capability: filters.capability || "",
+  entity_type: filters.entity_type || "",
+  status: filters.status || "",
+  city: filters.city || "",
+  state: filters.state || "",
+  assigned_to: filters.assigned_to || "",
+  qualified: filters.qualified || "",
+  worth_talking: filters.worth_talking || "",
+}).toString();
   const tabLink = (key, label, count) => `
     <a class="tab ${selectedTab === key ? "active" : ""}"
        href="/leads/${encodeURIComponent(business)}?tab=${key}&search=${encodeURIComponent(search)}">
@@ -15544,12 +15537,14 @@ function renderBusinessLeadsPage(data) {
     </a>
   `;
 
-  const leadRowsHtml =
-    selectedTab !== "voice_inbox"
-      ? rows.length
-        ? rows
-            .map(
-              (lead) => `
+
+
+const leadRowsHtml =
+  selectedTab !== "voice_inbox"
+    ? rows.length
+      ? rows
+          .map(
+            (lead) => `
               <tr>
                 <td class="lead-name-cell">
                   <div class="lead-company-name">
@@ -15580,9 +15575,7 @@ function renderBusinessLeadsPage(data) {
             .split(",")
             .filter(Boolean)
             .slice(0, 4)
-            .map(
-              (x) => `<span class="lead-chip">${escapeHtml(x.trim())}</span>`,
-            )
+            .map((x) => `<span class="lead-chip">${escapeHtml(x.trim())}</span>`)
             .join("")
         : `<span class="muted">No capabilities</span>`
     }
@@ -15623,6 +15616,7 @@ function renderBusinessLeadsPage(data) {
                 <td>
                   ${
                     business === "joolian"
+
                       ? `
       <div>${escapeHtml(lead.activity_category || lead.industry || "-")}</div>
       <div class="muted">${escapeHtml(lead.sub_activity_category || "")}</div>
@@ -16293,36 +16287,15 @@ ${rows
 
                             <select name="entity_type">
                               <option value="">All Entity Types</option>
-                              ${[
-                                "Factory",
-                                "Service Provider",
-                                "Trading Company",
-                                "Supplier",
-                                "Training Institute",
-                              ]
-                                .map(
-                                  (x) =>
-                                    `<option value="${escapeHtml(x)}" ${filters.entity_type === x ? "selected" : ""}>${escapeHtml(x)}</option>`,
-                                )
+                              ${["Factory", "Service Provider", "Trading Company", "Supplier", "Training Institute"]
+                                .map((x) => `<option value="${escapeHtml(x)}" ${filters.entity_type === x ? "selected" : ""}>${escapeHtml(x)}</option>`)
                                 .join("")}
                             </select>
 
                             <select name="status">
                               <option value="">All Status</option>
-                              ${[
-                                "new",
-                                "working",
-                                "busy",
-                                "unreachable",
-                                "invalid",
-                                "unsure",
-                                "in_progress",
-                                "completed",
-                              ]
-                                .map(
-                                  (x) =>
-                                    `<option value="${escapeHtml(x)}" ${filters.status === x ? "selected" : ""}>${escapeHtml(x)}</option>`,
-                                )
+                              ${["new", "working", "busy", "unreachable", "invalid", "unsure", "in_progress", "completed"]
+                                .map((x) => `<option value="${escapeHtml(x)}" ${filters.status === x ? "selected" : ""}>${escapeHtml(x)}</option>`)
                                 .join("")}
                             </select>
 
@@ -22219,24 +22192,24 @@ app.get("/leads/:business", requireDashboardAuth, async (req, res) => {
     const search = String(req.query.search || "").trim();
     const page = Number(req.query.page || 1);
 
-    const data = await getBusinessLeadsData(
-      orgId,
-      business,
-      selectedTab,
-      search,
-      page,
-      {
-        industry: req.query.industry || "",
-        capability: req.query.capability || "",
-        entity_type: req.query.entity_type || "",
-        status: req.query.status || "",
-        city: req.query.city || "",
-        state: req.query.state || "",
-        assigned_to: req.query.assigned_to || "",
-        qualified: req.query.qualified || "",
-        worth_talking: req.query.worth_talking || "",
-      },
-    );
+const data = await getBusinessLeadsData(
+  orgId,
+  business,
+  selectedTab,
+  search,
+  page,
+  {
+    industry: req.query.industry || "",
+    capability: req.query.capability || "",
+    entity_type: req.query.entity_type || "",
+    status: req.query.status || "",
+    city: req.query.city || "",
+    state: req.query.state || "",
+    assigned_to: req.query.assigned_to || "",
+    qualified: req.query.qualified || "",
+    worth_talking: req.query.worth_talking || "",
+  },
+);
 
     return res.send(renderBusinessLeadsPage(data));
   } catch (error) {
@@ -22379,14 +22352,12 @@ app.get(
 
       const { data, error } = await supabase
         .from(tableName)
-        .select(
-          "id, phone, company, business_name, contact_name, city, state, status, lead_stage",
-        )
+        .select("id, phone, company, business_name, contact_name, city, state, status, lead_stage")
         .eq("org_id", orgId);
 
       if (error) throw error;
 
-      const duplicate = (data || []).find((row) => {
+      const duplicate = (data || []).find(function(row) {
         return normalizeLeadPhone(row.phone) === digits;
       });
 
@@ -22400,6 +22371,7 @@ app.get(
     }
   },
 );
+
 
 app.post(
   "/api/business-leads/:business",
@@ -22607,6 +22579,8 @@ app.post(
 app.get("/health/live", (_req, res) => {
   return res.status(200).json({ ok: true, status: "live" });
 });
+
+
 
 app.get("/api/top-nav-summary", requireDashboardAuth, async (req, res) => {
   try {
