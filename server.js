@@ -16537,7 +16537,7 @@ ${
 <div class="form-field" style="grid-column:1 / -1;">
   <div style="
     display:grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     gap:12px;
     padding:12px;
     border:1px solid rgba(255,255,255,0.10);
@@ -16547,16 +16547,6 @@ ${
     <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:800;">
       <input id="leadL2Done" type="checkbox" style="margin:0; width:auto;" />
       <span>L2 Done</span>
-    </label>
-
-    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:800;">
-      <input id="leadQualified" type="checkbox" style="margin:0; width:auto;" />
-      <span>Qualified</span>
-    </label>
-
-    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:800;">
-      <input id="leadProspect" type="checkbox" style="margin:0; width:auto;" />
-      <span>Prospect</span>
     </label>
   </div>
 </div>
@@ -16570,8 +16560,59 @@ ${
   <option value="qualified">Qualified</option>
   <option value="not_fit">Not Fit</option>
   <option value="customer">Customer</option>
+
 </select>
 </div>
+
+<div class="form-field">
+  <label>Business / Organization Name</label>
+  <input id="leadBusinessName" />
+</div>
+
+<div class="form-field">
+  <label>Contact Name</label>
+  <input id="leadContactName" />
+</div>
+
+<div class="form-field">
+  <label>Website</label>
+  <input id="leadWebsite" />
+</div>
+
+<div class="form-field">
+  <label>City</label>
+  <input id="leadCity" />
+</div>
+
+<div class="form-field">
+  <label>State</label>
+  <input id="leadState" />
+</div>
+
+<div class="form-field">
+  <label>Industry</label>
+  <input id="leadIndustry" />
+</div>
+
+<div class="form-field" style="grid-column:1 / -1;">
+  <label>Notes</label>
+  <textarea id="leadNotes"></textarea>
+</div>
+
+<div class="form-field" style="grid-column:1 / -1;">
+  <button
+
+    class="btn"
+    type="button"
+    onclick="toggleLeadAdvancedFields()"
+    style="width:100%; justify-content:center;"
+  >
+    Show / Hide Advanced Fields
+  </button>
+</div>
+
+<div id="leadAdvancedFields" style="grid-column:1 / -1; display:none;">
+  <div class="form-grid">
 
 <div class="form-field">
   <label>Pin Code</label>
@@ -16614,23 +16655,8 @@ ${
 </div>
 
               <div class="form-field">
-                <label>Business / Organization Name</label>
-                <input id="leadBusinessName" />
-              </div>
-
-              <div class="form-field">
-                <label>Contact Name</label>
-                <input id="leadContactName" />
-              </div>
-
-              <div class="form-field">
                 <label>Email</label>
                 <input id="leadEmail" />
-              </div>
-
-              <div class="form-field">
-                <label>Website</label>
-                <input id="leadWebsite" />
               </div>
 
               <div class="form-field">
@@ -16644,28 +16670,8 @@ ${
               </div>
 
               <div class="form-field">
-                <label>City</label>
-                <input id="leadCity" />
-              </div>
-
-              <div class="form-field">
-                <label>State</label>
-                <input id="leadState" />
-              </div>
-
-              <div class="form-field">
-                <label>Industry</label>
-                <input id="leadIndustry" />
-              </div>
-
-              <div class="form-field">
                 <label>Address</label>
                 <input id="leadAddress" />
-              </div>
-
-              <div class="form-field" style="grid-column:1 / -1;">
-                <label>Notes</label>
-                <textarea id="leadNotes"></textarea>
               </div>
 
               <div class="form-field" style="grid-column:1 / -1;">
@@ -16673,6 +16679,8 @@ ${
                 <textarea id="leadLatestTranscript"></textarea>
               </div>
             </div>
+              </div>
+</div>
 
             <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
               <button class="btn" type="button" onclick="closeLeadModal()">Cancel</button>
@@ -16823,6 +16831,13 @@ async function checkLeadPhoneDuplicate() {
               .replace(/>/g, "&gt;")
               .replace(/"/g, "&quot;");
           }
+
+function toggleLeadAdvancedFields() {
+  const box = document.getElementById("leadAdvancedFields");
+  if (!box) return;
+
+  box.style.display = box.style.display === "none" ? "block" : "none";
+}
 
           function openLeadCreateModal() {
             clearLeadForm();
@@ -17095,7 +17110,6 @@ enrichment_notes: document.getElementById("leadEnrichmentNotes")?.value.trim() |
 qualification_done: document.getElementById("leadQualificationDone")?.checked || false,
 worth_talking: document.getElementById("leadWorthTalking")?.checked || false,
 l2_done: document.getElementById("leadL2Done")?.checked || false,
-qualified: document.getElementById("leadQualified")?.checked || false,
               latest_transcript: document.getElementById("leadLatestTranscript").value.trim()
             };
           }
