@@ -16477,6 +16477,20 @@ ${
             </div>
 
             <div class="form-grid">
+            <div class="form-field" style="grid-column:1 / -1;">
+  <label>Smart Add</label>
+  <textarea
+    id="leadSmartPaste"
+    placeholder="Paste anything: phone, company, city, website, Google Maps link, WhatsApp text, CNC/laser/capability notes..."
+    oninput="smartParseLeadInput()"
+    style="min-height:90px;"
+  ></textarea>
+  <div class="hint">
+    Example: Sharma CNC Rajkot +919876543210 does CNC turning and laser cutting
+  </div>
+</div>
+
+<div id="leadDuplicateMessage" style="grid-column:1 / -1; display:none;"></div>
               <div class="form-field">
                 <label>Lead Type</label>
                 <select id="leadCategory">
@@ -16496,7 +16510,7 @@ ${
 
               <div class="form-field">
                 <label>Phone</label>
-                <input id="leadPhone" placeholder="+14085551234" />
+                <input id="leadPhone" oninput="checkLeadPhoneDuplicate()" placeholder="+91..." />
               </div>
 
               <div class="form-field">
@@ -16676,7 +16690,124 @@ function toggleUploadBox(id) {
 }
 
           const BUSINESS = ${JSON.stringify(business)};
+let leadDuplicateFound = false;
+let leadDuplicateTimer = null;
 
+function normalizePhoneClient(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function extractPhoneFromText(text) {
+  const match = String(text || "").match(/(?:\+?\d[\d\s().-]{8,}\d)/);
+  return match ? match[0].trim() : "";
+}
+
+function extractUrlFromText(text) {
+  const match = String(text || "").match(/https?:\/\/[^\s]+/i);
+  return match ? match[0].trim() : "";
+}
+
+function smartParseLeadInput() {
+  const text = document.getElementById("leadSmartPaste")?.value || "";
+
+  const phone = extractPhoneFromText(text);
+  const phoneInput = document.getElementById("leadPhone");
+
+  if (phone && phoneInput && !phoneInput.value.trim()) {
+    phoneInput.value = phone;
+    checkLeadPhoneDuplicate();
+  }
+
+  const url = extractUrlFromText(text);
+  if (url) {
+    const enrichInput = document.getElementById("enrichUrl");
+    if (enrichInput) enrichInput.value = url;
+
+    const mapsInput = document.getElementById("leadGoogleMapsUrl");
+    const websiteInput = document.getElementById("leadWebsite");
+
+    if ((url.includes("google.") || url.includes("maps")) && mapsInput) {
+      mapsInput.value = url;
+    } else if (websiteInput) {
+      websiteInput.value = url;
+    }
+  }
+
+  const lower = text.toLowerCase();
+  const capabilities = [];
+
+  if (lower.includes("cnc")) capabilities.push("CNC Machining");
+  if (lower.includes("laser")) capabilities.push("Laser Cutting");
+  if (lower.includes("injection")) capabilities.push("Injection Molding");
+  if (lower.includes("fabrication")) capabilities.push("Fabrication");
+  if (lower.includes("casting")) capabilities.push("Casting");
+  if (lower.includes("mould") || lower.includes("mold")) capabilities.push("Tool & Die Making");
+
+  const capBox = document.getElementById("leadManufacturingCapabilities");
+  if (capabilities.length && capBox && !capBox.value.trim()) {
+    capBox.value = capabilities.join(", ");
+  }
+
+  const notesBox = document.getElementById("leadNotes");
+  if (notesBox && !notesBox.value.trim()) {
+    notesBox.value = text;
+  }
+}
+
+async function checkLeadPhoneDuplicate() {
+  clearTimeout(leadDuplicateTimer);
+
+  leadDuplicateTimer = setTimeout(async function () {
+    const phoneInput = document.getElementById("leadPhone");
+    const phone = phoneInput ? phoneInput.value.trim() : "";
+    const box = document.getElementById("leadDuplicateMessage");
+
+    leadDuplicateFound = false;
+
+    if (!box) return;
+
+    if (!phone || normalizePhoneClient(phone).length < 8) {
+      box.style.display = "none";
+      box.innerHTML = "";
+      return;
+    }
+
+    box.style.display = "block";
+    box.innerHTML =
+      '<div style="padding:10px;border-radius:12px;background:rgba(255,255,255,0.06);">Checking duplicate...</div>';
+
+    const res = await fetch(
+      "/api/business-leads/" + BUSINESS + "/check-phone?phone=" + encodeURIComponent(phone)
+    );
+
+    const json = await res.json();
+
+    if (!json.ok) {
+      box.innerHTML =
+        '<div style="padding:10px;border-radius:12px;background:rgba(239,107,115,0.14);">Could not check duplicate.</div>';
+      return;
+    }
+
+    if (json.data && json.data.duplicate) {
+      leadDuplicateFound = true;
+      const lead = json.data.lead || {};
+
+      box.innerHTML =
+        '<div style="padding:12px;border-radius:12px;background:rgba(239,107,115,0.16);border:1px solid rgba(239,107,115,0.35);">' +
+          '<strong>Duplicate found by phone number.</strong><br/>' +
+          'Lead #' + escapeHtmlClient(lead.id) + ' — ' +
+          escapeHtmlClient(lead.company || lead.business_name || lead.contact_name || "Existing lead") +
+          (lead.city ? " · " + escapeHtmlClient(lead.city) : "") +
+          (lead.status ? " · " + escapeHtmlClient(lead.status) : "") +
+        '</div>';
+    } else {
+      box.innerHTML =
+        '<div style="padding:10px;border-radius:12px;background:rgba(88,201,138,0.14);border:1px solid rgba(88,201,138,0.28);">' +
+          'No duplicate found. Safe to add.' +
+        '</div>';
+    }
+  }, 350);
+}
           function escapeHtmlClient(value) {
             return String(value ?? "")
               .replace(/&/g, "&amp;")
@@ -16744,48 +16875,75 @@ document.getElementById("leadProspect").checked = lead.lead_stage === "prospect"
             document.getElementById("leadModal").classList.remove("open");
           }
 
-          function clearLeadForm() {
-            [
-              "leadId",
-              "leadPhone",
-              "leadBusinessName",
-              "leadContactName",
-              "leadEmail",
-              "leadWebsite",
-              "leadGoogleMapsUrl",
-              "leadYelpUrl",
-              "leadCity",
-              "leadState",
-              "leadIndustry",
-              "leadAddress",
-              "leadNotes",
-              "leadLatestTranscript",
-              "enrichUrl",
-              "enrichMessage",
-              "leadCompany",
-"leadStage",
-"leadPinCode",
-"leadLocation",
-"leadCountry",
-"leadYearOfEstablishment",
-"leadOwnerName",
-"leadNumberOfEmployees",
-"leadCompanySize",
-"leadEnrichmentNotes"
-            ].forEach(function(id) {
-              const el = document.getElementById(id);
-              if (el) el.value = "";
-              if (id === "enrichMessage" && el) el.textContent = "";
-            });
+ function clearLeadForm() {
+  [
+    "leadId",
+    "leadPhone",
+    "leadBusinessName",
+    "leadContactName",
+    "leadEmail",
+    "leadWebsite",
+    "leadGoogleMapsUrl",
+    "leadYelpUrl",
+    "leadCity",
+    "leadState",
+    "leadIndustry",
+    "leadAddress",
+    "leadNotes",
+    "leadLatestTranscript",
+    "enrichUrl",
+    "enrichMessage",
+    "leadCompany",
+    "leadSmartPaste",
+    "leadStage",
+    "leadPinCode",
+    "leadLocation",
+    "leadCountry",
+    "leadYearOfEstablishment",
+    "leadOwnerName",
+    "leadNumberOfEmployees",
+    "leadCompanySize",
+    "leadEnrichmentNotes"
+  ].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
 
-            document.getElementById("leadCategory").value = BUSINESS === "rasset" ? "b2b" : "b2c";
-            document.getElementById("leadStatus").value = "new";
-            document.getElementById("leadSource").value = "manual";
-            document.getElementById("leadStage").value = "prospect";
-document.getElementById("leadL2Done").checked = false;
-document.getElementById("leadQualified").checked = false;
-document.getElementById("leadProspect").checked = false;
-          }
+    if (id === "enrichMessage") {
+      el.textContent = "";
+    } else {
+      el.value = "";
+    }
+  });
+
+  leadDuplicateFound = false;
+
+  const duplicateBox = document.getElementById("leadDuplicateMessage");
+  if (duplicateBox) {
+    duplicateBox.style.display = "none";
+    duplicateBox.innerHTML = "";
+  }
+
+  const leadCategory = document.getElementById("leadCategory");
+  if (leadCategory) leadCategory.value = BUSINESS === "rasset" ? "b2b" : "b2c";
+
+  const leadStatus = document.getElementById("leadStatus");
+  if (leadStatus) leadStatus.value = "new";
+
+  const leadSource = document.getElementById("leadSource");
+  if (leadSource) leadSource.value = "manual";
+
+  const leadStage = document.getElementById("leadStage");
+  if (leadStage) leadStage.value = "prospect";
+
+  const l2Done = document.getElementById("leadL2Done");
+  if (l2Done) l2Done.checked = false;
+
+  const qualified = document.getElementById("leadQualified");
+  if (qualified) qualified.checked = false;
+
+  const prospect = document.getElementById("leadProspect");
+  if (prospect) prospect.checked = false;
+}
           
           async function toggleLeadCheckbox(event, business, id, field, value) {
   event.stopPropagation();
@@ -16940,9 +17098,14 @@ qualified: document.getElementById("leadQualified")?.checked || false,
             };
           }
 
-          async function saveBusinessLead() {
-            const id = document.getElementById("leadId").value;
-            const payload = getLeadPayloadFromForm();
+async function saveBusinessLead() {
+  const id = document.getElementById("leadId").value;
+  const payload = getLeadPayloadFromForm();
+
+  if (!id && leadDuplicateFound) {
+    alert("Duplicate lead exists with this phone number. Please use the existing lead instead.");
+    return;
+  }
 
             const url = id
               ? "/api/business-leads/" + BUSINESS + "/" + id
@@ -22164,6 +22327,45 @@ app.delete(
     } catch (error) {
       console.error("DELETE /api/business-leads/:business/:id error:", error);
       return sendApiError(res, 500, error.message || "Failed to delete lead");
+    }
+  },
+);
+
+app.get(
+  "/api/business-leads/:business/check-phone",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const business = getBusinessCanonicalName(req.params.business);
+      const tableName = getBusinessLeadTableName(business);
+      const phone = normalizePhoneForLogin(req.query.phone || "");
+
+      if (!tableName) return sendApiError(res, 400, "Invalid business");
+      if (!phone) return sendApiSuccess(res, { duplicate: false });
+
+      const digits = String(phone).replace(/\D/g, "");
+
+      const { data, error } = await supabase
+        .from(tableName)
+        .select(
+          "id, phone, company, business_name, contact_name, city, state, status, lead_stage",
+        )
+        .eq("org_id", orgId);
+
+      if (error) throw error;
+
+      const duplicate = (data || []).find((row) => {
+        return String(row.phone || "").replace(/\D/g, "") === digits;
+      });
+
+      return sendApiSuccess(res, {
+        duplicate: !!duplicate,
+        lead: duplicate || null,
+      });
+    } catch (error) {
+      console.error("check-phone error:", error);
+      return sendApiError(res, 500, error.message || "Failed to check phone");
     }
   },
 );
