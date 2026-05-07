@@ -142,6 +142,27 @@ function normalizeLeadPhone(input) {
   return digits;
 }
 
+async function uploadLeadCallAudio(buffer, filename) {
+  const pathName = `calls/${Date.now()}-${filename}`;
+
+  const { error } = await supabase.storage
+    .from("lead-call-recordings")
+    .upload(pathName, buffer, {
+      contentType: "audio/mpeg",
+      upsert: false,
+    });
+
+  if (error) {
+    throw error;
+  }
+
+  const { data } = supabase.storage
+    .from("lead-call-recordings")
+    .getPublicUrl(pathName);
+
+  return data.publicUrl;
+}
+
 app.use(express.json());
 
 app.use(
@@ -15751,11 +15772,16 @@ function renderBusinessLeadsPage(data) {
                 <td class="actions-cell">
 <button class="kebab-btn" type="button" onclick="toggleLeadActions(event, ${Number(lead.id)})">...</button>
                   <div id="leadActions-${Number(lead.id)}" class="lead-actions-menu">
-                    <button type="button" onclick="openLeadEditModal(${Number(lead.id)})">Edit</button>
-                    <button type="button" onclick="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, 'new')">Mark New</button>
-                    <button type="button" onclick="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, 'in_progress')">Mark In Progress</button>
-                    <button type="button" onclick="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, 'completed')">Mark Completed</button>
-                    <button type="button" class="danger-menu-item" onclick="deleteBusinessLead('${escapeHtml(business)}', ${Number(lead.id)})">Delete</button>
+                  <button type="button" onclick="openLeadEditModal(${Number(lead.id)})">Edit</button>
+                  <button type="button" onclick="openLeadCallsModal('${escapeHtml(business)}', ${Number(lead.id)})">
+  Save L2 Data / Calls
+</button>
+
+<button type="button" onclick="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, 'new')">Mark New</button>
+<button type="button" onclick="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, 'in_progress')">Mark In Progress</button>
+<button type="button" onclick="updateBusinessLeadStatus('${escapeHtml(business)}', ${Number(lead.id)}, 'completed')">Mark Completed</button>
+<button type="button" class="danger-menu-item" onclick="deleteBusinessLead('${escapeHtml(business)}', ${Number(lead.id)})">Delete</button>  
+                    
                   </div>
                 </td>
               </tr>
@@ -16596,6 +16622,27 @@ ${
     <div id="callSummaryBody" class="muted">Loading...</div>
   </div>
 </div>
+
+<div id="leadCallsModal" class="modal" onclick="closeLeadCallsModal(event)">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
+      <div style="font-size:22px; font-weight:900;">Save L2 Data / Calls</div>
+      <button class="btn" type="button" onclick="closeLeadCallsModal()">Close</button>
+    </div>
+
+    <div class="panel">
+      <h2 style="margin-top:0;">Upload Call Audio</h2>
+      <input id="callAudioInput" type="file" accept="audio/*" />
+      <button class="btn btn-primary" type="button" onclick="uploadLeadCall()">Upload Call</button>
+    </div>
+
+    <div class="panel">
+      <h2 style="margin-top:0;">Call History</h2>
+      <div id="leadCallsList" class="muted">Loading...</div>
+    </div>
+  </div>
+</div>
+
 
         <div id="leadModal" class="modal" onclick="closeLeadModal(event)">
           <div class="modal-card" onclick="event.stopPropagation()">
@@ -17751,6 +17798,113 @@ function toggleLeadActions(event, leadId) {
   menu.style.left = Math.max(12, rect.right - 180) + "px";
   menu.classList.toggle("open");
 }
+
+let currentLeadCallsBusiness = null;
+let currentLeadCallsLeadId = null;
+
+async function openLeadCallsModal(business, leadId) {
+  currentLeadCallsBusiness = business;
+  currentLeadCallsLeadId = leadId;
+
+  const modal = document.getElementById("leadCallsModal");
+  if (modal) modal.classList.add("open");
+
+  await loadLeadCalls();
+}
+
+function closeLeadCallsModal(event) {
+  if (event && event.target && event.target.id !== "leadCallsModal") return;
+
+  const modal = document.getElementById("leadCallsModal");
+  if (modal) modal.classList.remove("open");
+}
+
+async function loadLeadCalls() {
+  const container = document.getElementById("leadCallsList");
+  if (!container) return;
+
+  container.innerHTML = "Loading calls...";
+
+  const res = await fetch(
+    "/api/leads/" +
+      encodeURIComponent(currentLeadCallsBusiness) +
+      "/" +
+      encodeURIComponent(currentLeadCallsLeadId) +
+      "/calls"
+  );
+
+  const json = await res.json();
+
+  if (!json.success) {
+    container.innerHTML = json.error || "Failed to load calls";
+    return;
+  }
+
+  if (!json.calls || !json.calls.length) {
+    container.innerHTML = "No calls uploaded yet.";
+    return;
+  }
+
+  container.innerHTML = json.calls
+    .map(function (call) {
+      const audioHtml = call.audio_url
+        ? '<audio controls src="' +
+          escapeHtmlClient(call.audio_url) +
+          '" style="width:100%; margin-bottom:10px;"></audio>'
+        : '<div class="muted">No audio</div>';
+
+      return (
+        '<div style="border:1px solid rgba(255,255,255,0.10); border-radius:12px; padding:12px; margin-bottom:12px;">' +
+          '<div style="font-weight:800; margin-bottom:8px;">' +
+            escapeHtmlClient(call.created_at || "") +
+          '</div>' +
+          audioHtml +
+          '<div style="margin-top:10px;">' +
+            '<strong>Transcript</strong>' +
+            '<div class="muted" style="white-space:pre-wrap; margin-top:6px;">' +
+              escapeHtmlClient(call.transcript || "No transcript yet") +
+            '</div>' +
+          '</div>' +
+        '</div>'
+      );
+    })
+    .join("");
+}
+
+async function uploadLeadCall() {
+  const input = document.getElementById("callAudioInput");
+
+  if (!input || !input.files.length) {
+    alert("Please select an audio file first.");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("audio", input.files[0]);
+
+  const res = await fetch(
+    "/api/leads/" +
+      encodeURIComponent(currentLeadCallsBusiness) +
+      "/" +
+      encodeURIComponent(currentLeadCallsLeadId) +
+      "/upload-call",
+    {
+      method: "POST",
+      body: formData,
+    }
+  );
+
+  const json = await res.json();
+
+  if (!json.success) {
+    alert(json.error || "Upload failed");
+    return;
+  }
+
+  input.value = "";
+  await loadLeadCalls();
+}
+
 
 document.addEventListener("click", function () {
   document.querySelectorAll(".lead-actions-menu.open").forEach(function(menu) {
@@ -22414,6 +22568,165 @@ app.post(
         500,
         error.message || "Failed to import Rasset Excel",
       );
+    }
+  },
+);
+
+app.post(
+  "/api/leads/:business/:leadId/upload-call",
+  requireDashboardAuth,
+  upload.single("audio"),
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+
+      const business = req.params.business;
+      const leadId = Number(req.params.leadId);
+
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          error: "Audio file required",
+        });
+      }
+
+      const audioUrl = await uploadLeadCallAudio(
+        req.file.buffer,
+        req.file.originalname,
+      );
+
+      let transcript = "";
+
+      if (openai) {
+        const tempPath = path.join(
+          os.tmpdir(),
+          `${Date.now()}-${req.file.originalname}`,
+        );
+
+        fs.writeFileSync(tempPath, req.file.buffer);
+
+        const transcription = await openai.audio.transcriptions.create({
+          file: fs.createReadStream(tempPath),
+          model: "whisper-1",
+        });
+
+        transcript = transcription.text || "";
+
+        fs.unlinkSync(tempPath);
+      }
+
+      const { data, error } = await supabase
+        .from("lead_calls")
+        .insert({
+          org_id: orgId,
+          business,
+          lead_id: leadId,
+          audio_url: audioUrl,
+          transcript,
+          created_by: req.session?.user?.name || "Unknown",
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return res.json({
+        success: true,
+        call: data,
+      });
+    } catch (error) {
+      console.error("Upload call failed:", error);
+
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  },
+);
+
+app.get(
+  "/api/leads/:business/:leadId/calls",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const business = req.params.business;
+      const leadId = Number(req.params.leadId);
+
+      const { data, error } = await supabase
+        .from("lead_calls")
+        .select("*")
+        .eq("business", business)
+        .eq("lead_id", leadId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      return res.json({
+        success: true,
+        calls: data,
+      });
+    } catch (error) {
+      console.error(error);
+
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  },
+);
+
+app.post(
+  "/api/leads/:business/:leadId/notes",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+
+      const business = req.params.business;
+      const leadId = Number(req.params.leadId);
+
+      const noteText = String(req.body.note || "").trim();
+
+      if (!noteText) {
+        return res.status(400).json({
+          success: false,
+          error: "Note required",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("lead_notes")
+        .insert({
+          org_id: orgId,
+          business,
+          lead_id: leadId,
+          note_text: noteText,
+          created_by: req.session?.user?.name || "Unknown",
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return res.json({
+        success: true,
+        note: data,
+      });
+    } catch (error) {
+      console.error(error);
+
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
     }
   },
 );
