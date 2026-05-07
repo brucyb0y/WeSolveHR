@@ -16456,17 +16456,25 @@ ${rows
                               placeholder="Search company, phone, city, CNC, laser, owner, notes..."
                             />
 
-                            <input
-                              name="industry"
-                              value="${escapeHtml(filters.industry || "")}"
-                              placeholder="Industry e.g. Auto Components"
-                            />
+                            <select name="industry">
+  <option value="">All Industries</option>
+  ${RASSET_INDUSTRY_OPTIONS.map(
+    (x) =>
+      `<option value="${escapeHtml(x)}" ${
+        filters.industry === x ? "selected" : ""
+      }>${escapeHtml(x)}</option>`,
+  ).join("")}
+</select>
 
-                            <input
-                              name="capability"
-                              value="${escapeHtml(filters.capability || "")}"
-                              placeholder="Capability e.g. CNC Machining"
-                            />
+<select name="capability">
+  <option value="">All Capabilities</option>
+  ${RASSET_CAPABILITY_OPTIONS.map(
+    (x) =>
+      `<option value="${escapeHtml(x)}" ${
+        filters.capability === x ? "selected" : ""
+      }>${escapeHtml(x)}</option>`,
+  ).join("")}
+</select>
 
                             <select name="entity_type">
                               <option value="">All Entity Types</option>
