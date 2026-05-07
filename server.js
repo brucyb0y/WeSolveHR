@@ -16460,6 +16460,14 @@ ${rows
                               <option value="yes" ${filters.worth_talking === "yes" ? "selected" : ""}>Worth Talking</option>
                               <option value="no" ${filters.worth_talking === "no" ? "selected" : ""}>Not Worth Talking</option>
                             </select>
+                            
+                            
+<select name="has_call_transcription">
+  <option value="">Call Transcription?</option>
+  <option value="yes" ${filters.has_call_transcription === "yes" ? "selected" : ""}>Has transcription</option>
+  <option value="no" ${filters.has_call_transcription === "no" ? "selected" : ""}>No transcription</option>
+</select>
+                            
                           </div>
                         `
                         : `
@@ -22340,6 +22348,7 @@ app.get("/leads/:business", requireDashboardAuth, async (req, res) => {
         assigned_to: req.query.assigned_to || "",
         qualified: req.query.qualified || "",
         worth_talking: req.query.worth_talking || "",
+        has_call_transcription: req.query.has_call_transcription || "",
       },
     );
 
