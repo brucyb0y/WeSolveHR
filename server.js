@@ -16994,7 +16994,7 @@ function setMultiSelectValues(id, value) {
   if (!el) return;
 
   const values = String(value || "")
-    .split(/[,;\n]/)
+    .split(/[,;\\n]/)
     .map(function(x) { return x.trim(); })
     .filter(Boolean);
 
