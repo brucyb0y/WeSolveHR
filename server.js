@@ -238,6 +238,9 @@ async function getBusinessLeadsData(
   const assignedToFilter = String(filters.assigned_to || "").trim();
   const qualifiedFilter = String(filters.qualified || "").trim();
   const worthTalkingFilter = String(filters.worth_talking || "").trim();
+  const hasCallTranscriptionFilter = String(
+    filters.has_call_transcription || "",
+  ).trim();
   const { data: voiceRows, error: voiceError } = await supabase
     .from("lead_voice_uploads")
     .select("*")
@@ -344,6 +347,16 @@ async function getBusinessLeadsData(
 
       if (assignedToFilter) {
         query = query.ilike("assigned_to", `%${assignedToFilter}%`);
+      }
+
+      if (hasCallTranscriptionFilter === "yes") {
+        query = query
+          .not("latest_transcript", "is", null)
+          .neq("latest_transcript", "");
+      }
+
+      if (hasCallTranscriptionFilter === "no") {
+        query = query.or("latest_transcript.is.null,latest_transcript.eq.");
       }
 
       if (qualifiedFilter === "yes") {
@@ -457,6 +470,7 @@ async function getBusinessLeadsData(
       assigned_to: assignedToFilter,
       qualified: qualifiedFilter,
       worth_talking: worthTalkingFilter,
+      has_call_transcription: hasCallTranscriptionFilter,
     },
   };
 }
