@@ -16626,18 +16626,49 @@ ${
 <div id="leadCallsModal" class="modal" onclick="closeLeadCallsModal(event)">
   <div class="modal-card" onclick="event.stopPropagation()">
     <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px;">
-      <div style="font-size:22px; font-weight:900;">Save L2 Data / Calls</div>
+      <div style="font-size:22px; font-weight:900;">Save L2 Data</div>
       <button class="btn" type="button" onclick="closeLeadCallsModal()">Close</button>
     </div>
 
     <div class="panel">
-      <h2 style="margin-top:0;">Upload Call Audio</h2>
-      <input id="callAudioInput" type="file" accept="audio/*" />
-      <button class="btn btn-primary" type="button" onclick="uploadLeadCall()">Upload Call</button>
+      <h2 style="margin-top:0;">Quick L2 Update</h2>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <input id="l2SpokeToName" placeholder="Person spoken to" />
+        <input id="l2Designation" placeholder="Designation" />
+        <input id="l2Industry" placeholder="Industry" />
+        <input id="l2Capability" placeholder="Capability" />
+
+        <select id="l2Behavior">
+          <option value="">Behavior</option>
+          <option value="helpful">Helpful</option>
+          <option value="busy">Busy</option>
+          <option value="not_helpful">Not helpful</option>
+          <option value="rude">Rude</option>
+          <option value="interested">Interested</option>
+          <option value="not_interested">Not interested</option>
+        </select>
+
+        <select id="l2CallOutcome">
+          <option value="">Call Outcome</option>
+          <option value="connected">Connected</option>
+          <option value="busy">Busy</option>
+          <option value="wrong_number">Wrong number</option>
+          <option value="owner_not_available">Owner not available</option>
+          <option value="callback_requested">Callback requested</option>
+          <option value="not_relevant">Not relevant</option>
+        </select>
+      </div>
+
+      <textarea id="l2Notes" placeholder="Short notes" style="margin-top:10px; width:100%; min-height:80px;"></textarea>
+
+      <button class="btn btn-primary" type="button" onclick="saveLeadL2Data()">
+        Save L2 Data
+      </button>
     </div>
 
     <div class="panel">
-      <h2 style="margin-top:0;">Call History</h2>
+      <h2 style="margin-top:0;">Call History / Translation</h2>
       <div id="leadCallsList" class="muted">Loading...</div>
     </div>
   </div>
@@ -17812,6 +17843,43 @@ async function openLeadCallsModal(business, leadId) {
   await loadLeadCalls();
 }
 
+
+async function saveLeadL2Data() {
+  const payload = {
+    spoke_to_name: document.getElementById("l2SpokeToName").value.trim(),
+    designation: document.getElementById("l2Designation").value.trim(),
+    industry: document.getElementById("l2Industry").value.trim(),
+    capability: document.getElementById("l2Capability").value.trim(),
+    behavior: document.getElementById("l2Behavior").value,
+    call_outcome: document.getElementById("l2CallOutcome").value,
+    notes: document.getElementById("l2Notes").value.trim(),
+  };
+
+  const res = await fetch(
+    "/api/leads/" +
+      encodeURIComponent(currentLeadCallsBusiness) +
+      "/" +
+      encodeURIComponent(currentLeadCallsLeadId) +
+      "/l2",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  const json = await res.json();
+
+  if (!json.success) {
+    alert(json.error || "Failed to save L2 data");
+    return;
+  }
+
+  alert("L2 data saved");
+  window.location.reload();
+}
+
+
 function closeLeadCallsModal(event) {
   if (event && event.target && event.target.id !== "leadCallsModal") return;
 
@@ -17871,39 +17939,6 @@ async function loadLeadCalls() {
     .join("");
 }
 
-async function uploadLeadCall() {
-  const input = document.getElementById("callAudioInput");
-
-  if (!input || !input.files.length) {
-    alert("Please select an audio file first.");
-    return;
-  }
-
-  const formData = new FormData();
-  formData.append("audio", input.files[0]);
-
-  const res = await fetch(
-    "/api/leads/" +
-      encodeURIComponent(currentLeadCallsBusiness) +
-      "/" +
-      encodeURIComponent(currentLeadCallsLeadId) +
-      "/upload-call",
-    {
-      method: "POST",
-      body: formData,
-    }
-  );
-
-  const json = await res.json();
-
-  if (!json.success) {
-    alert(json.error || "Upload failed");
-    return;
-  }
-
-  input.value = "";
-  await loadLeadCalls();
-}
 
 
 document.addEventListener("click", function () {
@@ -32249,6 +32284,67 @@ app.patch(
         500,
         error.message || "Failed to update transcript",
       );
+    }
+  },
+);
+
+app.post(
+  "/api/leads/:business/:leadId/l2",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
+      const business = getBusinessCanonicalName(req.params.business);
+      const tableName = getBusinessLeadTableName(business);
+      const leadId = Number(req.params.leadId);
+
+      if (!tableName) {
+        return res
+          .status(400)
+          .json({ success: false, error: "Invalid business" });
+      }
+
+      const {
+        spoke_to_name,
+        designation,
+        industry,
+        capability,
+        behavior,
+        call_outcome,
+        notes,
+      } = req.body || {};
+
+      const updatePayload = {
+        updated_at: new Date().toISOString(),
+      };
+
+      if (spoke_to_name !== undefined)
+        updatePayload.contact_name = spoke_to_name;
+      if (designation !== undefined)
+        updatePayload.contact_designation = designation;
+      if (industry !== undefined) updatePayload.industry = industry;
+      if (capability !== undefined)
+        updatePayload.manufacturing_capabilities = capability;
+      if (behavior !== undefined) updatePayload.behavior = behavior;
+      if (call_outcome !== undefined)
+        updatePayload.last_call_outcome = call_outcome;
+      if (notes !== undefined) updatePayload.notes = notes;
+      updatePayload.l2_done = true;
+
+      const { data, error } = await supabase
+        .from(tableName)
+        .update(updatePayload)
+        .eq("org_id", orgId)
+        .eq("id", leadId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return res.json({ success: true, lead: data });
+    } catch (error) {
+      console.error("save l2 failed:", error);
+      return res.status(500).json({ success: false, error: error.message });
     }
   },
 );
