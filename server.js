@@ -39,6 +39,52 @@ const LEAD_BUSINESSES = [
   },
 ];
 
+const RASSET_INDUSTRY_OPTIONS = [
+  "Auto Components",
+  "Industrial Machinery",
+  "CNC / Precision Machining",
+  "Sheet Metal & Fabrication",
+  "Plastics & Packaging",
+  "Textile & Garments",
+  "Food & Beverage",
+  "Pharma / Chemicals",
+  "Electronics / Electrical",
+  "Construction Materials",
+  "Furniture / Wood",
+  "Printing / Paper",
+  "Rubber Products",
+  "General Manufacturing",
+  "Other",
+];
+
+const RASSET_CAPABILITY_OPTIONS = [
+  "CNC Machining",
+  "CNC Turning",
+  "CNC Milling",
+  "Laser Cutting",
+  "Sheet Metal Fabrication",
+  "Welding",
+  "Injection Molding",
+  "Plastic Processing",
+  "Tool & Die Making",
+  "Casting",
+  "Forging",
+  "Textile Manufacturing",
+  "Stitching",
+  "Dyeing",
+  "Textile Printing",
+  "Assembly",
+  "Packaging",
+  "General Manufacturing",
+  "Other",
+];
+
+function renderMultiSelectOptions(options) {
+  return options
+    .map((x) => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`)
+    .join("");
+}
+
 function getActiveLeadBusinesses() {
   return LEAD_BUSINESSES.filter((x) => x.active);
 }
@@ -16636,8 +16682,13 @@ ${
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
         <input id="l2SpokeToName" placeholder="Person spoken to" />
         <input id="l2Designation" placeholder="Designation" />
-        <input id="l2Industry" placeholder="Industry" />
-        <input id="l2Capability" placeholder="Capability" />
+<select id="l2Industry" multiple size="6">
+  ${renderMultiSelectOptions(RASSET_INDUSTRY_OPTIONS)}
+</select>
+
+<select id="l2Capability" multiple size="6">
+  ${renderMultiSelectOptions(RASSET_CAPABILITY_OPTIONS)}
+</select>
 
         <select id="l2Behavior">
           <option value="">Behavior</option>
@@ -16804,7 +16855,18 @@ ${
 
 <div class="form-field">
   <label>Industry</label>
-  <input id="leadIndustry" />
+  <select id="leadIndustry" multiple size="6">
+    ${renderMultiSelectOptions(RASSET_INDUSTRY_OPTIONS)}
+  </select>
+  <div class="hint">Hold Cmd/Ctrl to select multiple.</div>
+</div>
+
+<div class="form-field">
+  <label>Capabilities</label>
+  <select id="leadCapabilities" multiple size="6">
+    ${renderMultiSelectOptions(RASSET_CAPABILITY_OPTIONS)}
+  </select>
+  <div class="hint">Select all matching capabilities.</div>
 </div>
 
 <div class="form-field" style="grid-column:1 / -1;">
@@ -16919,6 +16981,36 @@ function toggleUploadBox(id) {
 }
 
           const BUSINESS = ${JSON.stringify(business)};
+          function getMultiSelectValues(id) {
+  const el = document.getElementById(id);
+  if (!el) return [];
+  return Array.from(el.selectedOptions).map(function(option) {
+    return option.value;
+  });
+}
+
+function setMultiSelectValues(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+
+  const values = String(value || "")
+    .split(/[,;\n]/)
+    .map(function(x) { return x.trim(); })
+    .filter(Boolean);
+
+  Array.from(el.options).forEach(function(option) {
+    option.selected = values.includes(option.value);
+  });
+}
+
+function clearMultiSelect(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+
+  Array.from(el.options).forEach(function(option) {
+    option.selected = false;
+  });
+}
 let leadDuplicateFound = false;
 let leadDuplicateTimer = null;
 
@@ -17086,7 +17178,8 @@ function toggleLeadAdvancedFields() {
             document.getElementById("leadYelpUrl").value = lead.yelp_url || "";
             document.getElementById("leadCity").value = lead.city || "";
             document.getElementById("leadState").value = lead.state || "";
-            document.getElementById("leadIndustry").value = lead.industry || "";
+            setMultiSelectValues("leadIndustry", lead.industry || lead.industry_primary || "");
+setMultiSelectValues("leadCapabilities", lead.manufacturing_capabilities || "");
             document.getElementById("leadAddress").value = lead.address || "";
             document.getElementById("leadNotes").value = lead.notes || "";
             document.getElementById("leadLatestTranscript").value = lead.latest_transcript || "";
@@ -17149,6 +17242,10 @@ document.getElementById("leadL2Done").checked = !!lead.l2_done;
       el.value = "";
     }
   });
+  clearMultiSelect("leadIndustry");
+clearMultiSelect("leadCapabilities");
+clearMultiSelect("l2Industry");
+clearMultiSelect("l2Capability");
 
   leadDuplicateFound = false;
 
@@ -17307,7 +17404,10 @@ async function uploadJoolianB2BExcel() {
               yelp_url: document.getElementById("leadYelpUrl").value.trim(),
               city: document.getElementById("leadCity").value.trim(),
               state: document.getElementById("leadState").value.trim(),
-              industry: document.getElementById("leadIndustry").value.trim(),
+              industry: getMultiSelectValues("leadIndustry").join(", "),
+industry_primary: getMultiSelectValues("leadIndustry")[0] || "",
+raw_industry: getMultiSelectValues("leadIndustry").join(", "),
+manufacturing_capabilities: getMultiSelectValues("leadCapabilities").join(", "),
               address: document.getElementById("leadAddress").value.trim(),
               notes: document.getElementById("leadNotes").value.trim(),
 company: document.getElementById("leadBusinessName")?.value.trim() || "",
@@ -17838,12 +17938,47 @@ function toggleLeadActions(event, leadId) {
 let currentLeadCallsBusiness = null;
 let currentLeadCallsLeadId = null;
 
+
 async function openLeadCallsModal(business, leadId) {
   currentLeadCallsBusiness = business;
   currentLeadCallsLeadId = leadId;
 
   const modal = document.getElementById("leadCallsModal");
   if (modal) modal.classList.add("open");
+
+  // LOAD LEAD DETAILS
+  const res = await fetch("/api/business-leads/" + BUSINESS + "/" + leadId);
+  const json = await res.json();
+
+  if (json.ok && json.data) {
+    const lead = json.data;
+
+    document.getElementById("l2SpokeToName").value =
+      lead.contact_name || lead.spoke_to_name || "";
+
+    document.getElementById("l2Designation").value =
+      lead.contact_designation || lead.designation || "";
+
+    document.getElementById("l2Notes").value =
+      lead.notes || "";
+
+    document.getElementById("l2Behavior").value =
+      lead.behavior || "";
+
+    document.getElementById("l2CallOutcome").value =
+      lead.last_call_outcome || lead.call_outcome || "";
+
+    // IMPORTANT
+    setMultiSelectValues(
+      "l2Industry",
+      lead.industry || lead.industry_primary || ""
+    );
+
+    setMultiSelectValues(
+      "l2Capability",
+      lead.manufacturing_capabilities || lead.capability || ""
+    );
+  }
 
   await loadLeadCalls();
 }
@@ -17853,8 +17988,8 @@ async function saveLeadL2Data() {
   const payload = {
     spoke_to_name: document.getElementById("l2SpokeToName").value.trim(),
     designation: document.getElementById("l2Designation").value.trim(),
-    industry: document.getElementById("l2Industry").value.trim(),
-    capability: document.getElementById("l2Capability").value.trim(),
+industry: getMultiSelectValues("l2Industry").join(", "),
+capability: getMultiSelectValues("l2Capability").join(", "),
     behavior: document.getElementById("l2Behavior").value,
     call_outcome: document.getElementById("l2CallOutcome").value,
     notes: document.getElementById("l2Notes").value.trim(),
