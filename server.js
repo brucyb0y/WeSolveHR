@@ -16662,13 +16662,18 @@ ${
 
       <textarea id="l2Notes" placeholder="Short notes" style="margin-top:10px; width:100%; min-height:80px;"></textarea>
 
-      <button class="btn btn-primary" type="button" onclick="saveLeadL2Data()">
-        Save L2 Data
-      </button>
+      <button
+  class="btn btn-primary"
+  type="button"
+  onclick="saveLeadL2Data()"
+  style="margin-top:12px;"
+>
+  Save L2 Data
+</button>
     </div>
 
     <div class="panel">
-      <h2 style="margin-top:0;">Call History / Translation</h2>
+      <h2 style="margin-top:0;">Call Audio / Transcript / Translation</h2>
       <div id="leadCallsList" class="muted">Loading...</div>
     </div>
   </div>
