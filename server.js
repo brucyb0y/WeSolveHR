@@ -2139,15 +2139,17 @@ function buildTopNavCss() {
       border-color: rgba(255,255,255,0.12);
     }
     
-    .nav-dropdown-wrap {
+.nav-dropdown-wrap {
   position: relative;
   flex: 0 0 auto;
+  padding-bottom: 8px;
+  margin-bottom: -8px;
 }
 
 .nav-dropdown-menu {
   display: none;
   position: absolute;
-  top: calc(100% + 8px);
+  top: 100%;
   left: 0;
   min-width: 190px;
   padding: 8px;
