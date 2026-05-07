@@ -2091,7 +2091,7 @@ function buildTopNavCss() {
       gap: 8px;
       flex-wrap: nowrap;
       min-width: 0;
-      overflow: hidden;
+      overflow: visible;
     }
 
     .nav-links a,
@@ -5654,7 +5654,10 @@ function renderTopNav(active = "") {
           ${items
             .map((item) => {
               const classes = [
-                active === item.key ? "active" : "",
+                active === item.key ||
+                (item.key === "leads" && active === "lead-detail")
+                  ? "active"
+                  : "",
                 item.key === "logout" ? "logout-link" : "",
                 item.icon ? "nav-icon-link" : "",
                 item.optional ? "nav-text-optional" : "",
@@ -5898,9 +5901,12 @@ function parseLeadUploadCommand(text) {
   const spokeToName = String(match[3] || "").trim() || null;
 
   if (!getBusinessLeadTableName(business)) {
+    const allowedBusinesses = getActiveLeadBusinesses()
+      .map((b) => b.business)
+      .join(", ");
+
     return {
-      error:
-        "❌ Unsupported business. Use: lead joolian upload +12129816238 name Jaya",
+      error: `❌ Unsupported business. Use one of: ${allowedBusinesses}`,
     };
   }
 
