@@ -18737,6 +18737,166 @@ function buildLeadIntelligenceMetrics(
   };
 }
 
+function getLeadDisplayNameForAI(lead) {
+  return (
+    lead.company ||
+    lead.business_name ||
+    lead.contact_name ||
+    lead.owner_name ||
+    lead.phone ||
+    "Unknown Lead"
+  );
+}
+
+function getLeadIndustryForAI(lead) {
+  return (
+    lead.industry_primary || lead.industry || lead.raw_industry || "Unknown"
+  );
+}
+
+function getLeadOwnerForAI(lead) {
+  return (
+    lead.assigned_to ||
+    lead.last_spoke_to_name ||
+    lead.last_call_uploaded_by_phone ||
+    "Unknown"
+  );
+}
+
+function getRecentLeadTranscriptsForAI(rows = [], limit = 30) {
+  return rows
+    .filter((lead) => String(lead.latest_transcript || "").trim())
+    .slice(0, limit)
+    .map((lead) => ({
+      lead_id: lead.id,
+      lead_name: getLeadDisplayNameForAI(lead),
+      industry: getLeadIndustryForAI(lead),
+      owner: getLeadOwnerForAI(lead),
+      status: lead.status || "",
+      qualified: !!lead.qualified,
+      worth_talking: !!lead.worth_talking,
+      transcript: String(lead.latest_transcript || "").slice(0, 2500),
+    }));
+}
+
+async function generateLeadAIIntelligence({ business, timeframe, rows }) {
+  if (!openai) {
+    throw new Error(
+      "OPENAI_API_KEY is missing. Add it in Railway variables first.",
+    );
+  }
+
+  const transcripts = getRecentLeadTranscriptsForAI(rows, 30);
+
+  if (!transcripts.length) {
+    throw new Error("No call transcripts found for AI analysis.");
+  }
+
+  const prompt = `
+You are analyzing sales / discovery calls for a factory lead CRM business called ${business}.
+
+Your job:
+1. Summarize what we are learning from calls.
+2. Find industry-wise patterns.
+3. Extract objections, pain points, buying signals, urgency, and referrals.
+4. Give recommendations.
+5. Every important insight must include supporting lead IDs.
+
+Return ONLY valid JSON.
+
+JSON shape:
+{
+  "overall_summary": "",
+  "top_learnings": [
+    {
+      "insight": "",
+      "why_it_matters": "",
+      "supporting_lead_ids": []
+    }
+  ],
+  "industry_intelligence": [
+    {
+      "industry": "",
+      "industry_thesis": "",
+      "common_pain_points": [],
+      "common_objections": [],
+      "successful_pitch_patterns": [],
+      "recommendations": [],
+      "supporting_lead_ids": []
+    }
+  ],
+  "employee_intelligence": [
+    {
+      "employee": "",
+      "strengths_seen": [],
+      "improvement_opportunities": [],
+      "good_examples": [],
+      "supporting_lead_ids": []
+    }
+  ],
+  "leads_to_review": [
+    {
+      "lead_id": "",
+      "lead_name": "",
+      "industry": "",
+      "reason": "",
+      "recommended_next_step": ""
+    }
+  ],
+  "recommended_actions": []
+}
+
+Important:
+- Do not invent facts.
+- Use only transcripts provided.
+- Keep it practical for a small business owner.
+- Avoid generic advice.
+- Do not give employee scores.
+- Mention supporting lead IDs.
+`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.2,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a practical business intelligence analyst. Return only valid JSON.",
+      },
+      {
+        role: "user",
+        content:
+          prompt + "\n\nTRANSCRIPTS:\n" + JSON.stringify(transcripts, null, 2),
+      },
+    ],
+  });
+
+  const raw = completion.choices?.[0]?.message?.content || "";
+  const parsed = safeParseJson(raw);
+
+  if (!parsed) {
+    throw new Error("AI returned invalid JSON.");
+  }
+
+  return parsed;
+}
+
+async function getLatestLeadAIIntelligenceRun({ orgId, business, timeframe }) {
+  const { data, error } = await supabase
+    .from("lead_ai_intelligence_runs")
+    .select("*")
+    .eq("org_id", orgId)
+    .eq("business", business)
+    .eq("timeframe", timeframe)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data || null;
+}
+
 function renderBusinessLeadIntelligencePage(data) {
   const business = data.business;
   const timeframe = data.timeframe || "today";
@@ -18745,7 +18905,60 @@ function renderBusinessLeadIntelligencePage(data) {
     data.voiceRows || [],
     timeframe,
   );
+  const aiRun = data.aiRun || null;
+  const aiSummary = aiRun?.summary || null;
 
+  const renderList = (items) =>
+    Array.isArray(items) && items.length
+      ? `<ul>${items.map((x) => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`
+      : `<div class="muted">None found yet.</div>`;
+
+  const aiTopLearningsHtml = aiSummary?.top_learnings?.length
+    ? aiSummary.top_learnings
+        .map(
+          (x) => `
+        <div class="ai-card">
+          <div class="ai-card-title">${escapeHtml(x.insight || "")}</div>
+          <div class="muted">${escapeHtml(x.why_it_matters || "")}</div>
+          <div class="ai-ref">Supported by leads: ${escapeHtml((x.supporting_lead_ids || []).join(", ") || "-")}</div>
+        </div>
+      `,
+        )
+        .join("")
+    : `<div class="empty-cell">No AI learning generated yet.</div>`;
+
+  const aiIndustryHtml = aiSummary?.industry_intelligence?.length
+    ? aiSummary.industry_intelligence
+        .map(
+          (x) => `
+        <div class="ai-card">
+          <div class="ai-card-title">${escapeHtml(x.industry || "Unknown Industry")}</div>
+          <div class="muted"><strong>Thesis:</strong> ${escapeHtml(x.industry_thesis || "")}</div>
+          <div><strong>Pain Points</strong>${renderList(x.common_pain_points)}</div>
+          <div><strong>Objections</strong>${renderList(x.common_objections)}</div>
+          <div><strong>Recommendations</strong>${renderList(x.recommendations)}</div>
+          <div class="ai-ref">Supported by leads: ${escapeHtml((x.supporting_lead_ids || []).join(", ") || "-")}</div>
+        </div>
+      `,
+        )
+        .join("")
+    : `<div class="empty-cell">No industry intelligence generated yet.</div>`;
+
+  const aiReviewHtml = aiSummary?.leads_to_review?.length
+    ? aiSummary.leads_to_review
+        .map(
+          (x) => `
+        <tr>
+          <td>${escapeHtml(x.lead_id || "-")}</td>
+          <td>${escapeHtml(x.lead_name || "-")}</td>
+          <td>${escapeHtml(x.industry || "-")}</td>
+          <td>${escapeHtml(x.reason || "-")}</td>
+          <td>${escapeHtml(x.recommended_next_step || "-")}</td>
+        </tr>
+      `,
+        )
+        .join("")
+    : `<tr><td colspan="5" class="empty-cell">No AI review leads yet.</td></tr>`;
   const timeframeLink = (key, label) => `
     <a class="filter-chip ${timeframe === key ? "active" : ""}" href="/leads/${business}/intelligence?timeframe=${key}">
       ${label}
@@ -18961,7 +19174,40 @@ function renderBusinessLeadIntelligencePage(data) {
             line-height: 1.55;
             font-size: 13px;
           }
+          .ai-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 14px;
+          }
 
+          .ai-card {
+            padding: 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.10);
+            background: rgba(255,255,255,0.035);
+            margin-bottom: 12px;
+          }
+
+          .ai-card-title {
+            font-weight: 900;
+            margin-bottom: 8px;
+            font-size: 16px;
+          }
+
+          .ai-ref {
+            margin-top: 10px;
+            font-size: 12px;
+            color: var(--muted);
+            border-top: 1px dashed rgba(255,255,255,0.12);
+            padding-top: 8px;
+          }
+
+          .ai-status {
+            color: var(--muted);
+            font-size: 13px;
+          }
           @media (max-width: 1100px) {
             .stats {
               grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -19073,7 +19319,76 @@ function renderBusinessLeadIntelligencePage(data) {
             <h2>Recent Call Transcripts</h2>
             ${transcriptRowsHtml}
           </div>
+                    <div class="panel">
+            <h2>AI Intelligence Layer</h2>
+
+            <div class="ai-actions">
+              <button class="btn" type="button" onclick="generateLeadAIIntelligenceNow()">
+                Generate / Refresh AI Intelligence
+              </button>
+
+              <div class="ai-status" id="aiStatus">
+                ${
+                  aiRun
+                    ? `Last generated: ${escapeHtml(formatDateTime(aiRun.created_at))}`
+                    : "Not generated yet."
+                }
+              </div>
+            </div>
+
+            <div class="ai-card">
+              <div class="ai-card-title">Overall Summary</div>
+              <div class="muted">
+                ${escapeHtml(aiSummary?.overall_summary || "Generate AI intelligence to see summary.")}
+              </div>
+            </div>
+
+            <h3>Top Learnings</h3>
+            ${aiTopLearningsHtml}
+
+            <h3>Industry Intelligence</h3>
+            ${aiIndustryHtml}
+
+            <h3>Leads To Review</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Lead ID</th>
+                  <th>Lead</th>
+                  <th>Industry</th>
+                  <th>Reason</th>
+                  <th>Next Step</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${aiReviewHtml}
+              </tbody>
+            </table>
+          </div>
         </div>
+                <script>
+          async function generateLeadAIIntelligenceNow() {
+            const status = document.getElementById("aiStatus");
+            if (status) status.textContent = "Generating AI intelligence... this can take 20-40 seconds.";
+
+            const res = await fetch("/api/leads/${encodeURIComponent(business)}/intelligence/generate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ timeframe: "${escapeHtml(timeframe)}" })
+            });
+
+            const json = await res.json();
+
+            if (!json.ok) {
+              if (status) status.textContent = json.error || "Failed to generate AI intelligence.";
+              alert(json.error || "Failed to generate AI intelligence.");
+              return;
+            }
+
+            if (status) status.textContent = "AI intelligence generated. Refreshing...";
+            window.location.reload();
+          }
+        </script>
       </body>
     </html>
   `;
@@ -23654,13 +23969,81 @@ app.get(
       );
 
       data.timeframe = timeframe;
-
+      data.aiRun = await getLatestLeadAIIntelligenceRun({
+        orgId: actingUser.org_id || DASHBOARD_ORG_ID,
+        business,
+        timeframe,
+      });
       return res.send(renderBusinessLeadIntelligencePage(data));
     } catch (error) {
       console.error("GET /leads/:business/intelligence error:", error);
       return res
         .status(500)
         .send("Failed to load lead intelligence: " + error.message);
+    }
+  },
+);
+
+app.post(
+  "/api/leads/:business/intelligence/generate",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const actingUser = req.loggedInUser || req.session?.user || {};
+      const business = getBusinessCanonicalName(req.params.business);
+
+      const allowedTimeframes = [
+        "today",
+        "yesterday",
+        "this_week",
+        "this_month",
+      ];
+      const timeframe = allowedTimeframes.includes(req.body?.timeframe)
+        ? req.body.timeframe
+        : "today";
+
+      const data = await getBusinessLeadsData(
+        actingUser.org_id || DASHBOARD_ORG_ID,
+        business,
+        "all",
+        "",
+        1,
+        {},
+      );
+
+      const aiSummary = await generateLeadAIIntelligence({
+        business,
+        timeframe,
+        rows: data.businessRows || [],
+      });
+
+      const { data: savedRun, error } = await supabase
+        .from("lead_ai_intelligence_runs")
+        .insert([
+          {
+            org_id: actingUser.org_id || DASHBOARD_ORG_ID,
+            business,
+            timeframe,
+            summary: aiSummary,
+            created_by_user_id: actingUser.id || null,
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return sendApiSuccess(res, savedRun);
+    } catch (error) {
+      console.error(
+        "POST /api/leads/:business/intelligence/generate error:",
+        error,
+      );
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to generate intelligence",
+      );
     }
   },
 );
