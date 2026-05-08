@@ -18919,21 +18919,6 @@ Important:
   return parsed;
 }
 
-async function getLatestLeadAIIntelligenceRun({ orgId, business, timeframe }) {
-  const { data, error } = await supabase
-    .from("lead_ai_intelligence_runs")
-    .select("*")
-    .eq("org_id", orgId)
-    .eq("business", business)
-    .eq("timeframe", timeframe)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) throw error;
-  return data || null;
-}
-
 async function getLeadAIIntelligenceHistory({ orgId, business, limit = 20 }) {
   const { data, error } = await supabase
     .from("lead_ai_intelligence_runs")
