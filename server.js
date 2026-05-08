@@ -18779,6 +18779,48 @@ function getRecentLeadTranscriptsForAI(rows = [], limit = 30) {
     }));
 }
 
+function getLeadAIRowsForTimeframe(rows = [], timeframe = "today") {
+  const transcriptRows = rows.filter((lead) =>
+    String(lead.latest_transcript || "").trim(),
+  );
+
+  if (timeframe === "all_history") {
+    return transcriptRows;
+  }
+
+  const { startIso, endIso } = getLeadTimeframeRange(timeframe);
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+
+  return transcriptRows.filter((lead) => {
+    const dateValue = lead.updated_at || lead.created_at;
+    if (!dateValue) return false;
+
+    const d = new Date(dateValue);
+    return d >= start && d <= end;
+  });
+}
+
+function getRecentLeadTranscriptsForAI(rows = [], timeframe = "today") {
+  const maxItems = timeframe === "all_history" ? 100 : 30;
+  const maxChars = timeframe === "all_history" ? 1800 : 2500;
+
+  return getLeadAIRowsForTimeframe(rows, timeframe)
+    .slice(0, maxItems)
+    .map((lead) => ({
+      lead_id: lead.id,
+      lead_name: getLeadDisplayNameForAI(lead),
+      industry: getLeadIndustryForAI(lead),
+      owner: getLeadOwnerForAI(lead),
+      status: lead.status || "",
+      qualified: !!lead.qualified,
+      worth_talking: !!lead.worth_talking,
+      created_at: lead.created_at || null,
+      updated_at: lead.updated_at || null,
+      transcript: String(lead.latest_transcript || "").slice(0, maxChars),
+    }));
+}
+
 async function generateLeadAIIntelligence({ business, timeframe, rows }) {
   if (!openai) {
     throw new Error(
@@ -18786,14 +18828,19 @@ async function generateLeadAIIntelligence({ business, timeframe, rows }) {
     );
   }
 
-  const transcripts = getRecentLeadTranscriptsForAI(rows, 30);
+  const transcripts = getRecentLeadTranscriptsForAI(rows, timeframe);
 
   if (!transcripts.length) {
     throw new Error("No call transcripts found for AI analysis.");
   }
 
+  const timeframeLabel =
+    timeframe === "all_history" ? "all available past transcripts" : timeframe;
+
   const prompt = `
 You are analyzing sales / discovery calls for a factory lead CRM business called ${business}.
+
+Timeframe being analyzed: ${timeframeLabel}
 
 Your job:
 1. Summarize what we are learning from calls.
@@ -18879,6 +18926,135 @@ Important:
     throw new Error("AI returned invalid JSON.");
   }
 
+  parsed._meta = {
+    timeframe,
+    transcript_count: transcripts.length,
+    generated_from: timeframeLabel,
+  };
+
+  return parsed;
+}
+
+async function getLatestLeadAIIntelligenceRun({ orgId, business, timeframe }) {
+  const { data, error } = await supabase
+    .from("lead_ai_intelligence_runs")
+    .select("*")
+    .eq("org_id", orgId)
+    .eq("business", business)
+    .eq("timeframe", timeframe)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data || null;
+}
+
+async function getLeadAIIntelligenceHistory({ orgId, business, limit = 20 }) {
+  const { data, error } = await supabase
+    .from("lead_ai_intelligence_runs")
+    .select("*")
+    .eq("org_id", orgId)
+    .eq("business", business)
+    .neq("timeframe", "cumulative")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+  return data || [];
+}
+
+async function generateCumulativeLeadAIIntelligence({ business, runs }) {
+  if (!openai) {
+    throw new Error(
+      "OPENAI_API_KEY is missing. Add it in Railway variables first.",
+    );
+  }
+
+  const usableRuns = (runs || []).slice(0, 12).map((run) => ({
+    id: run.id,
+    timeframe: run.timeframe,
+    generated_at: run.created_at,
+    transcript_count: run.transcript_count || 0,
+    summary: run.summary || {},
+  }));
+
+  if (!usableRuns.length) {
+    throw new Error("No prior AI intelligence runs found.");
+  }
+
+  const prompt = `
+You are creating cumulative business intelligence for ${business}.
+
+You are NOT reading raw transcripts now.
+You are reading prior saved AI intelligence snapshots.
+
+Your job:
+1. Combine prior intelligence without losing old learning.
+2. Identify repeated patterns.
+3. Identify changes over time.
+4. Identify strongest industries.
+5. Identify objections that keep repeating.
+6. Recommend what the team should do next.
+
+Return ONLY valid JSON.
+
+JSON shape:
+{
+  "cumulative_summary": "",
+  "repeated_patterns": [],
+  "industry_trends": [
+    {
+      "industry": "",
+      "trend": "",
+      "why_it_matters": "",
+      "recommended_action": ""
+    }
+  ],
+  "recurring_objections": [],
+  "improving_signals": [],
+  "warning_signals": [],
+  "best_next_actions": [],
+  "what_to_watch_next": []
+}
+
+Important:
+- Do not invent facts.
+- Use only the saved snapshots.
+- Be practical and specific.
+`;
+
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    temperature: 0.2,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a cumulative business intelligence analyst. Return only valid JSON.",
+      },
+      {
+        role: "user",
+        content:
+          prompt +
+          "\n\nPRIOR_SAVED_INTELLIGENCE:\n" +
+          JSON.stringify(usableRuns, null, 2),
+      },
+    ],
+  });
+
+  const raw = completion.choices?.[0]?.message?.content || "";
+  const parsed = safeParseJson(raw);
+
+  if (!parsed) {
+    throw new Error("AI returned invalid JSON.");
+  }
+
+  parsed._meta = {
+    source_runs: usableRuns.map((x) => x.id),
+    source_run_count: usableRuns.length,
+  };
+
   return parsed;
 }
 
@@ -18907,6 +19083,64 @@ function renderBusinessLeadIntelligencePage(data) {
   );
   const aiRun = data.aiRun || null;
   const aiSummary = aiRun?.summary || null;
+
+  const aiHistoryRuns = data.aiHistoryRuns || [];
+
+  const aiHistoryHtml = aiHistoryRuns.length
+    ? aiHistoryRuns
+        .map((run) => {
+          const s = run.summary || {};
+          return `
+          <div class="ai-card">
+            <div class="ai-card-title">
+              ${escapeHtml(run.source_label || run.timeframe || "AI Run")}
+            </div>
+            <div class="muted">
+              Generated: ${escapeHtml(formatDateTime(run.created_at))}
+              · Transcripts: ${escapeHtml(run.transcript_count || 0)}
+              · Run ID: ${escapeHtml(run.id)}
+            </div>
+            <div style="margin-top:10px;">
+              ${escapeHtml(s.overall_summary || s.cumulative_summary || "No summary saved.")}
+            </div>
+            <div class="ai-ref">
+              Timeframe: ${escapeHtml(run.timeframe || "-")}
+            </div>
+          </div>
+        `;
+        })
+        .join("")
+    : `<div class="empty-cell">No previous AI intelligence runs yet.</div>`;
+
+  const cumulativeSummary = aiSummary?.cumulative_summary || "";
+
+  const cumulativeHtml =
+    timeframe === "cumulative"
+      ? `
+        <div class="ai-card">
+          <div class="ai-card-title">Cumulative Summary</div>
+          <div class="muted">${escapeHtml(cumulativeSummary || "Generate cumulative intelligence to see this.")}</div>
+        </div>
+
+        <h3>Repeated Patterns</h3>
+        ${renderList(aiSummary?.repeated_patterns)}
+
+        <h3>Recurring Objections</h3>
+        ${renderList(aiSummary?.recurring_objections)}
+
+        <h3>Improving Signals</h3>
+        ${renderList(aiSummary?.improving_signals)}
+
+        <h3>Warning Signals</h3>
+        ${renderList(aiSummary?.warning_signals)}
+
+        <h3>Best Next Actions</h3>
+        ${renderList(aiSummary?.best_next_actions)}
+
+        <h3>What To Watch Next</h3>
+        ${renderList(aiSummary?.what_to_watch_next)}
+      `
+      : "";
 
   const renderList = (items) =>
     Array.isArray(items) && items.length
@@ -19241,6 +19475,8 @@ function renderBusinessLeadIntelligencePage(data) {
             ${timeframeLink("yesterday", "Yesterday")}
             ${timeframeLink("this_week", "This Week")}
             ${timeframeLink("this_month", "This Month")}
+            ${timeframeLink("all_history", "All Past Transcripts")}
+${timeframeLink("cumulative", "Cumulative")}
           </div>
 
           <div class="stats">
@@ -19319,13 +19555,23 @@ function renderBusinessLeadIntelligencePage(data) {
             <h2>Recent Call Transcripts</h2>
             ${transcriptRowsHtml}
           </div>
-                    <div class="panel">
+                              <div class="panel">
             <h2>AI Intelligence Layer</h2>
 
             <div class="ai-actions">
-              <button class="btn" type="button" onclick="generateLeadAIIntelligenceNow()">
-                Generate / Refresh AI Intelligence
-              </button>
+              ${
+                timeframe === "cumulative"
+                  ? `
+                    <button class="btn" type="button" onclick="generateCumulativeLeadAIIntelligenceNow()">
+                      Generate / Refresh Cumulative Intelligence
+                    </button>
+                  `
+                  : `
+                    <button class="btn" type="button" onclick="generateLeadAIIntelligenceNow()">
+                      Generate / Refresh AI Intelligence
+                    </button>
+                  `
+              }
 
               <div class="ai-status" id="aiStatus">
                 ${
@@ -19336,40 +19582,67 @@ function renderBusinessLeadIntelligencePage(data) {
               </div>
             </div>
 
-            <div class="ai-card">
-              <div class="ai-card-title">Overall Summary</div>
-              <div class="muted">
-                ${escapeHtml(aiSummary?.overall_summary || "Generate AI intelligence to see summary.")}
-              </div>
-            </div>
+            ${
+              timeframe === "all_history"
+                ? `
+                  <div class="ai-card">
+                    <div class="ai-card-title">All Past Transcripts Snapshot</div>
+                    <div class="muted">
+                      This analyzes older saved transcripts as a one-time historical snapshot.
+                      It gets saved in history and can later feed cumulative intelligence.
+                    </div>
+                  </div>
+                `
+                : ""
+            }
 
-            <h3>Top Learnings</h3>
-            ${aiTopLearningsHtml}
+            ${
+              timeframe === "cumulative"
+                ? cumulativeHtml
+                : `
+                  <div class="ai-card">
+                    <div class="ai-card-title">Overall Summary</div>
+                    <div class="muted">
+                      ${escapeHtml(aiSummary?.overall_summary || "Generate AI intelligence to see summary.")}
+                    </div>
+                  </div>
 
-            <h3>Industry Intelligence</h3>
-            ${aiIndustryHtml}
+                  <h3>Top Learnings</h3>
+                  ${aiTopLearningsHtml}
 
-            <h3>Leads To Review</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>Lead ID</th>
-                  <th>Lead</th>
-                  <th>Industry</th>
-                  <th>Reason</th>
-                  <th>Next Step</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${aiReviewHtml}
-              </tbody>
-            </table>
+                  <h3>Industry Intelligence</h3>
+                  ${aiIndustryHtml}
+
+                  <h3>Leads To Review</h3>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Lead ID</th>
+                        <th>Lead</th>
+                        <th>Industry</th>
+                        <th>Reason</th>
+                        <th>Next Step</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${aiReviewHtml}
+                    </tbody>
+                  </table>
+                `
+            }
           </div>
-        </div>
+
+          <div class="panel">
+            <h2>AI Intelligence History</h2>
+            <div class="muted" style="margin-bottom:12px;">
+              Every AI generation is saved here. This prevents losing prior daily, weekly, monthly, and all-history intelligence.
+            </div>
+            ${aiHistoryHtml}
+          </div>
                 <script>
-          async function generateLeadAIIntelligenceNow() {
+                    async function generateLeadAIIntelligenceNow() {
             const status = document.getElementById("aiStatus");
-            if (status) status.textContent = "Generating AI intelligence... this can take 20-40 seconds.";
+            if (status) status.textContent = "Generating AI intelligence...";
 
             const res = await fetch("/api/leads/${encodeURIComponent(business)}/intelligence/generate", {
               method: "POST",
@@ -19388,6 +19661,28 @@ function renderBusinessLeadIntelligencePage(data) {
             if (status) status.textContent = "AI intelligence generated. Refreshing...";
             window.location.reload();
           }
+
+          async function generateCumulativeLeadAIIntelligenceNow() {
+            const status = document.getElementById("aiStatus");
+            if (status) status.textContent = "Generating cumulative intelligence from prior saved runs...";
+
+            const res = await fetch("/api/leads/${encodeURIComponent(business)}/intelligence/generate-cumulative", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" }
+            });
+
+            const json = await res.json();
+
+            if (!json.ok) {
+              if (status) status.textContent = json.error || "Failed to generate cumulative intelligence.";
+              alert(json.error || "Failed to generate cumulative intelligence.");
+              return;
+            }
+
+            if (status) status.textContent = "Cumulative intelligence generated. Refreshing...";
+            window.location.reload();
+          }
+          
         </script>
       </body>
     </html>
@@ -23947,6 +24242,7 @@ app.get(
   async (req, res) => {
     try {
       const actingUser = req.loggedInUser || req.session?.user || {};
+      const orgId = actingUser.org_id || DASHBOARD_ORG_ID;
       const business = getBusinessCanonicalName(req.params.business);
 
       const allowedTimeframes = [
@@ -23954,13 +24250,16 @@ app.get(
         "yesterday",
         "this_week",
         "this_month",
+        "all_history",
+        "cumulative",
       ];
+
       const timeframe = allowedTimeframes.includes(req.query.timeframe)
         ? req.query.timeframe
         : "today";
 
       const data = await getBusinessLeadsData(
-        actingUser.org_id || DASHBOARD_ORG_ID,
+        orgId,
         business,
         "all",
         "",
@@ -23969,11 +24268,19 @@ app.get(
       );
 
       data.timeframe = timeframe;
+
       data.aiRun = await getLatestLeadAIIntelligenceRun({
-        orgId: actingUser.org_id || DASHBOARD_ORG_ID,
+        orgId,
         business,
         timeframe,
       });
+
+      data.aiHistoryRuns = await getLeadAIIntelligenceHistory({
+        orgId,
+        business,
+        limit: 20,
+      });
+
       return res.send(renderBusinessLeadIntelligencePage(data));
     } catch (error) {
       console.error("GET /leads/:business/intelligence error:", error);
@@ -23990,6 +24297,7 @@ app.post(
   async (req, res) => {
     try {
       const actingUser = req.loggedInUser || req.session?.user || {};
+      const orgId = actingUser.org_id || DASHBOARD_ORG_ID;
       const business = getBusinessCanonicalName(req.params.business);
 
       const allowedTimeframes = [
@@ -23997,13 +24305,15 @@ app.post(
         "yesterday",
         "this_week",
         "this_month",
+        "all_history",
       ];
+
       const timeframe = allowedTimeframes.includes(req.body?.timeframe)
         ? req.body.timeframe
         : "today";
 
       const data = await getBusinessLeadsData(
-        actingUser.org_id || DASHBOARD_ORG_ID,
+        orgId,
         business,
         "all",
         "",
@@ -24017,13 +24327,24 @@ app.post(
         rows: data.businessRows || [],
       });
 
+      const transcriptCount = aiSummary?._meta?.transcript_count || 0;
+
       const { data: savedRun, error } = await supabase
         .from("lead_ai_intelligence_runs")
         .insert([
           {
-            org_id: actingUser.org_id || DASHBOARD_ORG_ID,
+            org_id: orgId,
             business,
             timeframe,
+            run_type:
+              timeframe === "all_history"
+                ? "all_history_snapshot"
+                : "timeframe",
+            source_label:
+              timeframe === "all_history"
+                ? "All available past transcripts snapshot"
+                : timeframe,
+            transcript_count: transcriptCount,
             summary: aiSummary,
             created_by_user_id: actingUser.id || null,
           },
@@ -24043,6 +24364,60 @@ app.post(
         res,
         500,
         error.message || "Failed to generate intelligence",
+      );
+    }
+  },
+);
+
+app.post(
+  "/api/leads/:business/intelligence/generate-cumulative",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const actingUser = req.loggedInUser || req.session?.user || {};
+      const orgId = actingUser.org_id || DASHBOARD_ORG_ID;
+      const business = getBusinessCanonicalName(req.params.business);
+
+      const runs = await getLeadAIIntelligenceHistory({
+        orgId,
+        business,
+        limit: 20,
+      });
+
+      const aiSummary = await generateCumulativeLeadAIIntelligence({
+        business,
+        runs,
+      });
+
+      const { data: savedRun, error } = await supabase
+        .from("lead_ai_intelligence_runs")
+        .insert([
+          {
+            org_id: orgId,
+            business,
+            timeframe: "cumulative",
+            run_type: "cumulative",
+            source_label: "Cumulative intelligence from saved prior AI runs",
+            transcript_count: 0,
+            summary: aiSummary,
+            created_by_user_id: actingUser.id || null,
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return sendApiSuccess(res, savedRun);
+    } catch (error) {
+      console.error(
+        "POST /api/leads/:business/intelligence/generate-cumulative error:",
+        error,
+      );
+      return sendApiError(
+        res,
+        500,
+        error.message || "Failed to generate cumulative intelligence",
       );
     }
   },
