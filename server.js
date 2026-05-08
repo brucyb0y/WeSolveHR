@@ -15690,6 +15690,318 @@ function renderLeadsOverviewPage(data) {
   `;
 }
 
+function getLeadDisplayName(lead) {
+  return (
+    lead.company ||
+    lead.business_name ||
+    lead.company_name ||
+    lead.contact_name ||
+    lead.owner_name ||
+    `Lead #${lead.id}`
+  );
+}
+
+function getLeadIndustry(lead) {
+  return (
+    lead.industry_primary ||
+    lead.industry ||
+    lead.raw_industry ||
+    lead.activity_category ||
+    lead.type_of_business ||
+    "Unknown"
+  );
+}
+
+function hasLeadTranscript(lead) {
+  return !!String(lead.latest_transcript || "").trim();
+}
+
+function isCompletedLead(lead) {
+  return String(lead.status || "").toLowerCase() === "completed";
+}
+
+function leadNeedsReview(lead) {
+  const transcript = String(lead.latest_transcript || "").toLowerCase();
+
+  const keywords = [
+    "send details",
+    "call later",
+    "pricing",
+    "price",
+    "requirement",
+    "owner",
+    "decision maker",
+    "interested",
+    "whatsapp",
+    "follow up",
+    "demo",
+  ];
+
+  const hasKeyword = keywords.some((k) => transcript.includes(k));
+
+  return (
+    !!lead.qualified &&
+    !!lead.worth_talking &&
+    hasLeadTranscript(lead) &&
+    !isCompletedLead(lead) &&
+    hasKeyword
+  );
+}
+
+function groupCount(rows, keyFn) {
+  const map = new Map();
+
+  for (const row of rows || []) {
+    const key = keyFn(row) || "Unknown";
+
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        total: 0,
+        qualified: 0,
+        worthTalking: 0,
+        completed: 0,
+        withTranscript: 0,
+      });
+    }
+
+    const item = map.get(key);
+    item.total += 1;
+    if (row.qualified) item.qualified += 1;
+    if (row.worth_talking) item.worthTalking += 1;
+    if (isCompletedLead(row)) item.completed += 1;
+    if (hasLeadTranscript(row)) item.withTranscript += 1;
+  }
+
+  return Array.from(map.values()).sort((a, b) => b.total - a.total);
+}
+
+function renderBusinessIntelligenceSection(data) {
+  const businessRows = data.businessRows || [];
+  const voiceRows = data.voiceRows || [];
+
+  const totalLeads = businessRows.length;
+  const qualifiedLeads = businessRows.filter((x) => x.qualified).length;
+  const worthTalkingLeads = businessRows.filter((x) => x.worth_talking).length;
+  const completedLeads = businessRows.filter((x) => isCompletedLead(x)).length;
+  const pendingLeads = businessRows.filter((x) => !isCompletedLead(x)).length;
+  const transcriptLeads = businessRows.filter((x) =>
+    hasLeadTranscript(x),
+  ).length;
+
+  const industryRows = groupCount(businessRows, getLeadIndustry);
+  const personRows = groupCount(
+    businessRows,
+    (x) => x.assigned_to || x.assigned_to_name || "Unassigned",
+  );
+
+  const transcriptRows = businessRows
+    .filter((x) => hasLeadTranscript(x))
+    .slice(0, 30);
+
+  const reviewRows = businessRows
+    .filter((x) => leadNeedsReview(x))
+    .slice(0, 30);
+
+  const statCard = (label, value) => `
+    <div class="lead-intel-card">
+      <div class="lead-intel-label">${escapeHtml(label)}</div>
+      <div class="lead-intel-value">${escapeHtml(value)}</div>
+    </div>
+  `;
+
+  const industryHtml = industryRows.length
+    ? industryRows
+        .map(
+          (x) => `
+          <tr>
+            <td>${escapeHtml(x.key)}</td>
+            <td>${x.total}</td>
+            <td>${x.qualified}</td>
+            <td>${x.worthTalking}</td>
+            <td>${x.completed}</td>
+            <td>${x.withTranscript}</td>
+          </tr>
+        `,
+        )
+        .join("")
+    : `<tr><td colspan="6" class="empty-cell">No industry data found.</td></tr>`;
+
+  const personHtml = personRows.length
+    ? personRows
+        .map(
+          (x) => `
+          <tr>
+            <td>${escapeHtml(x.key)}</td>
+            <td>${x.total}</td>
+            <td>${x.qualified}</td>
+            <td>${x.worthTalking}</td>
+            <td>${x.completed}</td>
+            <td>${x.withTranscript}</td>
+          </tr>
+        `,
+        )
+        .join("")
+    : `<tr><td colspan="6" class="empty-cell">No person data found.</td></tr>`;
+
+  const transcriptHtml = transcriptRows.length
+    ? transcriptRows
+        .map((lead) => {
+          const preview = String(lead.latest_transcript || "").slice(0, 220);
+
+          return `
+            <tr>
+              <td>${escapeHtml(getLeadIndustry(lead))}</td>
+              <td>${escapeHtml(getLeadDisplayName(lead))}</td>
+              <td>${escapeHtml(lead.assigned_to || "Unassigned")}</td>
+              <td>${escapeHtml(preview)}${preview.length >= 220 ? "..." : ""}</td>
+              <td>${escapeHtml(lead.status || "-")}</td>
+              <td>${lead.worth_talking ? "Yes" : "No"}</td>
+            </tr>
+          `;
+        })
+        .join("")
+    : `<tr><td colspan="6" class="empty-cell">No transcripts yet.</td></tr>`;
+
+  const reviewHtml = reviewRows.length
+    ? reviewRows
+        .map((lead) => {
+          return `
+            <tr>
+              <td>${escapeHtml(getLeadDisplayName(lead))}</td>
+              <td>${escapeHtml(getLeadIndustry(lead))}</td>
+              <td>${escapeHtml(lead.assigned_to || "Unassigned")}</td>
+              <td>Qualified + worth talking + transcript has buying signal</td>
+              <td>Call again / send details / move to next step</td>
+            </tr>
+          `;
+        })
+        .join("")
+    : `<tr><td colspan="5" class="empty-cell">No hot review leads found.</td></tr>`;
+
+  return `
+    <div class="panel lead-intel-panel">
+      <div class="lead-intel-head">
+        <div>
+          <div class="eyebrow">Business Intelligence</div>
+          <h2>Lead Intelligence</h2>
+          <div class="subtitle">
+            This intelligence is only for this business, based on current filters and lead data.
+          </div>
+        </div>
+      </div>
+
+      <div class="lead-intel-stats">
+        ${statCard("Total Leads", totalLeads)}
+        ${statCard("Qualified", qualifiedLeads)}
+        ${statCard("Worth Talking", worthTalkingLeads)}
+        ${statCard("Pending", pendingLeads)}
+        ${statCard("Completed", completedLeads)}
+        ${statCard("With Transcript", transcriptLeads)}
+        ${statCard("Voice Uploads", voiceRows.length)}
+        ${statCard("Needs Review", reviewRows.length)}
+      </div>
+
+      <div class="lead-intel-tabs">
+        <button class="lead-intel-tab active" type="button" onclick="showLeadIntelTab('work', this)">Work Summary</button>
+        <button class="lead-intel-tab" type="button" onclick="showLeadIntelTab('calls', this)">Call Intelligence</button>
+        <button class="lead-intel-tab" type="button" onclick="showLeadIntelTab('review', this)">Leads To Review</button>
+      </div>
+
+      <div id="leadIntelTab-work" class="lead-intel-tab-body active">
+        <div class="lead-intel-grid">
+          <div class="lead-intel-table-card">
+            <h3>Industry-wise Report</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Industry</th>
+                  <th>Total</th>
+                  <th>Qualified</th>
+                  <th>Worth Talking</th>
+                  <th>Completed</th>
+                  <th>Calls</th>
+                </tr>
+              </thead>
+              <tbody>${industryHtml}</tbody>
+            </table>
+          </div>
+
+          <div class="lead-intel-table-card">
+            <h3>Person-wise Report</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Person</th>
+                  <th>Assigned</th>
+                  <th>Qualified</th>
+                  <th>Worth Talking</th>
+                  <th>Completed</th>
+                  <th>Calls</th>
+                </tr>
+              </thead>
+              <tbody>${personHtml}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="leadIntelTab-calls" class="lead-intel-tab-body">
+        <div class="lead-intel-table-card">
+          <h3>Transcript List</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Industry</th>
+                <th>Lead</th>
+                <th>Person</th>
+                <th>Transcript Preview</th>
+                <th>Status</th>
+                <th>Worth Talking</th>
+              </tr>
+            </thead>
+            <tbody>${transcriptHtml}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="leadIntelTab-review" class="lead-intel-tab-body">
+        <div class="lead-intel-table-card">
+          <h3>Leads To Review</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Lead</th>
+                <th>Industry</th>
+                <th>Person</th>
+                <th>Reason</th>
+                <th>Suggested Action</th>
+              </tr>
+            </thead>
+            <tbody>${reviewHtml}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function showLeadIntelTab(key, btn) {
+        document.querySelectorAll(".lead-intel-tab-body").forEach(function(el) {
+          el.classList.remove("active");
+        });
+
+        document.querySelectorAll(".lead-intel-tab").forEach(function(el) {
+          el.classList.remove("active");
+        });
+
+        const body = document.getElementById("leadIntelTab-" + key);
+        if (body) body.classList.add("active");
+        if (btn) btn.classList.add("active");
+      }
+    </script>
+  `;
+}
+
 function renderBusinessLeadsPage(data) {
   const business = data.business;
   const rows = data.rows || [];
@@ -15710,6 +16022,7 @@ function renderBusinessLeadsPage(data) {
     assigned_to: filters.assigned_to || "",
     qualified: filters.qualified || "",
     worth_talking: filters.worth_talking || "",
+    has_call_transcription: filters.has_call_transcription || "",
   }).toString();
   const tabLink = (key, label, count) => `
     <a class="tab ${selectedTab === key ? "active" : ""}"
@@ -16023,6 +16336,141 @@ ${rows
 
 .lead-chip.warn {
   background: var(--accent-soft);
+}
+
+.lead-intel-panel {
+  margin-bottom: 18px;
+}
+
+.lead-intel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.lead-intel-head h2 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+
+.lead-intel-stats {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.lead-intel-card {
+  padding: 13px;
+  border-radius: 15px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+.lead-intel-label {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+}
+
+.lead-intel-value {
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.lead-intel-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.lead-intel-tab {
+  min-height: 42px;
+  border-radius: 13px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.045);
+  color: var(--text);
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.lead-intel-tab.active {
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  color: var(--text-strong);
+}
+
+.lead-intel-tab-body {
+  display: none;
+}
+
+.lead-intel-tab-body.active {
+  display: block;
+}
+
+.lead-intel-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.lead-intel-table-card {
+  overflow-x: auto;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.025);
+  padding: 14px;
+}
+
+.lead-intel-table-card h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.lead-intel-table-card table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.lead-intel-table-card th,
+.lead-intel-table-card td {
+  padding: 11px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  text-align: left;
+  vertical-align: top;
+  font-size: 13px;
+}
+
+.lead-intel-table-card th {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+@media (max-width: 1200px) {
+  .lead-intel-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .lead-intel-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .lead-intel-stats,
+  .lead-intel-tabs {
+    grid-template-columns: 1fr;
+  }
 }
 
 .lead-chip.danger {
@@ -16440,6 +16888,8 @@ ${rows
             ${tabLink("completed", "Completed", counts.completed)}
             ${tabLink("voice_inbox", "Voice Inbox", counts.voice_inbox)}
           </div>
+          
+          ${renderBusinessIntelligenceSection(data)}
 
           ${
             selectedTab !== "voice_inbox"
