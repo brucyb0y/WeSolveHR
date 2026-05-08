@@ -18613,14 +18613,204 @@ document.addEventListener("click", function () {
   `;
 }
 
+function getLeadTimeframeRange(timeframe) {
+  const now = new Date();
+  const start = new Date(now);
+  const end = new Date(now);
+
+  if (timeframe === "yesterday") {
+    start.setDate(start.getDate() - 1);
+    start.setHours(0, 0, 0, 0);
+    end.setDate(end.getDate() - 1);
+    end.setHours(23, 59, 59, 999);
+  } else if (timeframe === "this_week") {
+    const day = start.getDay();
+    const diff = start.getDate() - day + (day === 0 ? -6 : 1);
+    start.setDate(diff);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+  } else if (timeframe === "this_month") {
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+  } else {
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+  }
+
+  return {
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+  };
+}
+
+function buildLeadIntelligenceMetrics(
+  rows = [],
+  voiceRows = [],
+  timeframe = "today",
+) {
+  const { startIso, endIso } = getLeadTimeframeRange(timeframe);
+
+  const inRange = (dateValue) => {
+    if (!dateValue) return false;
+    const d = new Date(dateValue);
+    return d >= new Date(startIso) && d <= new Date(endIso);
+  };
+
+  const filteredLeads = rows.filter(
+    (x) => inRange(x.created_at) || inRange(x.updated_at),
+  );
+  const filteredVoices = voiceRows.filter((x) => inRange(x.created_at));
+
+  const callsWithTranscript = filteredLeads.filter((x) =>
+    String(x.latest_transcript || "").trim(),
+  );
+
+  const industryMap = new Map();
+  const employeeMap = new Map();
+
+  for (const lead of filteredLeads) {
+    const industry =
+      lead.industry_primary || lead.industry || lead.raw_industry || "Unknown";
+
+    if (!industryMap.has(industry)) {
+      industryMap.set(industry, {
+        industry,
+        leads: 0,
+        transcripts: 0,
+        qualified: 0,
+        worth_talking: 0,
+        in_progress: 0,
+        completed: 0,
+      });
+    }
+
+    const item = industryMap.get(industry);
+    item.leads += 1;
+    if (lead.latest_transcript) item.transcripts += 1;
+    if (lead.qualified) item.qualified += 1;
+    if (lead.worth_talking) item.worth_talking += 1;
+    if (lead.status === "in_progress") item.in_progress += 1;
+    if (lead.status === "completed") item.completed += 1;
+
+    const employee =
+      lead.assigned_to ||
+      lead.last_spoke_to_name ||
+      lead.last_call_uploaded_by_phone ||
+      "Unknown";
+
+    if (!employeeMap.has(employee)) {
+      employeeMap.set(employee, {
+        employee,
+        leads: 0,
+        transcripts: 0,
+        qualified: 0,
+        worth_talking: 0,
+        completed: 0,
+      });
+    }
+
+    const emp = employeeMap.get(employee);
+    emp.leads += 1;
+    if (lead.latest_transcript) emp.transcripts += 1;
+    if (lead.qualified) emp.qualified += 1;
+    if (lead.worth_talking) emp.worth_talking += 1;
+    if (lead.status === "completed") emp.completed += 1;
+  }
+
+  return {
+    timeframe,
+    total_leads: filteredLeads.length,
+    calls_uploaded: filteredVoices.length,
+    calls_with_transcript: callsWithTranscript.length,
+    qualified: filteredLeads.filter((x) => x.qualified).length,
+    worth_talking: filteredLeads.filter((x) => x.worth_talking).length,
+    in_progress: filteredLeads.filter((x) => x.status === "in_progress").length,
+    completed: filteredLeads.filter((x) => x.status === "completed").length,
+    industryRows: Array.from(industryMap.values()).sort(
+      (a, b) => b.leads - a.leads,
+    ),
+    employeeRows: Array.from(employeeMap.values()).sort(
+      (a, b) => b.leads - a.leads,
+    ),
+    recentTranscriptRows: callsWithTranscript.slice(0, 10),
+  };
+}
+
 function renderBusinessLeadIntelligencePage(data) {
   const business = data.business;
-  const counts = data.counts || {};
+  const timeframe = data.timeframe || "today";
+  const metrics = buildLeadIntelligenceMetrics(
+    data.businessRows || [],
+    data.voiceRows || [],
+    timeframe,
+  );
+
+  const timeframeLink = (key, label) => `
+    <a class="filter-chip ${timeframe === key ? "active" : ""}" href="/leads/${business}/intelligence?timeframe=${key}">
+      ${label}
+    </a>
+  `;
+
+  const industryRowsHtml = metrics.industryRows.length
+    ? metrics.industryRows
+        .map(
+          (x) => `
+      <tr>
+        <td><strong>${escapeHtml(x.industry)}</strong></td>
+        <td>${x.leads}</td>
+        <td>${x.transcripts}</td>
+        <td>${x.qualified}</td>
+        <td>${x.worth_talking}</td>
+        <td>${x.in_progress}</td>
+        <td>${x.completed}</td>
+      </tr>
+    `,
+        )
+        .join("")
+    : `<tr><td colspan="7" class="empty-cell">No industry data found for this timeframe.</td></tr>`;
+
+  const employeeRowsHtml = metrics.employeeRows.length
+    ? metrics.employeeRows
+        .map(
+          (x) => `
+      <tr>
+        <td><strong>${escapeHtml(x.employee)}</strong></td>
+        <td>${x.leads}</td>
+        <td>${x.transcripts}</td>
+        <td>${x.qualified}</td>
+        <td>${x.worth_talking}</td>
+        <td>${x.completed}</td>
+      </tr>
+    `,
+        )
+        .join("")
+    : `<tr><td colspan="6" class="empty-cell">No employee data found for this timeframe.</td></tr>`;
+
+  const transcriptRowsHtml = metrics.recentTranscriptRows.length
+    ? metrics.recentTranscriptRows
+        .map(
+          (x) => `
+      <div class="transcript-card">
+        <div class="transcript-title">
+          ${escapeHtml(x.company || x.business_name || x.contact_name || x.phone || "Unknown lead")}
+        </div>
+        <div class="muted">
+          ${escapeHtml(x.industry_primary || x.industry || "Unknown industry")}
+          · ${escapeHtml(x.assigned_to || x.last_spoke_to_name || "Unknown owner")}
+          · ${escapeHtml(x.status || "-")}
+        </div>
+        <div class="transcript-text">${escapeHtml(x.latest_transcript || "")}</div>
+      </div>
+    `,
+        )
+        .join("")
+    : `<div class="empty-cell">No transcripts found for this timeframe.</div>`;
 
   return `
     <html>
       <head>
-        <title>${escapeHtml(business)} Lead Intelligence</title>
+        <title>${escapeHtml(business)} Intelligence</title>
         <style>
           ${buildThemeCss()}
           ${buildBasePageCss()}
@@ -18654,7 +18844,7 @@ function renderBusinessLeadIntelligencePage(data) {
             letter-spacing: 0.16em;
             text-transform: uppercase;
             color: var(--primary);
-            font-weight: 700;
+            font-weight: 800;
             margin-bottom: 8px;
           }
 
@@ -18670,7 +18860,7 @@ function renderBusinessLeadIntelligencePage(data) {
             font-size: 14px;
           }
 
-          .btn {
+          .btn, .filter-chip {
             display: inline-flex;
             align-items: center;
             text-decoration: none;
@@ -18680,12 +18870,24 @@ function renderBusinessLeadIntelligencePage(data) {
             background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.12);
             font-weight: 800;
-            cursor: pointer;
+          }
+
+          .filter-chip.active {
+            background: var(--primary-soft);
+            border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+            color: var(--text-strong);
+          }
+
+          .filters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
           }
 
           .stats {
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
+            grid-template-columns: repeat(7, minmax(0, 1fr));
             gap: 12px;
             margin-bottom: 20px;
           }
@@ -18696,89 +18898,27 @@ function renderBusinessLeadIntelligencePage(data) {
 
           .stat-label {
             color: var(--muted);
-            font-size: 12px;
+            font-size: 11px;
             text-transform: uppercase;
             letter-spacing: 0.08em;
-            font-weight: 700;
+            font-weight: 800;
           }
 
           .stat-value {
             margin-top: 10px;
             font-size: 28px;
-            font-weight: 800;
-          }
-
-          .lead-intel-stats {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 12px;
-            margin-bottom: 18px;
-          }
-
-          .lead-intel-card {
-            padding: 14px;
-            border-radius: 16px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.10);
-          }
-
-          .lead-intel-label {
-            color: var(--muted);
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            font-weight: 800;
-          }
-
-          .lead-intel-value {
-            margin-top: 10px;
-            font-size: 26px;
             font-weight: 900;
           }
 
-          .lead-intel-tabs {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-bottom: 16px;
+          .panel {
+            padding: 18px;
+            margin-bottom: 18px;
           }
 
-          .lead-intel-tab {
-            padding: 10px 13px;
-            border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.12);
-            background: rgba(255,255,255,0.05);
-            color: var(--text);
-            font-weight: 800;
-            cursor: pointer;
-          }
-
-          .lead-intel-tab.active {
-            background: var(--primary-soft);
-            border-color: color-mix(in srgb, var(--primary) 55%, transparent);
-            color: var(--text-strong);
-          }
-
-          .lead-intel-tab-body {
-            display: none;
-          }
-
-          .lead-intel-tab-body.active {
-            display: block;
-          }
-
-          .lead-intel-grid {
+          .grid-2 {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 14px;
-          }
-
-          .lead-intel-table-card {
-            padding: 14px;
-            border-radius: 16px;
-            background: rgba(255,255,255,0.035);
-            border: 1px solid rgba(255,255,255,0.10);
-            overflow-x: auto;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
           }
 
           table {
@@ -18790,8 +18930,8 @@ function renderBusinessLeadIntelligencePage(data) {
             padding: 12px;
             border-bottom: 1px solid rgba(255,255,255,0.08);
             text-align: left;
-            vertical-align: top;
             font-size: 13px;
+            vertical-align: top;
           }
 
           th {
@@ -18801,8 +18941,33 @@ function renderBusinessLeadIntelligencePage(data) {
             font-size: 11px;
           }
 
-          @media (max-width: 1000px) {
-            .stats, .lead-intel-stats, .lead-intel-grid {
+          .transcript-card {
+            padding: 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.10);
+            background: rgba(255,255,255,0.035);
+            margin-bottom: 12px;
+          }
+
+          .transcript-title {
+            font-weight: 900;
+            margin-bottom: 5px;
+          }
+
+          .transcript-text {
+            margin-top: 10px;
+            white-space: pre-wrap;
+            color: var(--text);
+            line-height: 1.55;
+            font-size: 13px;
+          }
+
+          @media (max-width: 1100px) {
+            .stats {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .grid-2 {
               grid-template-columns: 1fr;
             }
           }
@@ -18815,25 +18980,99 @@ function renderBusinessLeadIntelligencePage(data) {
         <div class="wrap">
           <div class="topbar">
             <div>
-              <div class="eyebrow">Business Lead CRM</div>
+              <div class="eyebrow">Lead Intelligence</div>
               <h1>${escapeHtml(business)} Intelligence</h1>
-              <div class="subtitle">Separate intelligence page for this business.</div>
+              <div class="subtitle">
+                Phase 1 operational intelligence: calls, transcripts, industries, employees, qualified leads.
+              </div>
             </div>
 
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-              <a class="btn" href="/leads/${encodeURIComponent(business)}">← Back to Leads</a>
-              <a class="btn" href="/leads/${encodeURIComponent(business)}?openAddLead=1">+ Add Lead</a>
-            </div>
+            <a class="btn" href="/leads/${business}">← Back to Leads</a>
+          </div>
+
+          <div class="filters">
+            ${timeframeLink("today", "Today")}
+            ${timeframeLink("yesterday", "Yesterday")}
+            ${timeframeLink("this_week", "This Week")}
+            ${timeframeLink("this_month", "This Month")}
           </div>
 
           <div class="stats">
-            <div class="stat-card"><div class="stat-label">All Leads</div><div class="stat-value">${counts.all || 0}</div></div>
-            <div class="stat-card"><div class="stat-label">B2B</div><div class="stat-value">${counts.b2b || 0}</div></div>
-            <div class="stat-card"><div class="stat-label">B2C</div><div class="stat-value">${counts.b2c || 0}</div></div>
-            <div class="stat-card"><div class="stat-label">Voice Inbox</div><div class="stat-value">${counts.voice_inbox || 0}</div></div>
+            <div class="stat-card">
+              <div class="stat-label">Leads</div>
+              <div class="stat-value">${metrics.total_leads}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Calls Uploaded</div>
+              <div class="stat-value">${metrics.calls_uploaded}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Transcripts</div>
+              <div class="stat-value">${metrics.calls_with_transcript}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Qualified</div>
+              <div class="stat-value">${metrics.qualified}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Worth Talking</div>
+              <div class="stat-value">${metrics.worth_talking}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">In Progress</div>
+              <div class="stat-value">${metrics.in_progress}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Completed</div>
+              <div class="stat-value">${metrics.completed}</div>
+            </div>
           </div>
 
-          ${renderBusinessIntelligenceSection(data)}
+          <div class="grid-2">
+            <div class="panel">
+              <h2>Industry Report</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Industry</th>
+                    <th>Leads</th>
+                    <th>Transcripts</th>
+                    <th>Qualified</th>
+                    <th>Worth Talking</th>
+                    <th>In Progress</th>
+                    <th>Completed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${industryRowsHtml}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="panel">
+              <h2>Person-wise Report</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Person</th>
+                    <th>Leads</th>
+                    <th>Transcripts</th>
+                    <th>Qualified</th>
+                    <th>Worth Talking</th>
+                    <th>Completed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${employeeRowsHtml}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>Recent Call Transcripts</h2>
+            ${transcriptRowsHtml}
+          </div>
         </div>
       </body>
     </html>
@@ -23392,11 +23631,21 @@ app.get(
   requireDashboardAuth,
   async (req, res) => {
     try {
-      const actingUser = req.loggedInUser;
+      const actingUser = req.loggedInUser || req.session?.user || {};
       const business = getBusinessCanonicalName(req.params.business);
 
+      const allowedTimeframes = [
+        "today",
+        "yesterday",
+        "this_week",
+        "this_month",
+      ];
+      const timeframe = allowedTimeframes.includes(req.query.timeframe)
+        ? req.query.timeframe
+        : "today";
+
       const data = await getBusinessLeadsData(
-        actingUser.org_id,
+        actingUser.org_id || DASHBOARD_ORG_ID,
         business,
         "all",
         "",
@@ -23404,10 +23653,14 @@ app.get(
         {},
       );
 
+      data.timeframe = timeframe;
+
       return res.send(renderBusinessLeadIntelligencePage(data));
     } catch (error) {
       console.error("GET /leads/:business/intelligence error:", error);
-      return res.status(500).send("Failed to load lead intelligence");
+      return res
+        .status(500)
+        .send("Failed to load lead intelligence: " + error.message);
     }
   },
 );
