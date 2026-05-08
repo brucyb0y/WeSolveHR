@@ -2234,7 +2234,7 @@ function buildTopNavCss() {
   position: absolute;
   top: 100%;
   left: 0;
-  min-width: 190px;
+  min-width: 210px;
   padding: 8px;
   border-radius: 14px;
   background: linear-gradient(180deg, var(--panel), var(--panel-strong));
@@ -2243,12 +2243,19 @@ function buildTopNavCss() {
   z-index: 9999;
 }
 
-.nav-dropdown-wrap:hover .nav-dropdown-menu {
+.nav-dropdown-wrap:hover > .nav-dropdown-menu {
   display: block;
 }
 
-.nav-dropdown-menu a {
-  display: block !important;
+.nav-submenu-wrap {
+  position: relative;
+}
+
+.nav-dropdown-menu a,
+.nav-submenu-label {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
   width: 100%;
   margin: 0;
   padding: 10px 11px !important;
@@ -2256,11 +2263,33 @@ function buildTopNavCss() {
   background: transparent !important;
   border: 0 !important;
   text-align: left;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
-.nav-dropdown-menu a:hover {
+.nav-dropdown-menu a:hover,
+.nav-submenu-label:hover {
   background: rgba(255,255,255,0.07) !important;
   transform: none !important;
+}
+
+.nav-submenu-menu {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: calc(100% + 8px);
+  min-width: 180px;
+  padding: 8px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+}
+
+.nav-submenu-wrap:hover > .nav-submenu-menu {
+  display: block;
 }
 
     .top-nav-status {
@@ -5716,7 +5745,17 @@ function renderTopNav(active = "") {
       key: "leads",
       dropdown: getActiveLeadBusinesses().map((b) => ({
         href: `/leads/${b.business}`,
-        label: `${b.label} Leads`,
+        label: b.label,
+        children: [
+          {
+            href: `/leads/${b.business}?openAddLead=1`,
+            label: "Add Lead",
+          },
+          {
+            href: `/leads/${b.business}/intelligence`,
+            label: "Intelligence",
+          },
+        ],
       })),
     },
     { href: "/clients", label: "Clients", short: "Clients", key: "clients" },
@@ -5764,13 +5803,35 @@ function renderTopNav(active = "") {
         </a>
         <div class="nav-dropdown-menu">
           ${item.dropdown
-            .map(
-              (child) => `
-                <a href="${child.href}">
-                  ${escapeHtml(child.label)}
-                </a>
-              `,
-            )
+            .map((child) => {
+              if (child.children && child.children.length) {
+                return `
+        <div class="nav-submenu-wrap">
+          <a class="nav-submenu-label" href="${child.href}">
+            ${escapeHtml(child.label)} <span>›</span>
+          </a>
+
+          <div class="nav-submenu-menu">
+            ${child.children
+              .map(
+                (sub) => `
+                  <a href="${sub.href}">
+                    ${escapeHtml(sub.label)}
+                  </a>
+                `,
+              )
+              .join("")}
+          </div>
+        </div>
+      `;
+              }
+
+              return `
+      <a href="${child.href}">
+        ${escapeHtml(child.label)}
+      </a>
+    `;
+            })
             .join("")}
         </div>
       </div>
@@ -16869,7 +16930,8 @@ ${rows
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
               <a class="btn" href="/leads">← Leads Overview</a>
-              <button class="btn btn-primary" type="button" onclick="openLeadCreateModal()">+ Add Lead</button>
+<a class="btn" href="/leads/${encodeURIComponent(business)}/intelligence">Intelligence</a>
+<button class="btn btn-primary" type="button" onclick="openLeadCreateModal()">+ Add Lead</button>
             </div>
           </div>
 
@@ -16888,9 +16950,7 @@ ${rows
             ${tabLink("completed", "Completed", counts.completed)}
             ${tabLink("voice_inbox", "Voice Inbox", counts.voice_inbox)}
           </div>
-          
-          ${renderBusinessIntelligenceSection(data)}
-
+        
           ${
             selectedTab !== "voice_inbox"
               ? `
@@ -18548,6 +18608,233 @@ document.addEventListener("click", function () {
 });
 
         </script>
+      </body>
+    </html>
+  `;
+}
+
+function renderBusinessLeadIntelligencePage(data) {
+  const business = data.business;
+  const counts = data.counts || {};
+
+  return `
+    <html>
+      <head>
+        <title>${escapeHtml(business)} Lead Intelligence</title>
+        <style>
+          ${buildThemeCss()}
+          ${buildBasePageCss()}
+          ${buildTopNavCss()}
+
+          .wrap {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px 18px 36px;
+          }
+
+          .topbar, .panel, .stat-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+
+          .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            padding: 18px 20px;
+          }
+
+          .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--primary);
+            font-weight: 700;
+            margin-bottom: 8px;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 30px;
+            letter-spacing: -0.04em;
+          }
+
+          .subtitle {
+            color: var(--muted);
+            margin-top: 8px;
+            font-size: 14px;
+          }
+
+          .btn {
+            display: inline-flex;
+            align-items: center;
+            text-decoration: none;
+            color: var(--text);
+            padding: 10px 13px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.12);
+            font-weight: 800;
+            cursor: pointer;
+          }
+
+          .stats {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+          }
+
+          .stat-card {
+            padding: 14px;
+          }
+
+          .stat-label {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 700;
+          }
+
+          .stat-value {
+            margin-top: 10px;
+            font-size: 28px;
+            font-weight: 800;
+          }
+
+          .lead-intel-stats {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+          }
+
+          .lead-intel-card {
+            padding: 14px;
+            border-radius: 16px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.10);
+          }
+
+          .lead-intel-label {
+            color: var(--muted);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 800;
+          }
+
+          .lead-intel-value {
+            margin-top: 10px;
+            font-size: 26px;
+            font-weight: 900;
+          }
+
+          .lead-intel-tabs {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+          }
+
+          .lead-intel-tab {
+            padding: 10px 13px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.05);
+            color: var(--text);
+            font-weight: 800;
+            cursor: pointer;
+          }
+
+          .lead-intel-tab.active {
+            background: var(--primary-soft);
+            border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+            color: var(--text-strong);
+          }
+
+          .lead-intel-tab-body {
+            display: none;
+          }
+
+          .lead-intel-tab-body.active {
+            display: block;
+          }
+
+          .lead-intel-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+          }
+
+          .lead-intel-table-card {
+            padding: 14px;
+            border-radius: 16px;
+            background: rgba(255,255,255,0.035);
+            border: 1px solid rgba(255,255,255,0.10);
+            overflow-x: auto;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+
+          th, td {
+            padding: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            text-align: left;
+            vertical-align: top;
+            font-size: 13px;
+          }
+
+          th {
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 11px;
+          }
+
+          @media (max-width: 1000px) {
+            .stats, .lead-intel-stats, .lead-intel-grid {
+              grid-template-columns: 1fr;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        ${renderTopNav("leads")}
+
+        <div class="wrap">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Business Lead CRM</div>
+              <h1>${escapeHtml(business)} Intelligence</h1>
+              <div class="subtitle">Separate intelligence page for this business.</div>
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <a class="btn" href="/leads/${encodeURIComponent(business)}">← Back to Leads</a>
+              <a class="btn" href="/leads/${encodeURIComponent(business)}?openAddLead=1">+ Add Lead</a>
+            </div>
+          </div>
+
+          <div class="stats">
+            <div class="stat-card"><div class="stat-label">All Leads</div><div class="stat-value">${counts.all || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">B2B</div><div class="stat-value">${counts.b2b || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">B2C</div><div class="stat-value">${counts.b2c || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">Voice Inbox</div><div class="stat-value">${counts.voice_inbox || 0}</div></div>
+          </div>
+
+          ${renderBusinessIntelligenceSection(data)}
+        </div>
       </body>
     </html>
   `;
@@ -23099,6 +23386,31 @@ app.get("/leads", requireDashboardAuth, async (req, res) => {
     return res.status(500).send("Failed to load leads page");
   }
 });
+
+app.get(
+  "/leads/:business/intelligence",
+  requireDashboardAuth,
+  async (req, res) => {
+    try {
+      const actingUser = req.loggedInUser;
+      const business = getBusinessCanonicalName(req.params.business);
+
+      const data = await getBusinessLeadsData(
+        actingUser.org_id,
+        business,
+        "all",
+        "",
+        1,
+        {},
+      );
+
+      return res.send(renderBusinessLeadIntelligencePage(data));
+    } catch (error) {
+      console.error("GET /leads/:business/intelligence error:", error);
+      return res.status(500).send("Failed to load lead intelligence");
+    }
+  },
+);
 
 app.get("/leads/:business", requireDashboardAuth, async (req, res) => {
   try {
