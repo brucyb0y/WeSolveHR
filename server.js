@@ -18763,22 +18763,6 @@ function getLeadOwnerForAI(lead) {
   );
 }
 
-function getRecentLeadTranscriptsForAI(rows = [], limit = 30) {
-  return rows
-    .filter((lead) => String(lead.latest_transcript || "").trim())
-    .slice(0, limit)
-    .map((lead) => ({
-      lead_id: lead.id,
-      lead_name: getLeadDisplayNameForAI(lead),
-      industry: getLeadIndustryForAI(lead),
-      owner: getLeadOwnerForAI(lead),
-      status: lead.status || "",
-      qualified: !!lead.qualified,
-      worth_talking: !!lead.worth_talking,
-      transcript: String(lead.latest_transcript || "").slice(0, 2500),
-    }));
-}
-
 function getLeadAIRowsForTimeframe(rows = [], timeframe = "today") {
   const transcriptRows = rows.filter((lead) =>
     String(lead.latest_transcript || "").trim(),
