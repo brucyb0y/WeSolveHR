@@ -18694,9 +18694,12 @@ function buildLeadIntelligenceMetrics(
     if (lead.status === "completed") item.completed += 1;
 
     const employee =
-      lead.assigned_to ||
-      lead.last_spoke_to_name ||
-      lead.last_call_uploaded_by_phone ||
+      lead.assigned_to_employee ||
+      lead.assigned_employee ||
+      lead.assigned_user_name ||
+      lead.owner_employee ||
+      lead.employee_name ||
+      lead.uploaded_by_employee ||
       "Unknown";
 
     if (!employeeMap.has(employee)) {
