@@ -166,6 +166,16 @@ function normalizePhoneForLogin(input) {
   return value;
 }
 
+function getLeadPhoneKey(input) {
+  const digits = String(input || "")
+    .replace(/^whatsapp:/i, "")
+    .replace(/\D/g, "");
+
+  if (!digits) return "";
+
+  return digits.slice(-10);
+}
+
 function normalizeLeadPhone(input) {
   if (!input) return "";
 
@@ -8110,14 +8120,19 @@ async function approveLeadVoiceUpload({
     lead.raw_transcript ||
     "";
 
-  const { data: existingLead, error: existingError } = await supabase
+  const leadPhoneKey = getLeadPhoneKey(lead.lead_phone);
+
+  const { data: possibleExistingLeads, error: existingError } = await supabase
     .from(tableName)
     .select("*")
-    .eq("org_id", orgId)
-    .eq("phone", lead.lead_phone)
-    .maybeSingle();
+    .eq("org_id", orgId);
 
   if (existingError) throw existingError;
+
+  const existingLead =
+    (possibleExistingLeads || []).find((row) => {
+      return getLeadPhoneKey(row.phone) === leadPhoneKey;
+    }) || null;
 
   let businessLead;
 
@@ -8303,6 +8318,7 @@ async function createBusinessLead({ orgId, business, body }) {
   if (!tableName) {
     throw new Error(`No lead table configured for ${business}`);
   }
+  body.phone = normalizeLeadPhone(body.phone);
 
   const payload = buildBusinessLeadPayloadFromBody(body);
   const validationError = validateBusinessLeadPayload(payload);
@@ -8311,6 +8327,30 @@ async function createBusinessLead({ orgId, business, body }) {
     const err = new Error(validationError);
     err.statusCode = 400;
     throw err;
+  }
+
+  const phoneKey = getLeadPhoneKey(body.phone);
+
+  if (phoneKey) {
+    const { data: existingRows, error: dupError } = await supabase
+      .from(tableName)
+      .select("id, phone, company, business_name")
+      .eq("org_id", orgId)
+      .or("is_deleted.is.null,is_deleted.eq.false");
+
+    if (dupError) throw dupError;
+
+    const duplicate = (existingRows || []).find((row) => {
+      return getLeadPhoneKey(row.phone) === phoneKey;
+    });
+
+    if (duplicate) {
+      const err = new Error(
+        `Duplicate lead exists with same phone last 10 digits: Lead #${duplicate.id}`,
+      );
+      err.statusCode = 409;
+      throw err;
+    }
   }
 
   const insertPayload = {
@@ -8782,15 +8822,19 @@ async function importRassetLeadsFromExcel({
           continue;
         }
 
-        const { data: existingByPhone, error: phoneError } = await supabase
+        const phoneKey = getLeadPhoneKey(payload.phone);
+
+        const { data: possibleExistingRows, error: phoneError } = await supabase
           .from("rasset_leads")
           .select("id, phone, company, business_name")
           .eq("org_id", orgId)
-          .eq("phone", payload.phone)
-          .or("is_deleted.is.null,is_deleted.eq.false")
-          .maybeSingle();
+          .or("is_deleted.is.null,is_deleted.eq.false");
 
         if (phoneError) throw phoneError;
+
+        const existingByPhone = (possibleExistingRows || []).find((row) => {
+          return getLeadPhoneKey(row.phone) === phoneKey;
+        });
 
         if (existingByPhone) {
           results.duplicates += 1;
@@ -24742,9 +24786,10 @@ app.get(
         .eq("org_id", orgId);
 
       if (error) throw error;
+      const phoneKey = getLeadPhoneKey(req.query.phone || "");
 
       const duplicate = (data || []).find(function (row) {
-        return normalizeLeadPhone(row.phone) === digits;
+        return getLeadPhoneKey(row.phone) === phoneKey;
       });
 
       return sendApiSuccess(res, {
@@ -24791,29 +24836,33 @@ app.get(
     try {
       const orgId = req.session?.user?.org_id || DASHBOARD_ORG_ID;
       const business = getBusinessCanonicalName(req.params.business);
-      const phone = (req.query.phone || "").trim();
+      const phone = String(req.query.phone || "").trim();
+      const phoneKey = getLeadPhoneKey(phone);
 
       if (!business) {
         return sendApiError(res, 400, "Invalid business");
       }
 
-      if (!phone) {
+      if (!phoneKey) {
         return sendApiError(res, 400, "Phone is required");
       }
 
       const { data, error } = await supabase
         .from("lead_voice_uploads")
         .select(
-          "id, business, lead_phone, sender_phone, status, raw_transcript, cleaned_transcript, translated_text, conversation_rows, transcription_model, transcription_confidence, important_points, pain_points, follow_up_questions, review_notes, media_url, created_at, updated_at, verified_by, verified_at",
+          "id, business, lead_phone, sender_phone, status, raw_transcript, cleaned_transcript, translated_text, conversation_rows, transcription_model, transcription_confidence, important_points, pain_points, follow_up_questions, review_notes, media_url, created_at, updated_at, verified_by, verified_at, spoke_to_name",
         )
         .eq("org_id", orgId)
         .eq("business", business)
-        .eq("lead_phone", phone)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
-      return sendApiSuccess(res, data || []);
+      const rows = (data || []).filter((row) => {
+        return getLeadPhoneKey(row.lead_phone) === phoneKey;
+      });
+
+      return sendApiSuccess(res, rows);
     } catch (err) {
       console.error("call summaries error:", err);
       return sendApiError(
