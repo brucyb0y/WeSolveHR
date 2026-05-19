@@ -9243,20 +9243,20 @@ async function getActiveUserByPhone(phoneNumber) {
 }
 
 async function getLastAction(userId, orgId) {
+  const { startUtc, endUtc } = getCurrentAttendanceDayRange();
+
   const { data, error } = await supabase
     .from("attendance_events")
     .select("action")
     .eq("user_id", userId)
     .eq("org_id", orgId)
+    .gte("created_at", startUtc)
+    .lt("created_at", endUtc)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (error) {
-    console.error("Error fetching last action:", error);
-    return null;
-  }
-
+  if (error) throw error;
   return data?.action || null;
 }
 
