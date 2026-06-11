@@ -30773,7 +30773,7 @@ button {
 
 table {
   width: 100%;
-  min-width: 1500px;
+  min-width: 1150px;
   border-collapse: collapse;
 }
 
@@ -30784,16 +30784,15 @@ th, td {
   vertical-align: top;
 }
 
-th:nth-child(1), td:nth-child(1) { min-width: 80px; }   /* ID */
-th:nth-child(2), td:nth-child(2) { min-width: 300px; }  /* Title */
+/* Columns: ID, Title, Business, Assignee, Status, Priority, Deadline, Blocker */
+th:nth-child(1), td:nth-child(1) { min-width: 70px; }   /* ID */
+th:nth-child(2), td:nth-child(2) { min-width: 160px; max-width: 240px; overflow-wrap: anywhere; }  /* Title */
 th:nth-child(3), td:nth-child(3) { min-width: 120px; }  /* Business */
-th:nth-child(4), td:nth-child(4) { min-width: 160px; }  /* Area */
-th:nth-child(5), td:nth-child(5) { min-width: 150px; }  /* Assignee */
-th:nth-child(6), td:nth-child(6) { min-width: 120px; }  /* Status */
-th:nth-child(7), td:nth-child(7) { min-width: 100px; }  /* Progress */
-th:nth-child(8), td:nth-child(8) { min-width: 110px; }  /* Priority */
-th:nth-child(9), td:nth-child(9) { min-width: 130px; }  /* Deadline */
-th:nth-child(10), td:nth-child(10) { min-width: 260px; } /* Blocker */
+th:nth-child(4), td:nth-child(4) { min-width: 150px; }  /* Assignee */
+th:nth-child(5), td:nth-child(5) { min-width: 120px; }  /* Status */
+th:nth-child(6), td:nth-child(6) { min-width: 110px; }  /* Priority */
+th:nth-child(7), td:nth-child(7) { min-width: 130px; }  /* Deadline */
+th:nth-child(8), td:nth-child(8) { min-width: 260px; }  /* Blocker */
 
 tbody tr:hover {
   background: color-mix(in srgb, var(--primary) 10%, transparent);
@@ -30894,10 +30893,8 @@ tbody tr:hover {
     <th>ID</th>
     <th>Title</th>
     <th>Business</th>
-    <th>Area</th>
     <th>Assignee</th>
     <th>Status</th>
-    <th>Progress</th>
     <th>Priority</th>
     <th>Deadline</th>
     <th>Blocker</th>
@@ -31346,10 +31343,8 @@ document.getElementById('taskRows').innerHTML = rows.map(function(task) {
 '</td>' +
       '<td>' + escapeHtml(task.title || '') + '</td>' +
       '<td>' + escapeHtml(task.business || '-') + '</td>' +
-      '<td>' + escapeHtml(task.area || '-') + '</td>' +
 '<td>' + renderTaskOwnerLinks(task) + '</td>' +
       '<td>' + escapeHtml(task.status || '') + '</td>' +
-      '<td>' + (task.progress ?? 0) + '%</td>' +
       '<td>' + escapeHtml(task.priority || '') + '</td>' +
       '<td>' + escapeHtml(task.deadline || '-') + '</td>' +
       '<td>' + escapeHtml(task.blocker_note || '-') + '</td>' +
