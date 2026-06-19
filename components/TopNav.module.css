@@ -1,0 +1,284 @@
+/* Top navigation styles, ported from buildTopNavCss() in lib/server/app.js.
+ * Scoped as a CSS module; the same hashed names are shared by TopNav.jsx,
+ * TopNavStatus.jsx, and ClientsNavMenu.jsx because they import this one file. */
+
+.topNav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(18px);
+  background: rgba(13, 18, 33, 0.88);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.topNavInner {
+  width: 100%;
+  margin: 0 auto;
+  padding: 10px 14px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+}
+
+.brand {
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  color: var(--text-strong);
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.navLinks {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: visible;
+}
+
+.navLinks a,
+.navLinks button {
+  color: var(--text);
+  text-decoration: none;
+  padding: 9px 13px;
+  border-radius: 13px;
+  border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
+  background: var(--secondary-soft);
+  font-weight: 750;
+  transition: all 0.15s ease;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.navLinks a:hover,
+.navLinks button:hover {
+  color: var(--text-strong);
+  border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
+  transform: translateY(-1px);
+}
+
+.navLinks a.active {
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  color: var(--text-strong);
+}
+
+.navIconLink {
+  width: 42px;
+  padding: 0 !important;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.navLinks a.logoutLink {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.navDropdownWrap {
+  position: relative;
+  flex: 0 0 auto;
+  padding-bottom: 8px;
+  margin-bottom: -8px;
+}
+
+.navDropdownMenu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 210px;
+  padding: 8px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+  z-index: 9999;
+}
+
+.navDropdownWrap:hover > .navDropdownMenu {
+  display: block;
+}
+
+.navSubmenuWrap {
+  position: relative;
+}
+
+.navDropdownMenu a,
+.navSubmenuLabel {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin: 0;
+  padding: 10px 11px !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  border: 0 !important;
+  text-align: left;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.navDropdownMenu a:hover,
+.navSubmenuLabel:hover {
+  background: rgba(255, 255, 255, 0.07) !important;
+  transform: none !important;
+}
+
+.navSubmenuMenu {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: calc(100% + 8px);
+  min-width: 180px;
+  padding: 8px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+}
+
+.navSubmenuWrap:hover > .navSubmenuMenu {
+  display: block;
+}
+
+.dropdownNote {
+  padding: 8px 11px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.topNavEnd {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.topNavEnd a {
+  color: var(--text);
+  text-decoration: none;
+  padding: 9px 13px;
+  border-radius: 13px;
+  border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
+  background: var(--secondary-soft);
+  font-weight: 750;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.topNavEnd a:hover {
+  color: var(--text-strong);
+}
+
+.topNavEnd a.active {
+  color: var(--text-strong);
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  background: var(--primary-soft);
+}
+
+.topNavStatus {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.topNavPill {
+  padding: 8px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  line-height: 1;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topNavPill.loading,
+.topNavPill.muted {
+  color: var(--muted);
+}
+
+@media (max-width: 1180px) {
+  .navTextOptional {
+    display: none !important;
+  }
+
+  .navLinks {
+    gap: 7px;
+  }
+}
+
+@media (max-width: 900px) {
+  .topNavInner {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .topNavEnd {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+
+  .navLinks {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .navLinks::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .topNavInner {
+    padding: 9px 10px;
+  }
+
+  .navLinks a {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .navIconLink {
+    width: 38px;
+  }
+}

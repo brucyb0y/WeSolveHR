@@ -76,11 +76,17 @@ function fileContent(methods) {
   return lines.join("\n");
 }
 
+// Paths that have been migrated to native Next.js pages/handlers (page.jsx,
+// Server Actions, hand-written route.js). The generator skips these so it never
+// recreates a route.js that would collide with the converted files.
+const MIGRATED_PATHS = new Set(["/login", "/dashboard", "/tasks"]);
+
 // Group routes by destination folder, recording the first original path per
 // method (express first-match semantics). nextSegments() is called for every
 // route in registration order so dynamic-slug normalization stays consistent.
 const byFolder = new Map(); // folderKey -> { segs, methods: Map(method -> path) }
 for (const r of app.routes) {
+  if (MIGRATED_PATHS.has(r.path)) continue;
   const segs = nextSegments(r.path);
   const key = segs.join("/");
   if (!byFolder.has(key)) byFolder.set(key, { segs, methods: new Map() });
