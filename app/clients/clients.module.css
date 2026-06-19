@@ -1,0 +1,198 @@
+/* Clients list page. Ported from the inline <style> in renderClientsListPage()
+ * in lib/server/app.js. Theme + top-nav come from globals.css / TopNav.module.css.
+ * Element rules are scoped under .wrap so they don't leak to other pages. */
+
+.wrap {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 24px 18px 36px;
+}
+
+.topbar,
+.panel,
+.statCard {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 18px 20px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--primary);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.wrap h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -0.04em;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  color: var(--text-strong);
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  font-weight: 800;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.statCard {
+  padding: 14px;
+}
+
+.statLabel {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.statValue {
+  margin-top: 10px;
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.panel {
+  /* card surface inherited above; table lives here */
+}
+
+.wrap table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.wrap th,
+.wrap td {
+  padding: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: left;
+  font-size: 14px;
+  vertical-align: top;
+}
+
+.wrap th {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+}
+
+.empty {
+  padding: 28px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.clientNameLink {
+  color: var(--text-strong);
+  text-decoration: none;
+}
+
+.actionKebab {
+  font-size: 18px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.floatingActionsMenu {
+  display: none;
+  position: fixed;
+  min-width: 180px;
+  z-index: 9999;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  padding: 8px;
+}
+
+.floatingActionsMenu.open {
+  display: block;
+}
+
+.floatingActionsMenu a {
+  display: block;
+  padding: 10px 11px;
+  border-radius: 10px;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.floatingActionsMenu a:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.badge {
+  display: inline-flex;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.badgeOk {
+  background: var(--success-soft);
+  color: var(--text-strong);
+}
+
+.badgeWarn {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+.badgeDanger {
+  background: var(--danger-soft);
+  color: var(--text-strong);
+}
+
+.badgeInfo {
+  background: var(--info-soft);
+  color: var(--text-strong);
+}
+
+@media (max-width: 900px) {
+  .stats {
+    grid-template-columns: 1fr;
+  }
+
+  .panel {
+    overflow-x: auto;
+  }
+}

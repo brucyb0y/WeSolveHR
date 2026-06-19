@@ -1,0 +1,92 @@
+/* Reset Client Workspace. Ported from the inline <style> of the GET
+ * /clients/:id/reset handler in lib/server/app.js. Theme + top-nav come from
+ * globals.css / TopNav.module.css. Element rules scoped under .wrap. */
+
+.wrap {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 18px 36px;
+}
+
+.panel {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: 22px;
+}
+
+.wrap h1 {
+  margin: 0 0 10px;
+  font-size: 30px;
+}
+
+.muted {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.dangerBox {
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(239, 107, 115, 0.35);
+  background: rgba(239, 107, 115, 0.12);
+}
+
+.checkList {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.wrap label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.wrap input[type="checkbox"] {
+  margin-top: 3px;
+}
+
+.actions {
+  margin-top: 22px;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  color: var(--text);
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-weight: 800;
+  cursor: pointer;
+  font: inherit;
+}
+
+.btnDanger {
+  background: var(--danger-soft);
+  color: var(--text-strong);
+  border-color: rgba(239, 107, 115, 0.45);
+}
+
+.confirmInput {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+}

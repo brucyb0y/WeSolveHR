@@ -79,7 +79,16 @@ function fileContent(methods) {
 // Paths that have been migrated to native Next.js pages/handlers (page.jsx,
 // Server Actions, hand-written route.js). The generator skips these so it never
 // recreates a route.js that would collide with the converted files.
-const MIGRATED_PATHS = new Set(["/login", "/dashboard", "/tasks"]);
+const MIGRATED_PATHS = new Set([
+  "/login",
+  "/dashboard",
+  "/tasks",
+  "/leads/:business/imports",
+  "/clients",
+  "/clients/new",
+  "/clients/:id/edit",
+  "/clients/:id/reset",
+]);
 
 // Group routes by destination folder, recording the first original path per
 // method (express first-match semantics). nextSegments() is called for every
