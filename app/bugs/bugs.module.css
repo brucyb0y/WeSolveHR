@@ -1,0 +1,282 @@
+/* Stage 0 Bug Board. Ported from the inline <style> in renderStage0BugBoardPage()
+ * in lib/server/app.js. Theme + top-nav come from globals.css / TopNav.module.css.
+ * Badge classes are added here (the original markup references them but never
+ * defined the CSS) so the severity/status pills match the rest of the app. */
+
+.wrap {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 24px 18px 36px;
+}
+
+.topbar,
+.panel,
+.statCard,
+.boardCol,
+.bugCard {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 18px 20px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--primary);
+  font-weight: 700;
+  margin-bottom: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.wrap h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -0.04em;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.statCard {
+  padding: 14px;
+}
+
+.statLabel {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.statValue {
+  margin-top: 10px;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.panel {
+  margin-bottom: 18px;
+  padding: 16px;
+}
+
+.panel h2 {
+  margin-top: 0;
+}
+
+.createGrid {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.createSourceGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.control {
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+}
+
+.controlTextarea {
+  width: 100%;
+  min-height: 90px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+}
+
+.createBtn {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--primary-soft);
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(250px, 1fr));
+  gap: 14px;
+  align-items: start;
+  overflow-x: auto;
+}
+
+.boardCol {
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+}
+
+.boardColHead {
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.boardColTitle {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.boardColCount {
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--primary-soft);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.boardColBody {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bugCard {
+  padding: 12px;
+}
+
+.bugTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.bugId {
+  color: var(--muted);
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.bugBadges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bugTitle {
+  font-weight: 700;
+  margin-bottom: 8px;
+  line-height: 1.35;
+}
+
+.bugDesc {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+}
+
+.bugMeta,
+.bugSource {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.bugSource {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+.bugActions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cardSelect {
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+}
+
+.emptyCol {
+  color: var(--muted);
+  text-align: center;
+  padding: 20px 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+}
+
+.badge {
+  display: inline-flex;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.badgeOk {
+  background: var(--success-soft);
+  color: var(--text-strong);
+}
+
+.badgeWarn {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+.badgeDanger {
+  background: var(--danger-soft);
+  color: var(--text-strong);
+}
+
+.badgeInfo {
+  background: var(--info-soft);
+  color: var(--text-strong);
+}
