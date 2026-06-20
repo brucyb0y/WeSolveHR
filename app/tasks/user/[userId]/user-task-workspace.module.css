@@ -1,0 +1,360 @@
+/* User task workspace. Ported from the inline <style> of
+ * renderUserTaskWorkspacePage() in lib/server/app.js. Theme + top-nav come from
+ * globals.css / TopNav.module.css. Badge classes added here (the original
+ * referenced badgeClass() output but defined no .badge CSS) so the status pills
+ * render consistently. Element rules scoped under .wrap. */
+
+.wrap {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 24px 18px 36px;
+  position: relative;
+  z-index: 1;
+}
+
+.topbar,
+.panel,
+.statCard,
+.workspaceTaskCard {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 18px 20px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--primary);
+  font-weight: 700;
+  margin-bottom: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.wrap h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -0.04em;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.statCard {
+  padding: 14px;
+}
+
+.statLabel {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.statValue {
+  margin-top: 10px;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.workspaceChipRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.workspaceChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-weight: 700;
+}
+
+.workspaceChip.active {
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  color: var(--text-strong);
+}
+
+.workspaceList {
+  display: grid;
+  gap: 12px;
+}
+
+.panel {
+  padding: 16px;
+}
+
+.workspaceTaskCard {
+  padding: 14px;
+}
+
+.workspaceTaskTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.workspaceTaskTitle {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.workspaceTaskMeta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.workspaceTaskIdLink {
+  color: var(--primary);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 800;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.workspaceTaskIdLink:hover {
+  text-decoration: underline;
+  color: var(--text-strong);
+}
+
+.workspaceMiniTimeline {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.workspaceMiniTimelineTitle {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+
+.workspaceMiniTimelineItem {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+  margin-bottom: 8px;
+  align-items: start;
+}
+
+.workspaceMiniTimelineTime {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.workspaceMiniTimelineText {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.workspaceMiniTimelineBy {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-weight: 700;
+}
+
+.taskModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 8, 20, 0.68);
+  backdrop-filter: blur(8px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 9999;
+}
+
+.taskModal.open {
+  display: flex;
+}
+
+.taskModalCard {
+  width: min(980px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: var(--shadow-soft);
+  padding: 18px;
+}
+
+.taskModalHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.taskModalClose {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  color: var(--text);
+  padding: 10px 12px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.modalMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.modalMetaBox {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.modalMetaLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.modalSection {
+  margin-top: 16px;
+}
+
+.modalSection h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.historyItem {
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.historyTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.historyDetail {
+  white-space: pre-wrap;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.badge {
+  display: inline-flex;
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.badgeOk {
+  background: var(--success-soft);
+  color: var(--text-strong);
+}
+.badgeWarn {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+.badgeDanger {
+  background: var(--danger-soft);
+  color: var(--text-strong);
+}
+.badgeInfo {
+  background: var(--info-soft);
+  color: var(--text-strong);
+}
+.badgeMuted {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+@media (max-width: 1100px) {
+  .workspaceTaskMeta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .workspaceMiniTimelineItem {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
+@media (max-width: 720px) {
+  .workspaceTaskMeta {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .modalMetaGrid {
+    grid-template-columns: 1fr;
+  }
+}
