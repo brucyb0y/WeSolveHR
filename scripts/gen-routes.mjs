@@ -91,6 +91,9 @@ const MIGRATED_PATHS = new Set([
   "/leads",
   "/my-dashboard",
   "/bugs",
+  "/attendance",
+  "/attendance/:userId",
+  "/logs",
 ]);
 
 // Group routes by destination folder, recording the first original path per
