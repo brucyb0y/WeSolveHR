@@ -100,6 +100,7 @@ const MIGRATED_PATHS = new Set([
   "/help",
   "/leads/:business/intelligence",
   "/leads/:business",
+  "/clients/:id",
 ]);
 
 // Group routes by destination folder, recording the first original path per

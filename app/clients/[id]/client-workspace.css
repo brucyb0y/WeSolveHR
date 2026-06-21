@@ -822,3 +822,74 @@
     transform: none;
   }
 }
+
+/* Report tab hover flyout + active-tab underline animation. Not present in the
+ * first CSS extraction pass; ported here (scoped) from the original inline
+ * <style> so the Report flyout hides until hover and the active tab animates. */
+.client-workspace-page .tab.active::after {
+  content: "";
+  position: absolute;
+  left: 14px; right: 14px; bottom: 4px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+              var(--primary),
+              color-mix(in srgb, var(--accent) 70%, var(--primary)));
+  transform-origin: center;
+  animation: cwTabUnderline .22s ease both;
+}
+@keyframes cwTabUnderline {
+  from { transform: scaleX(0); opacity: 0; }
+  to   { transform: scaleX(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .client-workspace-page .tab.active::after { animation: none; }
+}
+
+.client-workspace-page .tab-flyout-wrap { position: relative; display: inline-flex; }
+.client-workspace-page .tab-flyout {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 184px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px -14px rgba(0,0,0,0.65);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  transition: opacity .15s ease, transform .15s ease, visibility .15s;
+  z-index: 50;
+}
+.client-workspace-page .tab-flyout::before {
+  content: "";
+  position: absolute;
+  top: -8px; left: 0; right: 0; height: 8px;
+}
+.client-workspace-page .tab-flyout-wrap:hover .tab-flyout,
+.client-workspace-page .tab-flyout-wrap:focus-within .tab-flyout {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.client-workspace-page .tab-flyout-item {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+.client-workspace-page .tab-flyout-item:hover {
+  background: rgba(255,255,255,0.07);
+  color: var(--text-strong);
+}
