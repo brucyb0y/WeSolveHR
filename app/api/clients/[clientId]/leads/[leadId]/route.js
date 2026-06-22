@@ -13,3 +13,7 @@ export function GET(request) {
 export function PATCH(request) {
   return dispatch("PATCH", "/api/clients/:id/leads/:leadId", request);
 }
+
+export function DELETE(request) {
+  return dispatch("DELETE", "/api/clients/:id/leads/:leadId", request);
+}
