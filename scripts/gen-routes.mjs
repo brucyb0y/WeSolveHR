@@ -1,7 +1,11 @@
-// Generates the App Router route tree (app/**/route.js) directly from the
-// Express route registry in lib/server/app.js. Each generated file is a thin
-// wrapper that forwards to the original handler chain via dispatch(), so the
-// files can never drift from the real routes.
+// Generates the JSON API route tree (app/api/**/route.js) from the Express
+// route registry in lib/server/app.js. Each generated file is a thin wrapper
+// that forwards to the original handler chain via dispatch(), so the files
+// can never drift from the real routes.
+//
+// Page routes are NOT generated: each one is a hand-written
+// app/<route>/page.jsx, and Next cannot host a page.jsx and a route.js at the
+// same path.
 //
 // Run with:  node scripts/gen-routes.mjs
 
@@ -79,9 +83,17 @@ function fileContent(methods) {
 // Group routes by destination folder, recording the first original path per
 // method (express first-match semantics). nextSegments() is called for every
 // route in registration order so dynamic-slug normalization stays consistent.
+// Only the JSON API is still generated. Every other screen is a hand-written
+// page under app/<route>/page.jsx, and a folder cannot hold both a page.jsx and
+// a route.js — regenerating those would break the build.
+const isApiRoute = (p) => p.startsWith("/api/") || p === "/api";
+
 const byFolder = new Map(); // folderKey -> { segs, methods: Map(method -> path) }
 for (const r of app.routes) {
+  // nextSegments() still runs for every route so dynamic-slug naming stays
+  // consistent with the folders that already exist.
   const segs = nextSegments(r.path);
+  if (!isApiRoute(r.path)) continue;
   const key = segs.join("/");
   if (!byFolder.has(key)) byFolder.set(key, { segs, methods: new Map() });
   const folder = byFolder.get(key);
@@ -103,7 +115,7 @@ function cleanGenerated(dir) {
   }
 }
 
-cleanGenerated(APP_DIR);
+cleanGenerated(path.join(APP_DIR, "api"));
 fs.mkdirSync(APP_DIR, { recursive: true });
 
 let count = 0;
@@ -115,5 +127,6 @@ for (const { segs, methods } of byFolder.values()) {
 }
 
 console.log(
-  `Generated ${count} route files under app/ (from ${app.routes.length} registered routes).`,
+  `Generated ${count} API route files under app/api/ ` +
+    `(from ${app.routes.length} registered routes; non-API routes are pages).`,
 );

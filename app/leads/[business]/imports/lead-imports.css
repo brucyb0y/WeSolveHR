@@ -1,0 +1,49 @@
+/* Page CSS for GET /leads/:business/imports, extracted verbatim from the inline
+   <style> of renderLeadImportLogsPage() (lib/server/app.js lines 38407-38586). */
+
+.wrap { max-width: 1600px; margin: 0 auto; padding: 24px 18px 36px; }
+          .topbar, .panel {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+          .topbar {
+            display:flex; justify-content:space-between; align-items:center;
+            gap:16px; flex-wrap:wrap; margin-bottom:20px; padding:18px 20px;
+          }
+          h1 { margin:0; font-size:30px; letter-spacing:-0.04em; }
+          .subtitle { color:var(--muted); margin-top:8px; font-size:14px; }
+          .panel { padding:16px; margin-bottom:16px; overflow-x:auto; }
+          .search-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+          input, select {
+            padding:11px 12px; border-radius:12px; border:1px solid var(--line);
+            background:rgba(255,255,255,0.04); color:var(--text); font:inherit;
+          }
+          .btn {
+            display:inline-flex; align-items:center; text-decoration:none; color:var(--text);
+            padding:10px 13px; border-radius:12px; background:rgba(255,255,255,0.05);
+            border:1px solid rgba(255,255,255,0.12); font-weight:800; cursor:pointer;
+          }
+          .btn-primary {
+            background:var(--primary-soft); color:var(--text-strong);
+            border-color:color-mix(in srgb, var(--primary) 55%, transparent);
+          }
+          table { width:100%; border-collapse:collapse; }
+          th, td {
+            padding:12px; border-bottom:1px solid rgba(255,255,255,0.08);
+            text-align:left; vertical-align:top; font-size:13px;
+          }
+          th {
+            color:var(--muted); text-transform:uppercase; letter-spacing:0.08em;
+            font-size:11px;
+          }
+          .badge {
+            display:inline-flex; padding:6px 9px; border-radius:999px;
+            font-size:12px; font-weight:800;
+          }
+          .badge-ok { background:var(--success-soft); }
+          .badge-info { background:var(--info-soft); }
+          .badge-warn { background:var(--accent-soft); }
+          .badge-danger { background:var(--danger-soft); }
+          .badge-muted { background:rgba(255,255,255,0.08); }

@@ -1,0 +1,118 @@
+/* Page CSS for GET /clients/:id/edit, extracted verbatim from the inline <style>
+   of its Express handler (lib/server/app.js lines 43043-43408). */
+
+.wrap {
+              max-width: 1200px;
+              margin: 0 auto;
+              padding: 24px 18px 36px;
+            }
+
+            .topbar, .panel {
+              background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+              border: 1px solid var(--line);
+              border-radius: var(--radius-lg);
+              box-shadow: var(--shadow-soft);
+            }
+
+            .topbar {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              gap: 16px;
+              flex-wrap: wrap;
+              margin-bottom: 20px;
+              padding: 18px 20px;
+            }
+
+            .panel {
+              padding: 20px;
+              margin-bottom: 16px;
+            }
+
+            .eyebrow {
+              font-size: 11px;
+              letter-spacing: 0.16em;
+              text-transform: uppercase;
+              color: var(--primary);
+              font-weight: 700;
+              margin-bottom: 8px;
+            }
+
+            h1 {
+              margin: 0;
+              font-size: 30px;
+              letter-spacing: -0.04em;
+            }
+
+            h2 {
+              margin: 0 0 14px;
+              font-size: 18px;
+            }
+
+            .subtitle {
+              color: var(--muted);
+              margin-top: 8px;
+              font-size: 14px;
+            }
+
+            .grid {
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 14px;
+            }
+
+            .field {
+              display: flex;
+              flex-direction: column;
+              gap: 8px;
+            }
+
+            label {
+              font-size: 13px;
+              font-weight: 800;
+            }
+
+            input, select, textarea {
+              width: 100%;
+              padding: 12px 13px;
+              border-radius: 12px;
+              border: 1px solid var(--line);
+              background: rgba(255,255,255,0.04);
+              color: var(--text);
+              font: inherit;
+            }
+
+            textarea {
+              min-height: 100px;
+              resize: vertical;
+            }
+
+            .actions {
+              display: flex;
+              gap: 10px;
+              justify-content: flex-end;
+              margin-top: 18px;
+            }
+
+            .btn {
+              padding: 11px 14px;
+              border-radius: 12px;
+              border: 1px solid rgba(255,255,255,0.12);
+              color: var(--text);
+              background: rgba(255,255,255,0.05);
+              font-weight: 800;
+              text-decoration: none;
+              cursor: pointer;
+            }
+
+            .btn-primary {
+              background: var(--primary-soft);
+              color: var(--text-strong);
+              border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+            }
+
+            @media (max-width: 800px) {
+              .grid {
+                grid-template-columns: 1fr;
+              }
+            }

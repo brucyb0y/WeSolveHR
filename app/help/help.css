@@ -1,0 +1,154 @@
+/* Page CSS for GET /help, extracted verbatim from the inline
+   <style> of renderHelpPage() (lib/server/app.js lines 36134-36779). */
+
+.wrap { max-width: 1200px; margin: 0 auto; padding: 24px 18px 48px; }
+
+          .help-hero {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+            padding: 26px 24px;
+            margin-bottom: 18px;
+            position: relative;
+            overflow: hidden;
+          }
+          .help-hero::before {
+            content: "";
+            position: absolute; inset: 0 0 auto 0; height: 3px;
+            background: linear-gradient(90deg, var(--primary), transparent 72%);
+          }
+          .help-hero .eyebrow {
+            font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+            color: var(--primary); font-weight: 800; margin-bottom: 8px;
+          }
+          .help-hero h1 { margin: 0; font-size: 30px; letter-spacing: -0.04em; }
+          .help-hero p { margin: 8px 0 0; color: var(--muted); font-size: 14px; max-width: 60ch; line-height: 1.6; }
+
+          .help-search-box { position: relative; margin-top: 18px; max-width: 480px; }
+          .help-search-box input {
+            width: 100%;
+            padding: 12px 14px 12px 38px;
+            border-radius: 13px;
+            border: 1px solid var(--line-strong);
+            background: rgba(255,255,255,0.04);
+            color: var(--text-strong);
+            font: inherit; font-size: 14px;
+          }
+          .help-search-box input:focus {
+            outline: none;
+            border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+            background: rgba(255,255,255,0.06);
+          }
+          .help-search-box .help-search-ico {
+            position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+            color: var(--muted); font-size: 14px; pointer-events: none;
+          }
+
+          .help-layout { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 20px; align-items: start; }
+
+          .help-toc {
+            position: sticky; top: 16px;
+            display: flex; flex-direction: column; gap: 2px;
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+            padding: 10px;
+          }
+          .help-toc-link {
+            display: flex; align-items: center; gap: 9px;
+            padding: 9px 11px; border-radius: 11px;
+            color: var(--muted); text-decoration: none;
+            font-size: 13px; font-weight: 750;
+            border: 1px solid transparent;
+            transition: background .15s ease, color .15s ease, border-color .15s ease;
+          }
+          .help-toc-link:hover { background: rgba(255,255,255,0.05); color: var(--text-strong); }
+          .help-toc-ico { font-size: 14px; width: 18px; text-align: center; }
+          .help-toc-badge {
+            margin-left: auto; font-size: 9px; font-weight: 900; letter-spacing: 0.06em;
+            text-transform: uppercase; padding: 2px 6px; border-radius: 999px;
+            color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
+            border: 1px solid color-mix(in srgb, var(--accent) 36%, transparent);
+          }
+
+          .help-sections { display: flex; flex-direction: column; gap: 16px; }
+
+          .help-section {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+            padding: 20px 20px 22px;
+            scroll-margin-top: 16px;
+          }
+          .help-section-head { display: flex; align-items: center; gap: 13px; margin-bottom: 16px; }
+          .help-section-icon {
+            flex: 0 0 auto; width: 42px; height: 42px; border-radius: 13px;
+            display: grid; place-items: center; font-size: 20px;
+            background: var(--primary-soft);
+            border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+          }
+          .help-section-titles { min-width: 0; }
+          .help-section-titles h2 { margin: 0; font-size: 18px; }
+          .help-section-blurb { color: var(--muted); font-size: 13px; margin-top: 3px; }
+          .help-admin-badge {
+            margin-left: auto; flex: 0 0 auto;
+            font-size: 10px; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase;
+            padding: 4px 9px; border-radius: 999px;
+            color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
+            border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+          }
+
+          .help-section-body { display: flex; flex-direction: column; gap: 14px; }
+          .help-sub-label {
+            font-size: 11px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase;
+            color: var(--muted); margin-bottom: 8px;
+          }
+          .help-cmd-list { display: flex; flex-direction: column; gap: 7px; }
+          .help-cmd-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+          .help-cmd {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 13px; font-weight: 700;
+            color: var(--text-strong);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 9px;
+            padding: 6px 11px;
+            cursor: pointer;
+            white-space: pre-wrap;
+            text-align: left;
+            transition: background .14s ease, border-color .14s ease, transform .14s ease;
+          }
+          .help-cmd:hover {
+            background: var(--primary-soft);
+            border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+          }
+          .help-cmd:active { transform: translateY(1px); }
+          .help-cmd.copied {
+            color: var(--success);
+            background: color-mix(in srgb, var(--success) 14%, transparent);
+            border-color: color-mix(in srgb, var(--success) 40%, transparent);
+          }
+          .help-cmd-desc { color: var(--muted); font-size: 13px; line-height: 1.5; }
+          .help-note {
+            font-size: 13px; color: var(--text);
+            background: color-mix(in srgb, var(--info) 10%, transparent);
+            border: 1px solid color-mix(in srgb, var(--info) 28%, transparent);
+            border-radius: 11px; padding: 9px 12px;
+            line-height: 1.5;
+          }
+          .help-note::before { content: "💡 "; }
+
+          .help-empty {
+            display: none;
+            text-align: center; color: var(--muted);
+            padding: 40px 20px; font-size: 14px;
+          }
+
+          @media (max-width: 860px) {
+            .help-layout { grid-template-columns: 1fr; }
+            .help-toc { position: static; flex-direction: row; flex-wrap: wrap; }
+            .help-toc-link { flex: 1 1 auto; }
+          }

@@ -1,0 +1,30 @@
+/* Extracted verbatim from the inline <style> of GET / (lib/server/app.js
+   lines 39093-39117). */
+
+body {
+  font-family: Arial, sans-serif;
+  background: #0f172a;
+  color: white;
+  display: grid;
+  place-items: center;
+  height: 100vh;
+  margin: 0;
+}
+
+.box {
+  text-align: center;
+  padding: 32px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+a {
+  display: inline-block;
+  margin-top: 16px;
+  color: white;
+  text-decoration: none;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: #2563eb;
+}

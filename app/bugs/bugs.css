@@ -1,0 +1,78 @@
+/* Page CSS for GET /bugs, extracted verbatim from the inline
+   <style> of renderStage0BugBoardPage() (lib/server/app.js lines 1535-1841). */
+
+.wrap { max-width: 1600px; margin: 0 auto; padding: 24px 18px 36px; }
+          .topbar, .panel, .stat-card, .board-col, .bug-card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+          .topbar {
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 16px; flex-wrap: wrap; margin-bottom: 20px; padding: 18px 20px;
+          }
+          .eyebrow {
+            font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+            color: var(--primary); font-weight: 700; margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+          h1 { margin: 0; font-size: 30px; letter-spacing: -0.04em; }
+          .subtitle { color: var(--muted); margin-top: 8px; font-size: 14px; }
+          .stats {
+            display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 12px; margin-bottom: 20px;
+          }
+          .stat-card { padding: 14px; }
+          .stat-label {
+            color: var(--muted); font-size: 12px; text-transform: uppercase;
+            letter-spacing: 0.08em; font-weight: 700;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+          .stat-value { margin-top: 10px; font-size: 28px; font-weight: 700; }
+          .board {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(250px, 1fr));
+            gap: 14px;
+            align-items: start;
+            overflow-x: auto;
+          }
+          .board-col { min-height: 300px; display: flex; flex-direction: column; }
+          .board-col-head {
+            padding: 14px 14px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+          }
+          .board-col-title { font-size: 14px; font-weight: 700; }
+          .board-col-count {
+            min-width: 28px; height: 28px; border-radius: 999px;
+            display: grid; place-items: center;
+            background: var(--primary-soft);
+            border: 1px solid rgba(255,255,255,0.08);
+            font-size: 12px; font-weight: 700;
+          }
+          .board-col-body { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+          .bug-card { padding: 12px; }
+          .bug-top {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 8px; margin-bottom: 10px;
+          }
+          .bug-id {
+            color: var(--muted); font-size: 12px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+          .bug-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+          .bug-title { font-weight: 700; margin-bottom: 8px; line-height: 1.35; }
+          .bug-desc {
+            color: var(--muted); font-size: 13px; line-height: 1.5;
+            margin-bottom: 10px; white-space: pre-wrap;
+          }
+          .bug-meta, .bug-source { color: var(--muted); font-size: 12px; line-height: 1.5; }
+          .bug-source {
+            margin-top: 10px; padding-top: 10px;
+            border-top: 1px dashed rgba(255,255,255,0.08);
+          }
+          .empty-col {
+            color: var(--muted); text-align: center; padding: 20px 12px;
+            border: 1px dashed rgba(255,255,255,0.12); border-radius: 12px;
+          }

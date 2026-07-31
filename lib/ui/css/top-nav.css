@@ -1,0 +1,320 @@
+
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(18px);
+      background: rgba(13, 18, 33, 0.88);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .top-nav-inner {
+      width: 100%;
+      margin: 0 auto;
+      padding: 10px 14px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      min-height: 64px;
+    }
+
+    .brand {
+      height: 42px;
+      padding: 0 14px;
+      border-radius: 14px;
+      display: inline-flex;
+      align-items: center;
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      color: var(--text-strong);
+      background: var(--primary-soft);
+      border: 1px solid color-mix(in srgb, var(--primary) 55%, transparent);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 8px;
+      flex-wrap: nowrap;
+      min-width: 0;
+      overflow: visible;
+    }
+
+    .nav-links a,
+    .nav-links button {
+      color: var(--text);
+      text-decoration: none;
+      padding: 9px 13px;
+      border-radius: 13px;
+      border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
+      background: var(--secondary-soft);
+      font-weight: 750;
+      transition: all 0.15s ease;
+      font: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+      flex: 0 0 auto;
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .nav-links a:hover,
+    .nav-links button:hover {
+      color: var(--text-strong);
+      border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
+      transform: translateY(-1px);
+    }
+
+    .nav-links a.active {
+      background: var(--primary-soft);
+      border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+      color: var(--text-strong);
+    }
+
+    .nav-icon-link {
+      width: 42px;
+      padding: 0 !important;
+      font-size: 18px;
+      font-weight: 900;
+    }
+
+    .nav-links a.logout-link {
+      background: rgba(255,255,255,0.05);
+      border-color: rgba(255,255,255,0.12);
+    }
+    
+.nav-dropdown-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  padding-bottom: 8px;
+  margin-bottom: -8px;
+}
+
+.nav-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 210px;
+  padding: 8px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+  z-index: 9999;
+}
+
+.nav-dropdown-wrap:hover > .nav-dropdown-menu {
+  display: block;
+}
+
+.nav-submenu-wrap {
+  position: relative;
+}
+
+.nav-dropdown-menu a,
+.nav-submenu-label {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin: 0;
+  padding: 10px 11px !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  border: 0 !important;
+  text-align: left;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.nav-dropdown-menu a:hover,
+.nav-submenu-label:hover {
+  background: rgba(255,255,255,0.07) !important;
+  transform: none !important;
+}
+
+.nav-submenu-menu {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: calc(100% + 8px);
+  min-width: 180px;
+  padding: 8px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+}
+
+/* Invisible hover bridge across the gap between the parent row and the submenu,
+   so the cursor can travel into the submenu without it closing (the diagonal /
+   dead-zone problem). It is part of the submenu (a child of the wrap), so
+   hovering it keeps .nav-submenu-wrap:hover true. */
+.nav-submenu-menu::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -14px;
+  width: 16px;
+}
+
+.nav-submenu-wrap:hover > .nav-submenu-menu {
+  display: block;
+}
+
+    .top-nav-end {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: nowrap;
+      min-width: 0;
+    }
+
+    .top-nav-end a {
+      color: var(--text);
+      text-decoration: none;
+      padding: 9px 13px;
+      border-radius: 13px;
+      border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
+      background: var(--secondary-soft);
+      font-weight: 750;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      flex: 0 0 auto;
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .top-nav-end a:hover {
+      color: var(--text-strong);
+    }
+
+    .top-nav-end a.active {
+      color: var(--text-strong);
+      border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+      background: var(--primary-soft);
+    }
+
+    .top-nav-status {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: nowrap;
+      min-width: 0;
+    }
+
+    .top-nav-pill {
+      padding: 8px 11px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.10);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+      line-height: 1;
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      max-width: 190px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .top-nav-pill.loading,
+    .top-nav-pill.muted {
+      color: var(--muted);
+    }
+
+    .quick-action-btn {
+      background: var(--primary-soft) !important;
+      border-color: color-mix(in srgb, var(--primary) 55%, transparent) !important;
+      color: var(--text-strong) !important;
+    }
+
+    @media (max-width: 1180px) {
+      .nav-text-optional {
+        display: none !important;
+      }
+
+      .nav-links {
+        gap: 7px;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .top-nav-inner {
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+
+      .top-nav-end {
+        grid-column: 1 / -1;
+        justify-content: flex-start;
+        overflow-x: auto;
+      }
+
+      .nav-links {
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+
+      .nav-links::-webkit-scrollbar {
+        display: none;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .top-nav-inner {
+        padding: 9px 10px;
+      }
+
+      .nav-links a {
+        padding: 8px 10px;
+        font-size: 13px;
+      }
+
+      .nav-icon-link {
+        width: 38px;
+      }
+    }
+
+    /* keep existing quick action modal styles */
+    .quick-action-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(3, 8, 20, 0.68);
+      backdrop-filter: blur(8px);
+      z-index: 9998;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+
+    .quick-action-overlay.open { display: flex; }
+
+    .quick-action-modal {
+      width: min(920px, 100%);
+      max-height: 88vh;
+      overflow: auto;
+      background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow-soft);
+      padding: 18px;
+    }

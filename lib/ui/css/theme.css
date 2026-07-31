@@ -1,0 +1,43 @@
+
+    :root {
+      --bg-0: #151a2e;
+      --bg-1: #1b2238;
+      --bg-2: #242c47;
+
+      --panel: rgba(31, 39, 63, 0.88);
+      --panel-strong: rgba(26, 33, 55, 0.94);
+      --panel-soft: rgba(38, 47, 74, 0.88);
+
+      --text: #f3f6ff;
+      --text-strong: #ffffff;
+      --muted: #c4cce0;
+
+      --line: rgba(255,255,255,0.12);
+      --line-strong: rgba(255,255,255,0.20);
+
+      --primary: #8b7cf6;
+      --secondary: #56c7d9;
+      --accent: #f3b562;
+      --accent-2: #f28bc1;
+
+      --success: #58c98a;
+      --danger: #ef6b73;
+      --info: #6ea8ff;
+      --neutral: #aab6cf;
+
+      --primary-soft: rgba(139,124,246,0.16);
+      --secondary-soft: rgba(86,199,217,0.16);
+      --accent-soft: rgba(243,181,98,0.16);
+      --accent-2-soft: rgba(242,139,193,0.16);
+      --success-soft: rgba(88,201,138,0.16);
+      --danger-soft: rgba(239,107,115,0.16);
+      --info-soft: rgba(110,168,255,0.16);
+      --neutral-soft: rgba(170,182,207,0.16);
+
+      --shadow-soft: 0 0 0 1px rgba(255,255,255,0.03), 0 10px 30px rgba(0,0,0,0.22);
+      --shadow-card: 0 0 0 1px rgba(255,255,255,0.04), 0 8px 24px rgba(0,0,0,0.18);
+
+      --radius-xl: 22px;
+      --radius-lg: 18px;
+      --radius-md: 14px;
+    }

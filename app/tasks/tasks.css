@@ -1,0 +1,400 @@
+/* Page CSS for GET /tasks, extracted verbatim from the inline <style>
+   of its Express handler (lib/server/app.js lines 44191-45188). */
+
+.wrap {
+            max-width: 1380px;
+            margin: 0 auto;
+            padding: 24px 18px 36px;
+            position: relative;
+            z-index: 1;
+          }
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  box-shadow: var(--shadow-soft);
+}
+
+          .eyebrow {
+            font-size: 11px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--primary);
+            font-weight: 700;
+            margin-bottom: 8px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 30px;
+            letter-spacing: -0.04em;
+          }
+
+          .subtitle {
+            color: var(--muted);
+            margin-top: 8px;
+            font-size: 14px;
+          }
+
+          .actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+          }
+          
+.task-row-overdue {
+  background-color: rgba(239, 107, 115, 0.08);
+}
+
+.task-row-blocked {
+  background-color: rgba(243, 181, 98, 0.10);
+}
+
+.task-row-blocked.task-row-overdue {
+  background-color: rgba(239, 107, 115, 0.14);
+}
+
+.task-row-overdue td:first-child {
+  border-left: 4px solid #ef6b73;
+}
+
+.task-row-blocked td:first-child {
+  border-left: 4px solid #f3b562;
+}
+
+tbody tr:hover {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+tbody tr.task-row-overdue:hover,
+tbody tr.task-row-blocked:hover,
+tbody tr.task-row-blocked.task-row-overdue:hover {
+  background: color-mix(in srgb, var(--danger) 24%, var(--primary) 6%);
+}
+
+.owner-chip-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--text);
+  background: var(--secondary-soft);
+  border: 1px solid rgba(255,255,255,0.10);
+  font-size: 12px;
+  font-weight: 700;
+  margin-right: 6px;
+  margin-bottom: 4px;
+}
+
+.owner-chip-link:hover {
+  border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
+  color: var(--text-strong);
+}
+
+tbody tr {
+  cursor: pointer;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  z-index: 9999;
+}
+
+.modal.open {
+  display: block;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 8, 20, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.modal-card {
+  position: relative;
+  width: min(920px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  margin: 20px auto;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  box-shadow: var(--shadow-soft);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  z-index: 2;
+}
+
+.modal-title {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.modal-close {
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.modal-body {
+  padding: 18px 20px 22px;
+}
+
+.modal-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.modal-meta-box {
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.03);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.modal-meta-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.modal-section {
+  margin-top: 18px;
+}
+
+.modal-section h3 {
+  margin: 0 0 10px 0;
+  font-size: 15px;
+}
+
+.history-list {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.history-item {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  white-space: pre-wrap;
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.history-top strong {
+  color: var(--text);
+}
+
+.history-top span {
+  color: var(--muted);
+}
+
+.history-detail {
+  color: var(--text);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 760px) {
+  .modal-meta-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.actions a {
+  color: var(--text);
+  text-decoration: none;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent);
+  background: var(--secondary-soft);
+  font-weight: 600;
+}
+
+.actions a:hover {
+  color: var(--text-strong);
+  border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
+}
+
+.panel {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: 18px;
+  margin-bottom: 18px;
+}
+
+input, select, button {
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font-size: 14px;
+}
+
+input::placeholder {
+  color: var(--muted);
+}
+
+button {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--text-strong);
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+          button {
+            cursor: pointer;
+            font-weight: 700;
+            color: var(--primary);
+          }
+
+          button:hover {
+            border-color: var(--line-strong);
+          }
+
+          label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--muted);
+            font-size: 14px;
+            white-space: nowrap;
+          }
+          
+.controls select[multiple] {
+  height: 44px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font: inherit;
+  box-shadow: none;
+}
+
+.controls select[multiple]:focus {
+  outline: none;
+  border-color: var(--line-strong);
+}
+
+.controls select[multiple] option {
+  color: var(--text);
+  background: #1f2740;
+}
+
+.controls select[multiple] option:checked {
+  background: linear-gradient(0deg, rgba(139,124,246,0.28), rgba(139,124,246,0.28));
+  color: var(--text-strong);
+}
+
+          #statusText {
+            color: var(--muted);
+            margin: 8px 2px 14px;
+            font-size: 14px;
+          }
+
+.wrap {
+  max-width: 1800px;
+  margin: 0 auto;
+  padding: 20px 18px 32px;
+}
+
+.panel.task-table-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.03);
+}
+
+table {
+  width: 100%;
+  min-width: 1150px;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  text-align: left;
+  vertical-align: top;
+}
+
+/* Columns: ID, Title, Business, Assignee, Status, Priority, Deadline, Blocker */
+th:nth-child(1), td:nth-child(1) { min-width: 70px; }   /* ID */
+th:nth-child(2), td:nth-child(2) { min-width: 160px; max-width: 240px; overflow-wrap: anywhere; }  /* Title */
+th:nth-child(3), td:nth-child(3) { min-width: 120px; }  /* Business */
+th:nth-child(4), td:nth-child(4) { min-width: 150px; }  /* Assignee */
+th:nth-child(5), td:nth-child(5) { min-width: 120px; }  /* Status */
+th:nth-child(6), td:nth-child(6) { min-width: 110px; }  /* Priority */
+th:nth-child(7), td:nth-child(7) { min-width: 130px; }  /* Deadline */
+th:nth-child(8), td:nth-child(8) { min-width: 260px; }  /* Blocker */
+
+tbody tr:hover {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+          @media (max-width: 1100px) {
+            .controls {
+              grid-template-columns: 1fr 1fr;
+            }
+          }
+
+          @media (max-width: 700px) {
+            .wrap { padding: 16px 12px 28px; }
+            h1 { font-size: 24px; }
+            .controls { grid-template-columns: 1fr; }
+          }
