@@ -73,6 +73,40 @@ migration's diff stays reviewable.
 
 **There is no `dangerouslySetInnerHTML` anywhere in `app/`.**
 
+
+## Gotcha: module-level state is duplicated across Next's bundle layers
+
+`lib/server/session.js` keeps the session store on `globalThis`, not in a
+module-level `const`. This is load-bearing.
+
+Next bundles **server components / server actions** and **route handlers** into
+separate module graphs, so `session.js` is instantiated more than once per
+process (verified by probe: two "module init" hits per boot, and before the fix
+the second instance could not see the first's entries).
+
+With a plain `const store = new Map()` the effect was:
+
+* login (a server action) wrote the session into graph A's Map;
+* pages rendered correctly — RSC auth also reads graph A;
+* **every `/api/*` call 302'd to `/login`** — the Express adapter's route
+  handlers read graph B's Map, which was always empty;
+* client components then tried to `JSON.parse` the login page's HTML, giving
+  `Unexpected token '<', "<!DOCTYPE "... is not valid JSON`.
+
+That broke all 30 files across 10 page areas that fetch `/api/*` from the
+client: every modal save, the bulk lead operations, notes, audio upload and the
+Excel import.
+
+**It was invisible to Basic-auth testing.** `requireDashboardAuth` checks
+`req.session?.userId` first and falls back to `DASHBOARD_USERNAME`/`PASSWORD`.
+Every curl check in this migration used `-u`, which takes the fallback branch
+and never touches the session store, so the whole API surface reported 200 while
+being broken for anyone actually logged in. **Verify authenticated flows with a
+real session login, not Basic auth.**
+
+Any other module-level mutable state shared between an RSC/server action and a
+route handler needs the same `globalThis` treatment.
+
 ## Chart kit
 
 `components/charts/` is shared by `/clients/[id]` (staff) and
