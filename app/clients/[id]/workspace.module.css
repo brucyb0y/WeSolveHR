@@ -863,3 +863,42 @@ ${buildSweetAlertCss()}
 .timelineList {
   margin-top: 16px;
 }
+
+/* Badge row on action / contributor cards (was an inline style attribute). */
+.badgeRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---- shared modal shell (was repeated inline styles per modal) --------- */
+
+.modalHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.modalTitle {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.fieldWide {
+  grid-column: 1 / -1;
+}
+
+/* Inline checkbox inside a modal label — the form's `input` rule sets
+   width:100%, which the original overrode inline. */
+.inlineCheckbox {
+  width: auto;
+}
