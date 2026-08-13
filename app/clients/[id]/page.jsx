@@ -257,6 +257,17 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
     leadLabel: i.related_lead_id ? leadLabel(i.related_lead_id) : "-",
   }));
 
+  const decoratedLinkedTasks = (data.linkedTasks || []).map((t) => ({
+    ...t,
+    ownerName: userName(t.assigned_to_user_id),
+    taskRefNo: t.task_no || t.id,
+    // Only linkable when the task has an assignee whose list we can open.
+    openHref: t.assigned_to_user_id
+      ? `/tasks/user/${Number(t.assigned_to_user_id)}`
+      : "",
+    updatedText: t.updated_at ? formatDateTime(t.updated_at) : "-",
+  }));
+
   const decoratedMilestones = milestones.map((m) => ({
     ...m,
     updatedText: m.updated_at ? formatDateTime(m.updated_at) : "-",
@@ -939,6 +950,7 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
               activityLogs={activityLogs}
               updates={updates}
               meetingStats={meetingStats}
+              linkedTasks={decoratedLinkedTasks}
               reportSubviews={reportSubviews}
             />
           )}

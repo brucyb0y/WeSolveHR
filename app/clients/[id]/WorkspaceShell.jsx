@@ -21,6 +21,7 @@
 import { useEffect, useState } from "react";
 import ActionsTab from "./ActionsTab";
 import TaskTab from "./TaskTab";
+import LinkedTasksPanel from "./LinkedTasksPanel";
 import BlockersTab from "./BlockersTab";
 import CampaignsTab from "./CampaignsTab";
 import MeetingsTab from "./MeetingsTab";
@@ -56,6 +57,7 @@ export default function WorkspaceShell({
   activityLogs = [],
   updates = [],
   meetingStats = {},
+  linkedTasks = [],
   reportSubviews = null,
 }) {
   const [modal, setModal] = useState(null);
@@ -110,13 +112,18 @@ export default function WorkspaceShell({
           onEdit={open("action")}
         />
       ) : activeTab === "task" ? (
-        <TaskTab
-          clientId={clientId}
-          workItems={workItems}
-          chips={taskChips}
-          alertStrip={taskAlertStrip}
-          onAdd={open("workItem")}
-        />
+        <>
+          <TaskTab
+            clientId={clientId}
+            workItems={workItems}
+            chips={taskChips}
+            alertStrip={taskAlertStrip}
+            onAdd={open("workItem")}
+          />
+          {/* Second panel on the Task tab: tasks from the org-wide system that
+            name this client. Separate data source, separate endpoint. */}
+          <LinkedTasksPanel clientId={clientId} linkedTasks={linkedTasks} />
+        </>
       ) : activeTab === "blockers" ? (
         <BlockersTab
           clientId={clientId}
