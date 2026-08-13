@@ -1,0 +1,241 @@
+/* Page-scoped styles for /login, carried over verbatim from the <style> block
+ * renderLoginPage() used to inline. Class names are camelCased for JSX; the
+ * declarations are unchanged. */
+
+.loginShell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.loginWrap {
+  flex: 1;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1.1fr 0.95fr;
+  gap: 28px;
+  align-items: center;
+  padding: 32px 18px 48px;
+}
+
+.heroCard,
+.loginCard {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft);
+}
+
+.heroCard {
+  padding: 34px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--primary);
+  font-weight: 700;
+  margin-bottom: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.heroCard h1 {
+  margin: 0 0 14px;
+  font-size: 42px;
+  line-height: 1.05;
+  letter-spacing: -0.05em;
+}
+
+.heroCard p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.loginCard {
+  padding: 28px;
+  max-width: 460px;
+  width: 100%;
+  margin-left: auto;
+}
+
+.loginCard h2 {
+  margin: 0 0 8px;
+  font-size: 28px;
+  letter-spacing: -0.04em;
+}
+
+.loginSubtitle {
+  color: var(--muted);
+  margin-bottom: 22px;
+  font-size: 14px;
+}
+
+.formGroup {
+  margin-bottom: 16px;
+}
+
+.label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.input {
+  width: 100%;
+  padding: 14px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 15px;
+  outline: none;
+}
+
+.input:focus {
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  box-shadow: 0 0 0 3px rgba(139, 124, 246, 0.14);
+}
+
+.loginBtn {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: var(--primary-soft);
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.loginBtn:disabled {
+  opacity: 0.75;
+  cursor: wait;
+}
+
+.loginError {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(239, 107, 115, 0.28);
+  background: rgba(239, 107, 115, 0.12);
+  color: #ffd7da;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.helper {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.minimalTop {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(18px);
+  background: rgba(13, 18, 33, 0.82);
+}
+
+.minimalTopInner {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* The original markup carried class="brand", which matched BOTH the top-nav
+ * .brand rule (inlined into every page via buildTopNavCss) and the login
+ * page's own later .brand rule. The rendered element was therefore the top-nav
+ * pill with the four login declarations winning on cascade order. Both halves
+ * are merged here so the result no longer depends on stylesheet ordering. */
+.brand {
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  text-decoration: none;
+  white-space: nowrap;
+  /* login-page overrides */
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+.brandSub {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.loadingOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(9, 12, 24, 0.55);
+  backdrop-filter: blur(6px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.loadingOverlay.show {
+  display: flex;
+}
+
+.loadingCard {
+  min-width: 240px;
+  padding: 22px 24px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-soft);
+  text-align: center;
+}
+
+.loadingSpinner {
+  width: 34px;
+  height: 34px;
+  margin: 0 auto 12px;
+  border-radius: 999px;
+  border: 3px solid rgba(255, 255, 255, 0.14);
+  border-top-color: var(--primary);
+  animation: spin 0.8s linear infinite;
+}
+
+.loadingLabel {
+  font-weight: 700;
+}
+
+.phoneHelper {
+  margin-top: 8px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 980px) {
+  .loginWrap {
+    grid-template-columns: 1fr;
+  }
+
+  .loginCard {
+    margin-left: 0;
+    max-width: 100%;
+  }
+}

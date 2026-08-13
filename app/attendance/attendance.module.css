@@ -1,0 +1,372 @@
+/* Page-scoped styles for /attendance.
+ *
+ * Bare `h1`, `table`, `th`, `td`, `tr:hover td` are scoped under `.wrap`.
+ * `.muted` and `.empty-cell` stay global.
+ *
+ * PRESERVED BUG: `.statusNoUpdate` / `.statusUnknown` reference var(--dangerSoft),
+ * which does not exist — the theme defines --danger-soft. The declaration is
+ * invalid at computed-value time, so those two pills render with a border and no
+ * fill. Kept verbatim rather than silently corrected; changing it would alter
+ * the page's appearance. */
+
+.wrap {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 24px 18px 36px;
+  position: relative;
+  z-index: 1;
+}
+
+.topbar,
+.panel,
+.statCard {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 18px 20px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--primary);
+  font-weight: 700;
+  margin-bottom: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.wrap h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -0.04em;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.statCard {
+  padding: 14px;
+}
+
+.statLabel {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.statValue {
+  margin-top: 10px;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.statNote {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.tabbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.tabBtn {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.tabBtn.active {
+  background: var(--primary-soft);
+  border-color: rgba(139, 124, 246, 0.45);
+}
+
+.tabPanel {
+  display: none;
+}
+
+.tabPanel.active {
+  display: block;
+}
+
+.panel {
+  padding: 18px;
+  margin-bottom: 18px;
+}
+
+.panel h2 {
+  margin-top: 0;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.wrap table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.wrap th,
+.wrap td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.wrap th {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.wrap tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.personLink {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.statusPill,
+.flagPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  margin-right: 6px;
+  margin-bottom: 6px;
+}
+
+.statusLogin,
+.statusBack {
+  background: var(--success-soft);
+}
+
+.statusBreak {
+  background: var(--accent-soft);
+}
+
+.statusLogout {
+  background: var(--neutral-soft);
+}
+
+.statusLeave {
+  background: var(--info-soft);
+}
+
+.statusNoUpdate,
+.statusUnknown {
+  background: var(--dangerSoft);
+}
+
+.flagDanger {
+  background: var(--danger-soft);
+}
+
+.flagWarn {
+  background: var(--accent-soft);
+}
+
+.flagInfo {
+  background: var(--info-soft);
+}
+
+.alertList {
+  display: grid;
+  gap: 12px;
+}
+
+.alertItem {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.loadingState,
+.errorState {
+  color: var(--muted);
+  padding: 20px 0;
+}
+
+.loadingOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 22, 0.72);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.loadingOverlay.show {
+  display: flex;
+}
+
+.loadingCard {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: 18px 22px;
+  min-width: 260px;
+  text-align: center;
+}
+
+.loadingLabel {
+  font-weight: 700;
+}
+
+.loadingSpinner {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.16);
+  border-top-color: var(--primary);
+  margin: 0 auto 12px;
+  animation: spin 0.8s linear infinite;
+}
+
+.insightSection {
+  margin-top: 0;
+}
+
+.insightSectionSpaced {
+  margin-top: 18px;
+}
+
+.insightSectionTitle {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.insightGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.insightCard {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.insightCardTitle {
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.insightCardMain {
+  font-size: 24px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.insightList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.insightLine {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.insightSubtle {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1100px) {
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
+
+  .grid3 {
+    grid-template-columns: 1fr;
+  }
+
+  .insightGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .insightGrid {
+    grid-template-columns: 1fr;
+  }
+}

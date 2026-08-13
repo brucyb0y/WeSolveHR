@@ -1,0 +1,107 @@
+/* Page-scoped styles for /clients/:id/reset.
+ *
+ * `.muted` here merges the global rule (color) with the local override the page
+ * added (line-height), so it renders the same without depending on which
+ * stylesheet loads first.
+ *
+ * Bare `h1`, `label` and `input[type=checkbox]` rules are scoped under `.wrap`;
+ * the top nav has no such elements, so the cascade is unchanged. */
+
+.wrap {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 18px 36px;
+}
+
+.panel {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: 22px;
+}
+
+.wrap h1 {
+  margin: 0 0 10px;
+  font-size: 30px;
+}
+
+.muted {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.dangerBox {
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(239, 107, 115, 0.35);
+  background: rgba(239, 107, 115, 0.12);
+}
+
+.errorBox {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(239, 107, 115, 0.45);
+  background: rgba(239, 107, 115, 0.16);
+  color: #ffd7da;
+  font-weight: 700;
+}
+
+.checkList {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.wrap label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.wrap input[type="checkbox"] {
+  margin-top: 3px;
+}
+
+.actions {
+  margin-top: 22px;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  color: var(--text);
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-weight: 800;
+  cursor: pointer;
+  font: inherit;
+}
+
+.btnDanger {
+  background: var(--danger-soft);
+  color: var(--text-strong);
+  border-color: rgba(239, 107, 115, 0.45);
+}
+
+.confirmInput {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+}

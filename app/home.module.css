@@ -1,0 +1,33 @@
+/* Page-scoped styles for "/" — the public landing/health page.
+ *
+ * This page deliberately does NOT use the app theme: the original set its own
+ * Arial / #0f172a body styling instead of including buildThemeCss(). Those body
+ * rules are reproduced on a wrapper element rather than `body`, since body is
+ * now styled globally by globals.css for every other page. */
+
+.shell {
+  font-family: Arial, sans-serif;
+  background: #0f172a;
+  color: white;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+}
+
+.box {
+  text-align: center;
+  padding: 32px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.box a {
+  display: inline-block;
+  margin-top: 16px;
+  color: white;
+  text-decoration: none;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: #2563eb;
+}

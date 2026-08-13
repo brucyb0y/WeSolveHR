@@ -1,0 +1,307 @@
+/* Page-scoped styles for /logs.
+ *
+ * Bare `h1`, `table`, `th`, `td` and `tbody tr:hover` rules are scoped under
+ * `.wrap`. `.muted` and `.empty-cell` stay global (buildBasePageCss). */
+
+.wrap {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 24px 18px 36px;
+  position: relative;
+  z-index: 1;
+}
+
+.topbar,
+.panel {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 18px 20px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--primary);
+  font-weight: 700;
+  margin-bottom: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.wrap h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -0.04em;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.links a:hover {
+  color: var(--text-strong);
+  border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
+}
+
+.panel {
+  padding: 18px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.wrap table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.wrap th,
+.wrap td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: left;
+  vertical-align: top;
+}
+
+.wrap th {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: rgba(255, 255, 255, 0.04);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.wrap tbody tr:hover {
+  background: rgba(97, 255, 161, 0.045);
+}
+
+.logBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+
+.logBadgeSuccess {
+  background: rgba(88, 201, 138, 0.16);
+  color: #c9ffe0;
+  border-color: rgba(88, 201, 138, 0.28);
+}
+
+.logBadgeDanger {
+  background: rgba(239, 107, 115, 0.16);
+  color: #ffd7da;
+  border-color: rgba(239, 107, 115, 0.28);
+}
+
+.logBadgeWarn {
+  background: rgba(243, 181, 98, 0.16);
+  color: #ffe4b8;
+  border-color: rgba(243, 181, 98, 0.28);
+}
+
+.logBadgeMuted {
+  background: rgba(170, 182, 207, 0.14);
+  color: #d9e1f2;
+  border-color: rgba(170, 182, 207, 0.22);
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.logStatCard {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  box-shadow: var(--shadow-soft);
+}
+
+.logStatLabel {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.logStatValue {
+  margin-top: 8px;
+  font-size: 26px;
+  font-weight: 900;
+}
+
+.filtersPanel {
+  margin-bottom: 16px;
+}
+
+.filtersGrid {
+  display: grid;
+  grid-template-columns: 1.4fr 1.1fr 0.9fr 0.9fr 0.9fr auto auto;
+  gap: 10px;
+}
+
+.filtersGrid input,
+.filtersGrid select,
+.filtersGrid button {
+  padding: 10px 11px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+}
+
+.filtersGrid button {
+  cursor: pointer;
+  font-weight: 900;
+  background: var(--primary-soft);
+}
+
+.commandCell {
+  max-width: 520px;
+}
+
+.commandPreview {
+  max-height: 44px;
+  overflow: hidden;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.commandFull {
+  display: none;
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.commandFull.open {
+  display: block;
+}
+
+.miniLink {
+  margin-top: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font-weight: 900;
+  cursor: pointer;
+  padding: 0;
+}
+
+.exceptionPill {
+  display: inline-flex;
+  max-width: 240px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: var(--danger-soft);
+  color: #ffd7da;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.exceptionNone {
+  color: var(--muted);
+}
+
+.sidSmall {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.personStats {
+  margin: 0 0 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  grid-column: 1 / -1;
+}
+
+.personStatBox {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 12px;
+}
+
+.personStatTitle {
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.personChip {
+  display: inline-flex;
+  margin: 4px;
+  padding: 7px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.msg {
+  white-space: pre-wrap;
+}
+
+@media (max-width: 1100px) {
+  .statsGrid,
+  .personStats {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .filtersGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .statsGrid,
+  .personStats,
+  .filtersGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .wrap {
+    padding: 16px 12px 28px;
+  }
+
+  .wrap h1 {
+    font-size: 24px;
+  }
+}

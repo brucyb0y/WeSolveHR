@@ -1,0 +1,549 @@
+/* Page-scoped styles for /team-work.
+ *
+ * Bare/element-qualified selectors (`h1`, `table.grid th`, `tfoot td`,
+ * `tr:hover .row-del`, ...) are scoped under a local class as CSS Modules
+ * requires. `.muted` and `.empty-cell` remain global. */
+
+.wrap {
+  max-width: 1700px;
+  margin: 0 auto;
+  padding: 24px 18px 48px;
+  position: relative;
+  z-index: 1;
+}
+
+.topbar,
+.panel {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+  padding: 18px 20px;
+}
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--primary);
+  font-weight: 700;
+  margin-bottom: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.wrap h1 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: -0.04em;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.dateControls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dateControls input[type="date"] {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 9px 12px;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 700;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  padding: 9px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  color: var(--text-strong);
+  border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
+}
+
+.btnPrimary {
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  color: var(--text-strong);
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.summaryCard {
+  padding: 14px;
+}
+
+.sLabel {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.sValue {
+  margin-top: 8px;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.sNote {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.panel {
+  padding: 16px;
+  margin-bottom: 18px;
+}
+
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.panelHead h2 {
+  margin: 0;
+}
+
+.headActions {
+  display: flex;
+  gap: 8px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.grid {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+.grid th,
+.grid td {
+  border: 1px solid var(--line);
+  padding: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.grid thead th {
+  background: rgba(255, 255, 255, 0.04);
+  padding: 10px 8px;
+  font-weight: 800;
+  position: sticky;
+  top: 0;
+}
+
+.memberHead {
+  text-align: left;
+  padding-left: 12px;
+}
+
+.teamRow td {
+  background: var(--primary-soft);
+  text-align: left;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  padding: 8px 12px;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.nameCell {
+  text-align: left;
+  padding: 8px 10px;
+  min-width: 150px;
+}
+
+.nm {
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+.nmText {
+  border-bottom: 1px dotted color-mix(in srgb, var(--primary) 60%, transparent);
+}
+
+.nm:hover .nmText {
+  color: var(--text-strong);
+}
+
+.resp {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.rowDel {
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: #ff9b9b;
+  font-weight: 900;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.grid tr:hover .rowDel {
+  opacity: 0.7;
+}
+
+.rowDel:hover {
+  opacity: 1 !important;
+}
+
+.colDel {
+  opacity: 0.4;
+}
+
+.hr {
+  width: 56px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: center;
+  padding: 9px 4px;
+  font: inherit;
+  font-weight: 600;
+}
+
+.hr:focus {
+  outline: 2px solid color-mix(in srgb, var(--primary) 60%, transparent);
+  background: rgba(139, 124, 246, 0.1);
+}
+
+.hasHours {
+  background: rgba(139, 124, 246, 0.07);
+}
+
+.totalCell {
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.grid tfoot td {
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 9px 6px;
+}
+
+.grand {
+  color: var(--primary);
+}
+
+.footLabel {
+  text-align: left;
+  padding-left: 12px;
+}
+
+.logsList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 620px;
+  overflow-y: auto;
+}
+
+.logItem {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 11px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.lMain {
+  font-size: 13px;
+}
+
+.lMeta {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.up {
+  color: #7bd88f;
+  font-weight: 800;
+}
+
+.down {
+  color: #ff9b9b;
+  font-weight: 800;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 14px;
+  text-align: center;
+}
+
+.banner {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 180, 90, 0.12);
+  border: 1px solid rgba(255, 180, 90, 0.35);
+  color: #ffd9a8;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 8, 18, 0.62);
+  backdrop-filter: blur(3px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 20px;
+}
+
+.modalOverlay.open {
+  display: flex;
+}
+
+.modal {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+  width: 100%;
+  max-width: 420px;
+  padding: 20px;
+}
+
+.modal h3 {
+  margin: 0 0 14px;
+  font-size: 18px;
+}
+
+.field {
+  margin-bottom: 12px;
+}
+
+.field label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 5px;
+  font-weight: 700;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 10px;
+  font: inherit;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.saveFlash {
+  font-size: 12px;
+  color: #7bd88f;
+  margin-left: 8px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.saveFlash.show {
+  opacity: 1;
+}
+
+.namepop {
+  position: fixed;
+  z-index: 250;
+  width: 290px;
+  max-width: calc(100vw - 24px);
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--line));
+  border-radius: 14px;
+  box-shadow:
+    var(--shadow-soft),
+    0 18px 40px rgba(0, 0, 0, 0.45);
+  padding: 14px;
+  display: none;
+}
+
+.namepop.open {
+  display: block;
+}
+
+.npHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.npName {
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.npTeam {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--primary);
+}
+
+.npTotal {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.npTotal b {
+  color: var(--text-strong);
+  font-size: 18px;
+}
+
+.npHours {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.npHrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.npHrow span {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.npHrow input {
+  width: 60px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 5px 6px;
+  font: inherit;
+  font-weight: 700;
+}
+
+.npHrow input:focus {
+  outline: 2px solid color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+.npNotesLabel {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+
+.npNotes {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 56px;
+  resize: vertical;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.npNotes:focus {
+  outline: 2px solid color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+.npHint {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 6px;
+}

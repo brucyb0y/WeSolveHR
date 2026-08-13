@@ -1,0 +1,430 @@
+/* Page-scoped styles for /tasks, from the <style> block in app.get("/tasks").
+ *
+ * The original stylesheet declared several rules twice; the merged result is
+ * written out once here:
+ *   - `.wrap` appeared twice (max-width 1380px then 1800px) -> 1800px wins;
+ *   - `button` appeared twice; the second reset `color` to var(--primary) while
+ *     the first's background/border-color survived;
+ *   - `tbody tr:hover` appeared twice with identical declarations.
+ *
+ * `.modalClose` carries its merged result explicitly (its own rule plus the
+ * font-weight it picked up from the bare `button` rule) because the modal sits
+ * outside `.wrap`, where the scoped element rules no longer reach it.
+ *
+ * NOT defined, exactly as before: `.controls` has no base rule at all — only the
+ * two media-query overrides below, which set grid-template-columns on a plain
+ * block element and therefore do nothing. `.task-link` has no rule either, so
+ * the "#123" cell renders with plain cell styling. Both preserved as-is. */
+
+.wrap {
+  max-width: 1800px;
+  margin: 0 auto;
+  padding: 20px 18px 32px;
+  position: relative;
+  z-index: 1;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  box-shadow: var(--shadow-soft);
+}
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--primary);
+  font-weight: 700;
+  margin-bottom: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.wrap h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: -0.04em;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.panel {
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  padding: 18px;
+  margin-bottom: 18px;
+}
+
+.taskTablePanel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.wrap input,
+.wrap select,
+.wrap button {
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.wrap input::placeholder {
+  color: var(--muted);
+}
+
+.wrap button {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+}
+
+.wrap button:hover {
+  border-color: var(--line-strong);
+}
+
+.wrap label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.controls select[multiple] {
+  height: 44px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+  box-shadow: none;
+}
+
+.controls select[multiple]:focus {
+  outline: none;
+  border-color: var(--line-strong);
+}
+
+.controls select[multiple] option {
+  color: var(--text);
+  background: #1f2740;
+}
+
+.controls select[multiple] option:checked {
+  background: linear-gradient(
+    0deg,
+    rgba(139, 124, 246, 0.28),
+    rgba(139, 124, 246, 0.28)
+  );
+  color: var(--text-strong);
+}
+
+.statusText {
+  color: var(--muted);
+  margin: 8px 2px 14px;
+  font-size: 14px;
+}
+
+.specialFilters {
+  margin: 8px 0 12px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.wrap table {
+  width: 100%;
+  min-width: 1150px;
+  border-collapse: collapse;
+}
+
+.wrap th,
+.wrap td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  text-align: left;
+  vertical-align: top;
+}
+
+/* Columns: ID, Title, Business, Assignee, Status, Priority, Deadline, Blocker */
+.wrap th:nth-child(1),
+.wrap td:nth-child(1) {
+  min-width: 70px;
+}
+.wrap th:nth-child(2),
+.wrap td:nth-child(2) {
+  min-width: 160px;
+  max-width: 240px;
+  overflow-wrap: anywhere;
+}
+.wrap th:nth-child(3),
+.wrap td:nth-child(3) {
+  min-width: 120px;
+}
+.wrap th:nth-child(4),
+.wrap td:nth-child(4) {
+  min-width: 150px;
+}
+.wrap th:nth-child(5),
+.wrap td:nth-child(5) {
+  min-width: 120px;
+}
+.wrap th:nth-child(6),
+.wrap td:nth-child(6) {
+  min-width: 110px;
+}
+.wrap th:nth-child(7),
+.wrap td:nth-child(7) {
+  min-width: 130px;
+}
+.wrap th:nth-child(8),
+.wrap td:nth-child(8) {
+  min-width: 260px;
+}
+
+.wrap tbody tr {
+  cursor: pointer;
+}
+
+.wrap tbody tr:hover {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.taskRowOverdue {
+  background-color: rgba(239, 107, 115, 0.08);
+}
+
+.taskRowBlocked {
+  background-color: rgba(243, 181, 98, 0.1);
+}
+
+.taskRowBlocked.taskRowOverdue {
+  background-color: rgba(239, 107, 115, 0.14);
+}
+
+.taskRowOverdue td:first-child {
+  border-left: 4px solid #ef6b73;
+}
+
+.taskRowBlocked td:first-child {
+  border-left: 4px solid #f3b562;
+}
+
+.wrap tbody tr.taskRowOverdue:hover,
+.wrap tbody tr.taskRowBlocked:hover,
+.wrap tbody tr.taskRowBlocked.taskRowOverdue:hover {
+  background: color-mix(in srgb, var(--danger) 24%, var(--primary) 6%);
+}
+
+.ownerChipLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--text);
+  background: var(--secondary-soft);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  font-weight: 700;
+  margin-right: 6px;
+  margin-bottom: 4px;
+}
+
+.ownerChipLink:hover {
+  border-color: color-mix(in srgb, var(--secondary) 55%, transparent);
+  color: var(--text-strong);
+}
+
+/* ---- modal (rendered outside .wrap) ------------------------------------ */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  z-index: 9999;
+}
+
+.modal.open {
+  display: block;
+}
+
+.modalBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 8, 20, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.modalCard {
+  position: relative;
+  width: min(920px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  margin: 20px auto;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  box-shadow: var(--shadow-soft);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  z-index: 2;
+}
+
+.modalTitle {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.modalClose {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.modalBody {
+  padding: 18px 20px 22px;
+}
+
+.modalMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.modalMetaBox {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.modalMetaLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.modalSection {
+  margin-top: 18px;
+}
+
+.modalSection h3 {
+  margin: 0 0 10px 0;
+  font-size: 15px;
+}
+
+.detailBox {
+  margin-bottom: 10px;
+}
+
+.historyList {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.historyItem {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: pre-wrap;
+}
+
+.historyItem:last-child {
+  border-bottom: none;
+}
+
+.historyTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.historyTop strong {
+  color: var(--text);
+}
+
+.historyTop span {
+  color: var(--muted);
+}
+
+.historyDetail {
+  color: var(--text);
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 760px) {
+  .modalMetaGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1100px) {
+  .controls {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .wrap {
+    padding: 16px 12px 28px;
+  }
+
+  .wrap h1 {
+    font-size: 24px;
+  }
+
+  .controls {
+    grid-template-columns: 1fr;
+  }
+}

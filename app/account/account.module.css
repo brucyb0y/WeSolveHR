@@ -1,0 +1,264 @@
+/* Page-scoped styles for /account.
+ *
+ * IMPORTANT — this page deliberately opts out of the app theme. The original
+ * inlined ONLY buildTopNavCss(), never buildThemeCss()/buildBasePageCss(), and
+ * declared its own <body> rule with hardcoded colours that differ slightly from
+ * the theme tokens (0.14 vs 0.16 alpha, 30%/22% vs 28%/20% stops, and an
+ * "Inter, Arial, sans-serif" stack). Since globals.css is imported by the root
+ * layout and reaches every route, exact fidelity is preserved by:
+ *
+ *   1. reproducing the page's own body declarations on `.page`, which spans the
+ *      viewport and paints over the theme background beneath it; and
+ *   2. suppressing body::before — the base stylesheet's scanline overlay, which
+ *      this page never loaded and therefore never showed.
+ *
+ * The :global() escape hatch is safe here because this file is only served with
+ * the /account route chunk, and navigation between pages is a full document
+ * load (plain <a>, not next/link).
+ *
+ * `.emptyCell` IS defined, mirroring the page's own rule — it is not inherited
+ * from globals. */
+
+:global(body)::before {
+  display: none;
+}
+
+.page {
+  min-height: 100vh;
+  font-family: Inter, Arial, sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(139, 124, 246, 0.14), transparent 30%),
+    radial-gradient(circle at top right, rgba(86, 199, 217, 0.14), transparent 22%),
+    linear-gradient(180deg, #1b2238 0%, #151a2e 100%);
+  color: #f3f6ff;
+}
+
+.wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 28px 18px 40px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+
+.titleBlock h1 {
+  margin: 0;
+  font-size: 32px;
+  letter-spacing: -0.03em;
+}
+
+.titleBlock p {
+  margin: 8px 0 0;
+  color: #c4cce0;
+  font-size: 14px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 18px;
+}
+
+.column {
+  display: grid;
+  gap: 18px;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+.card h2 {
+  margin: 0 0 14px;
+  font-size: 20px;
+}
+
+.profileMeta,
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metaBox,
+.statCard {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.metaLabel,
+.statLabel {
+  font-size: 12px;
+  color: #c4cce0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.metaValue,
+.appraisalValue,
+.timelineNote {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.metaSelect {
+  width: 100%;
+  font-size: 15px;
+  color: #f4f7ff;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.metaSelect:focus {
+  outline: none;
+  border-color: rgba(120, 160, 255, 0.6);
+}
+
+.saveStatus {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #c4cce0;
+  min-height: 14px;
+}
+
+.saveStatusOk {
+  color: #5fd08a;
+}
+
+.saveStatusErr {
+  color: #ff8f8f;
+}
+
+.statValue {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.appraisalBlock {
+  display: grid;
+  gap: 12px;
+}
+
+.appraisalRow {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.appraisalLabel {
+  font-size: 12px;
+  color: #c4cce0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.timelineItem {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.timelineBadge {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(139, 124, 246, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 8px;
+}
+
+.timelineDate {
+  font-size: 12px;
+  color: #c4cce0;
+  margin-bottom: 8px;
+}
+
+.emptyState {
+  color: #c4cce0;
+  padding: 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  text-align: center;
+}
+
+.adminSection {
+  margin-top: 24px;
+  display: grid;
+  gap: 18px;
+}
+
+.sectionEyebrow {
+  font-size: 12px;
+  color: #c4cce0;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.tableWrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.tableWrap th,
+.tableWrap td {
+  text-align: left;
+  padding: 12px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  vertical-align: top;
+}
+
+.tableWrap th {
+  color: #c4cce0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.emptyCell {
+  text-align: center;
+  color: #c4cce0;
+  padding: 18px;
+}
+
+@media (max-width: 860px) {
+  .grid,
+  .profileMeta,
+  .statsRow {
+    grid-template-columns: 1fr;
+  }
+}

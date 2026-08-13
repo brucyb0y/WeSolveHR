@@ -106,9 +106,28 @@ function cleanGenerated(dir) {
 cleanGenerated(APP_DIR);
 fs.mkdirSync(APP_DIR, { recursive: true });
 
+// A segment already served by the React tree must not get a generated wrapper:
+// Next.js rejects a folder holding both route.js and page.jsx, and a
+// hand-written route.js (e.g. /logout) would be silently overwritten.
+//
+// cleanGenerated() above already deleted every AUTO-GENERATED route.js, so any
+// route.js still on disk at this point was written by hand.
+function isOwnedByReactTree(dir) {
+  const hasPage = ["page.jsx", "page.js", "page.tsx"].some((f) =>
+    fs.existsSync(path.join(dir, f)),
+  );
+  const hasHandWrittenRoute = fs.existsSync(path.join(dir, "route.js"));
+  return hasPage || hasHandWrittenRoute;
+}
+
 let count = 0;
+const skipped = [];
 for (const { segs, methods } of byFolder.values()) {
   const dir = path.join(APP_DIR, ...segs);
+  if (isOwnedByReactTree(dir)) {
+    skipped.push(`/${segs.join("/")} [${[...methods.keys()].join(", ")}]`);
+    continue;
+  }
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "route.js"), fileContent(methods));
   count++;
@@ -117,3 +136,10 @@ for (const { segs, methods } of byFolder.values()) {
 console.log(
   `Generated ${count} route files under app/ (from ${app.routes.length} registered routes).`,
 );
+
+if (skipped.length) {
+  console.log(
+    `\nSkipped ${skipped.length} segment(s) now served by the React tree:\n  ` +
+      skipped.join("\n  "),
+  );
+}
