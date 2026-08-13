@@ -48,6 +48,7 @@ import {
   normalizeClientGoalsData,
   buildClientAutoReportSections,
   clientWeeklyReportNumbering,
+  clientLatestWeekDisplayNum,
   CLIENT_REPORT_METRICS,
   APP_TIMEZONE,
 } from "@/lib/server/app";
@@ -453,6 +454,16 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
     nowMs,
   });
 
+  // Derived work-item counts. Declared here because three separate consumers
+  // read them — the tab badges, the contextual stats row and the Task tab's
+  // chips — and each is further down the file.
+  const highPriorityCount = workItems.filter(
+    (w) => w.priority === "high" && w.status !== "done",
+  ).length;
+  const overdueCount = workItems.filter(isOverdue).length;
+  const countStatus = (status) =>
+    workItems.filter((w) => w.status === status).length;
+
   const counts = {
     openWork: workItems.filter((w) => w.status !== "done").length,
     overdue: workItems.filter(isOverdue).length,
@@ -529,6 +540,88 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
     />
   );
 
+  // Contextual stats row, shown between the header and the tab bar. Each tab
+  // gets its own set; Overview deliberately has none (no entry below), matching
+  // the original — the Overview panels already carry those figures.
+  const num = (v) => (typeof v === "number" && !Number.isNaN(v) ? v : 0);
+  const doneWork = workItems.filter((w) => w.status === "done").length;
+  const openActions = actions.filter(
+    (a) =>
+      !["done", "completed", "resolved"].includes(
+        String(a.status || "").toLowerCase(),
+      ),
+  ).length;
+  const resolvedBlockers = blockers.filter(
+    (b) => b.resolution_status === "resolved",
+  ).length;
+  const upcomingMeetings = meetings.filter(
+    (m) => m.meeting_date && new Date(m.meeting_date).getTime() > nowMs,
+  ).length;
+  const doneMilestones = milestones.filter((m) =>
+    ["done", "completed"].includes(String(m.status || "").toLowerCase()),
+  ).length;
+
+  const STATS_BY_TAB = {
+    task: [
+      ["Total Tasks", workItems.length],
+      ["Open", counts.openWork],
+      ["Done", doneWork],
+      ["Overdue", overdueCount],
+    ],
+    leads: [
+      ["Total Leads", num(data.leadCounts?.all)],
+      ["Qualified", num(data.leadCounts?.qualified)],
+      ["Meetings Completed", num(data.leadCounts?.meeting_completed)],
+      ["Converted", num(data.leadCounts?.converted)],
+    ],
+    campaigns: [
+      ["Campaigns", campaigns.length],
+      ["Active", campaigns.filter((c) => c.status === "active").length],
+      ["Completed", campaigns.filter((c) => c.status === "completed").length],
+    ],
+    meetings: [
+      ["Meetings", meetings.length],
+      ["Upcoming", upcomingMeetings],
+    ],
+    blockers: [
+      ["Blockers", blockers.length],
+      ["Open", counts.openBlockers],
+      ["Resolved", resolvedBlockers],
+    ],
+    team: [["Team Members", contributors.length]],
+    performance: [
+      ["Tasks Done", doneWork],
+      ["Open Work", counts.openWork],
+      ["Overdue", overdueCount],
+    ],
+    incentives: [
+      ["Records", incentives.length],
+      [
+        "Total \u20B9",
+        incentives.reduce((n, i) => n + (Number(i.amount) || 0), 0),
+      ],
+    ],
+    report: [["Weekly Reports", reports.length]],
+    actions: [
+      ["Total", actions.length],
+      ["Open", openActions],
+      ["Done", actions.length - openActions],
+    ],
+    milestones: [
+      ["Milestones", milestones.length],
+      ["Completed", doneMilestones],
+    ],
+    updates: [["Updates", updates.length]],
+    documents: [["Documents", documents.length]],
+  };
+
+  const statCards = STATS_BY_TAB[activeTab] || [];
+
+  // The Report flyout's "Week N Report" label. Weeks count down into the past,
+  // so the current week carries the largest number — derived from the client's
+  // anchor week rather than hardcoded to 1.
+  const firstWeekLabel = clientLatestWeekDisplayNum(client);
+
   // Only the tabs with no callbacks render here; everything interactive is
   // constructed inside WorkspaceShell, which owns the modal state.
   const panel =
@@ -544,20 +637,16 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
         updates={updates}
         gtmAssociateNames={teamMembers.map((m) => m.name).join(", ")}
         lastActivity={timelineEvents[0]?.atText || "-"}
-        summaryAndGoals={summaryWithGoals("daily", data.reportSummaries?.daily)}
+        summaryAndGoals={summaryWithGoals(
+          "weekly",
+          data.reportSummaries?.weekly,
+        )}
       />
     );
 
   // Task tab: summary chips and the overdue / high-priority alert strip.
   // Both are derived counts, so they are computed here against the one clock
   // rather than recounted inside the client component.
-  const highPriorityCount = workItems.filter(
-    (w) => w.priority === "high" && w.status !== "done",
-  ).length;
-  const overdueCount = workItems.filter(isOverdue).length;
-  const countStatus = (status) =>
-    workItems.filter((w) => w.status === status).length;
-
   const taskChips = [
     { label: "All", value: workItems.length },
     { label: "Todo", value: countStatus("todo") },
@@ -757,89 +846,103 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
           </div>
         </div>
 
+        {statCards.length ? (
+          <div className={styles.stats}>
+            {statCards.map(([label, value]) => (
+              <div className={styles.statCard} key={label}>
+                <div className={styles.statLabel}>{label}</div>
+                <div className={styles.statValue}>{String(value)}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <WorkspaceTabs
           clientId={clientId}
           activeTab={activeTab}
           counts={counts}
+          firstWeekLabel={firstWeekLabel}
         />
 
-        {activeTab === "leads" ? (
-          <LeadsTab
-            clientId={clientId}
-            staticLeadBusiness={staticLeadBusiness}
-            leads={decoratedLeads}
-            filteredIds={leadFilteredIds}
-            totalCount={leadAllRows.length}
-            users={users}
-            stages={CLIENT_LEAD_PIPELINE_STAGES}
-            demoStatuses={CLIENT_LEAD_DEMO_STATUSES}
-            categoryTypes={CLIENT_LEAD_CATEGORY_TYPES}
-            categoryTypeLabels={CLIENT_LEAD_CATEGORY_TYPE_LABELS}
-            categoryCounts={leadCategoryTypeCounts.map((c) => ({
-              ...c,
-              href: categoryPillHref(c.key),
-            }))}
-            reachChannels={REACH_VIA_CHANNELS}
-            sort={sort}
-            pagination={leadPagination}
-            paginationHrefs={{
-              prev: hrefWith({ page: (leadPagination?.page || 1) - 1 }),
-              next: hrefWith({ page: (leadPagination?.page || 1) + 1 }),
-            }}
-            search={leadSearch}
-            hasActiveQuery={hasActiveLeadQuery}
-            clearSearchHref={hrefWith({ search: null })}
-            mineOnly={leadMineOnly}
-            mineOnHref={hrefWith({ mine: 1 })}
-            mineOffHref={hrefWith({}, ["mine"])}
-            filters={{
-              ...leadFilters.filters,
-              category_type_list: (leadFilters.filters.category_type || "")
-                .split(",")
-                .filter(Boolean),
-              reached_via_list: (leadFilters.filters.reached_via || "")
-                .split(",")
-                .filter(Boolean),
-            }}
-            filterOptions={{
-              pipelineStages: CLIENT_LEAD_PIPELINE_STAGES,
-              demoStatuses: CLIENT_LEAD_DEMO_STATUSES,
-              categoryTypes: CLIENT_LEAD_CATEGORY_TYPES,
-              assigneeOptions,
-              hasPhoneOptions: HAS_PHONE_FILTER_OPTIONS,
-              reachedViaOptions:
-                buildReachedViaFilterOptions(REACH_VIA_CHANNELS),
-              notesOptions: NOTES_FILTER_OPTIONS,
-              noteAudioOptions: NOTE_AUDIO_FILTER_OPTIONS,
-              missedCallbackOptions: MISSED_CALLBACK_FILTER_OPTIONS,
-              noteAuthorOptions,
-            }}
-            activeFilterCount={activeFilterCount}
-            clearFiltersHref={`/clients/${clientId}?tab=leads`}
-            filterHiddenInputs={filterHiddenInputs}
-            allCategoryPillHref={categoryPillHref("")}
-            todayStr={todayStr}
-            statusHistory={statusHistory}
-            importCategoryTypeRequired={!showOptionalSheetFields}
-            showOptionalSheetFields={showOptionalSheetFields}
-          />
-        ) : (
-          <WorkspaceShell
-            clientId={clientId}
-            activeTab={activeTab}
-            panel={panel}
-            data={modalData}
-            taskChips={taskChips}
-            taskAlertStrip={taskAlertStrip}
-            clientName={client.name}
-            teamMembers={teamMembers}
-            timelineEvents={timelineEvents}
-            activityLogs={activityLogs}
-            updates={updates}
-            meetingStats={meetingStats}
-            reportSubviews={reportSubviews}
-          />
-        )}
+        <div className={styles.tabContentWrap}>
+          {activeTab === "leads" ? (
+            <LeadsTab
+              clientId={clientId}
+              staticLeadBusiness={staticLeadBusiness}
+              leads={decoratedLeads}
+              filteredIds={leadFilteredIds}
+              totalCount={leadAllRows.length}
+              users={users}
+              stages={CLIENT_LEAD_PIPELINE_STAGES}
+              demoStatuses={CLIENT_LEAD_DEMO_STATUSES}
+              categoryTypes={CLIENT_LEAD_CATEGORY_TYPES}
+              categoryTypeLabels={CLIENT_LEAD_CATEGORY_TYPE_LABELS}
+              categoryCounts={leadCategoryTypeCounts.map((c) => ({
+                ...c,
+                href: categoryPillHref(c.key),
+              }))}
+              reachChannels={REACH_VIA_CHANNELS}
+              sort={sort}
+              pagination={leadPagination}
+              paginationHrefs={{
+                prev: hrefWith({ page: (leadPagination?.page || 1) - 1 }),
+                next: hrefWith({ page: (leadPagination?.page || 1) + 1 }),
+              }}
+              search={leadSearch}
+              hasActiveQuery={hasActiveLeadQuery}
+              clearSearchHref={hrefWith({ search: null })}
+              mineOnly={leadMineOnly}
+              mineOnHref={hrefWith({ mine: 1 })}
+              mineOffHref={hrefWith({}, ["mine"])}
+              filters={{
+                ...leadFilters.filters,
+                category_type_list: (leadFilters.filters.category_type || "")
+                  .split(",")
+                  .filter(Boolean),
+                reached_via_list: (leadFilters.filters.reached_via || "")
+                  .split(",")
+                  .filter(Boolean),
+              }}
+              filterOptions={{
+                pipelineStages: CLIENT_LEAD_PIPELINE_STAGES,
+                demoStatuses: CLIENT_LEAD_DEMO_STATUSES,
+                categoryTypes: CLIENT_LEAD_CATEGORY_TYPES,
+                assigneeOptions,
+                hasPhoneOptions: HAS_PHONE_FILTER_OPTIONS,
+                reachedViaOptions:
+                  buildReachedViaFilterOptions(REACH_VIA_CHANNELS),
+                notesOptions: NOTES_FILTER_OPTIONS,
+                noteAudioOptions: NOTE_AUDIO_FILTER_OPTIONS,
+                missedCallbackOptions: MISSED_CALLBACK_FILTER_OPTIONS,
+                noteAuthorOptions,
+              }}
+              activeFilterCount={activeFilterCount}
+              clearFiltersHref={`/clients/${clientId}?tab=leads`}
+              filterHiddenInputs={filterHiddenInputs}
+              allCategoryPillHref={categoryPillHref("")}
+              todayStr={todayStr}
+              statusHistory={statusHistory}
+              importCategoryTypeRequired={!showOptionalSheetFields}
+              showOptionalSheetFields={showOptionalSheetFields}
+            />
+          ) : (
+            <WorkspaceShell
+              clientId={clientId}
+              activeTab={activeTab}
+              panel={panel}
+              data={modalData}
+              taskChips={taskChips}
+              taskAlertStrip={taskAlertStrip}
+              clientName={client.name}
+              teamMembers={teamMembers}
+              timelineEvents={timelineEvents}
+              activityLogs={activityLogs}
+              updates={updates}
+              meetingStats={meetingStats}
+              reportSubviews={reportSubviews}
+            />
+          )}
+        </div>
       </div>
     </>
   );
