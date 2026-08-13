@@ -1,6 +1,6 @@
 # React / App Router migration
 
-Status: **22 of 25 page routes converted.** The app builds and every route works
+Status: **24 of 25 page routes converted.** The app builds and every route works
 at every point — this is a strangler migration, not a big-bang rewrite.
 
 ## How it works
@@ -44,21 +44,60 @@ Three rules keep the two halves coexisting:
   Switch to `<Link>` once the last page converts.
 - Public routes must pass `authenticated={false}` to `TopNav`, or its
   server-rendered Clients dropdown leaks the client roster to anonymous
-  visitors. Currently applies to `/`; **it will apply to `/client-view/[token]`.**
+  visitors. This applies to `/`. It does NOT apply to `/client-view/[token]`:
+  that page renders no navigation at all (verified — `renderTopNav` never
+  appears inside `renderClientViewOnlyPage`).
 
 ## Remaining work
 
+**24 of 25 done.** One left: `/clients/[id]`.
+
 | Route | Lines | Notes |
 | --- | --- | --- |
-| `/leads/[business]` | ~2,565 | 580 CSS + 576 markup + **1,123 lines of client JS** (~20 features: lead form w/ smart parsing + duplicate phone check, Excel import for rasset and joolian B2B, URL enrichment, call-summary modal, transcript editing, voice-upload deletion, lead-calls modal with L2 data). Needs several client components. |
-| `/client-view/[token]` | ~2,641 | **Public route** — see the `authenticated={false}` rule above. |
-| `/clients/[id]` | ~6,746 | 14 tabs, ~100 client-side functions. Realistically its own session; split per tab. |
+### `/clients/[id]` — the last page
+
+| Section | Lines | State |
+| --- | --- | --- |
+| CSS | 822 | **done** — `app/clients/[id]/workspace.module.css` (817 lines, 82 classes) |
+| Data prep + helper renderers | 1,651 | to do |
+| Markup (14 tabs) | 1,649 | to do |
+| Client JS | **2,614 across 135 functions** | to do |
+| Route data loading | ~470 | to do — 17 parallel queries, lead filtering, business resolution, conditional report/goals load |
+
+More client JS than `/leads/[business]` and `/client-view` combined. Convert tab
+by tab: Overview, then Leads (reuse `lib/data/client-view-leads.js` — same
+filter semantics), then the CRUD-heavy tabs (milestones / actions /
+contributors / work items / updates / blockers / meetings / campaigns /
+incentives / reports / goals), then audio recording, bulk lead ops and Excel
+import.
+
+**Decide before converting:** the page loads **SweetAlert2 from a CDN**
+(`<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11">`, app.js:6543) and
+calls `window.Swal` for confirms and toasts. It is an undeclared runtime
+dependency — not in package.json. Either add it properly or replace those calls
+with the app's own modal. `buildSweetAlertCss()` already ships the styling.
+
+**Chart kit:** converting this page's Report tab is where `arKpiCard` /
+`arBars` / `arStackedBars` / `arDonut` / `arFunnelChart` /
+`buildClientAutoReportSections` (~350 lines, app.js:4052) should become a shared
+component. Doing so retires the one `dangerouslySetInnerHTML` bridge in
+`app/client-view/[token]/ReportTab.jsx`, which is the only non-JSX spot left in
+the migration.
+
+It embeds `/leads/[business]?embed=1` in an iframe for
+`INLINE_CLIENT_LEADS_BUSINESSES` — that contract is already honoured by the
+converted leads page, so the iframe keeps working either way.
+
+Client-visible filters in `lib/data/client-view.js` are load-bearing (updates
+`is_client_visible`, actions `owner_type=Client`, blockers `blocker_side=client_side`,
+reports `is_published`). They are what keeps the customer page from showing
+internal data — do not relax them when refactoring.
 
 ## Pre-existing defects found
 
-Eleven, all verified against the running app. Nine are **preserved deliberately**
-so the migration stays visually faithful; two were fixed because preserving them
-was not possible or not defensible.
+Fifteen, all verified against the running app. Twelve are **preserved
+deliberately** so the migration stays visually faithful; four were fixed because
+preserving them was not possible or not defensible.
 
 ### Fixed
 
@@ -67,34 +106,41 @@ was not possible or not defensible.
    `renderList` helper declared (with `const`) further down the function —
    read-before-initialise. Only the cumulative branch used it before the
    declaration, so only that timeframe broke. Now 200.
-2. **`/attendance` tab bar did not switch tabs.** There was no `#tab-overview`
+2. **Add/Edit Lead enrichment silently half-failed.** `enrichLeadUrl()` assigned
+   to `#leadCompany`, an id the form never had, so `null.value = ...` threw a
+   TypeError *before* the 17 assignments after it. Any enrichment that returned
+   a company name left website / maps / email / city / phone / owner unfilled.
+3. **Smart-paste capability detection was dead.** It wrote into
+   `#leadManufacturingCapabilities`; the field is `#leadCapabilities`. Guarded,
+   so it failed silently and never selected anything.
+4. **`/attendance` tab bar did not switch tabs.** There was no `#tab-overview`
    element, so the overview content was never hidden and appeared under every
    tab; `.wrap` also closed early, leaving the other three panels outside the
    max-width container. All four panels are now siblings inside `.wrap`.
 
 ### Preserved (each documented in the relevant CSS module)
 
-3. `.badge` / `.badge-*` are undefined on `/bugs`, `/leads` and
+5. `.badge` / `.badge-*` are undefined on `/bugs`, `/leads` and
    `/tasks/user/[userId]` — severity/status pills render unstyled. `.badge` is
    defined per-page elsewhere and looks like it was meant to live in
    `buildBasePageCss`.
-4. `/leads` and `/leads/:business/imports` read `req.session?.user?.org_id`,
+6. `/leads` and `/leads/:business/imports` read `req.session?.user?.org_id`,
    but the session only ever stores `userId` — always `undefined`, so both
    silently fall back to `DASHBOARD_ORG_ID`.
-5. `.controls` on `/tasks` has only media-query overrides and no base rule, so
+7. `.controls` on `/tasks` has only media-query overrides and no base rule, so
    `grid-template-columns` applies to a plain block element and does nothing.
-6. `.task-link` on `/tasks` has no rule at all.
-7. `--dangerSoft` on `/attendance` is a typo for `--danger-soft`; the
+8. `.task-link` on `/tasks` has no rule at all.
+9. `--dangerSoft` on `/attendance` is a typo for `--danger-soft`; the
    `no_update` and `unknown` status pills get no fill.
-8. `/attendance`'s exceptions table declares 9 headers but renders 7 cells in a
+10. `/attendance`'s exceptions table declares 9 headers but renders 7 cells in a
    different order, so data sits under the wrong headings. Ambiguous which side
    is wrong, so left alone.
-9. `.btn` is undefined on `/attendance/[userId]`, so the three month-navigation
+11. `.btn` is undefined on `/attendance/[userId]`, so the three month-navigation
    links render as plain anchors.
-10. The multi-day report view emits `.report-card-missing/-partial/-off/-leave`
+12. The multi-day report view emits `.report-card-missing/-partial/-off/-leave`
     and `.report-reason` but never defined them — hence two CSS modules under
     `app/reports/` rather than one shared file.
-11. `/dashboard` summary cards carry a tone class (`info`/`danger`/`warn`/
+13. `/dashboard` summary cards carry a tone class (`info`/`danger`/`warn`/
     `success`) that was never defined. This one was **dropped** rather than
     preserved, since an unused class name carries nothing forward.
 
@@ -111,3 +157,14 @@ was not possible or not defensible.
   per view (once server-side, then twice more via `/api/reports/summary` and
   `/api/reports/cards`, which returned HTML strings for `innerHTML`). It runs
   once now; both endpoints still exist and are unchanged.
+
+12. `.hint` is used three times on `/leads/[business]` and defined nowhere, so
+    the multiselect hints render unstyled. Rendered as a plain global class so
+    it stays that way.
+13. `qualification_done` / `worth_talking` on the lead form read
+    `#leadQualificationDone` / `#leadWorthTalking`, neither of which exists, so
+    both have always submitted `false`. Preserved — whether those checkboxes
+    were meant to exist is a product question.
+14. `renderConversationRows()` in `renderBusinessLeadsPage` is defined and never
+    called (dead code); `.conversationRow` / `.speakerPill` are its orphaned
+    styles. Not ported.

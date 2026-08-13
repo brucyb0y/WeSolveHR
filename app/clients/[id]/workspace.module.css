@@ -1,0 +1,830 @@
+/* Page-scoped styles for /clients/:id, from renderClientWorkspacePage()'s
+ * <style> block. Class names camelCased for JSX; declarations unchanged.
+ * The two bare element rules (h1, a) are scoped under `.wrap`.
+ *
+ * NOTE: the original page also loaded SweetAlert2 from a CDN
+ * (<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11">). Any confirm /
+ * toast dialogs that relied on window.Swal need an explicit decision when the
+ * client components are converted — either add the dependency to package.json
+ * or replace those calls. buildSweetAlertCss() already ships the styling in
+ * globals.css.
+ */
+
+${buildSweetAlertCss()}
+
+          .wrap { max-width: 1600px; margin: 0 auto; padding: 24px 18px 36px; }
+
+          .topbar, .panel, .statCard {
+            background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-soft);
+          }
+
+          .topbar {
+            display:flex; justify-content:space-between; align-items:center;
+            gap:16px; flex-wrap:wrap; margin-bottom:20px; padding:18px 20px;
+          }
+
+          .wrap h1 { margin:0; font-size:30px; letter-spacing:-0.04em; }
+          .subtitle, .meta { color:var(--muted); font-size:13px; line-height:1.5; }
+          .subtitle { margin-top:8px; font-size:14px; }
+
+          .eyebrow {
+            font-size:11px; letter-spacing:0.16em; text-transform:uppercase;
+            color:var(--primary); font-weight:700; margin-bottom:8px;
+          }
+
+          .btn {
+            display:inline-flex; align-items:center; text-decoration:none; color:var(--text);
+            padding:10px 13px; border-radius:12px; background:rgba(255,255,255,0.05);
+            border:1px solid rgba(255,255,255,0.12); font-weight:800; cursor:pointer;
+          }
+
+          .btnPrimary {
+            background:var(--primary-soft); color:var(--text-strong);
+            border-color:color-mix(in srgb, var(--primary) 55%, transparent);
+          }
+
+          .stats {
+            display:grid; grid-template-columns:repeat(4, minmax(0, 1fr));
+            gap:12px; margin-bottom:20px;
+          }
+
+          .grid2 {
+            display:grid; grid-template-columns:1fr 1fr;
+            gap:16px; margin-bottom:20px;
+          }
+
+          .statCard, .panel { padding:18px; }
+          .panel {
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.tabContentWrap {
+  width: 100%;
+}
+          .panel h2 { margin:0 0 14px; font-size:18px; }
+
+          .statLabel {
+            color:var(--muted); font-size:12px; text-transform:uppercase;
+            letter-spacing:0.08em; font-weight:700;
+          }
+
+          .statValue { margin-top:10px; font-size:26px; font-weight:800; }
+
+.tabs {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 10px;
+  margin: 0 0 18px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px;
+  padding: 6px;
+}
+
+.tab {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: 11px;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--muted);
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition: transform .15s ease, background .15s ease, color .15s ease,
+              box-shadow .15s ease, border-color .15s ease;
+}
+
+.tab .tabIco {
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0.85;
+  transition: transform .15s ease, opacity .15s ease;
+}
+
+.tab:hover {
+  color: var(--text-strong);
+  background: rgba(255,255,255,0.06);
+  transform: translateY(-1px);
+}
+
+.tab:hover .tabIco {
+  opacity: 1;
+  transform: scale(1.12);
+}
+
+.tab.active {
+  position: relative;
+  background: linear-gradient(135deg,
+              var(--primary-soft),
+              color-mix(in srgb, var(--accent) 22%, transparent));
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  color: var(--text-strong);
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--primary) 70%, transparent);
+}
+
+/* Animated underline indicator that grows in on the active tab */
+.tab.active::after {
+  content: "";
+  position: absolute;
+  left: 14px; right: 14px; bottom: 4px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+              var(--primary),
+              color-mix(in srgb, var(--accent) 70%, var(--primary)));
+  transform-origin: center;
+  animation: tabUnderline .22s ease both;
+}
+
+@keyframes tabUnderline {
+  from { transform: scaleX(0); opacity: 0; }
+  to   { transform: scaleX(1); opacity: 1; }
+}
+
+.tab.active .tabIco { opacity: 1; }
+
+/* At-a-glance count badge on a tab */
+.tabCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--text-strong);
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.14);
+}
+
+.tab.active .tabCount {
+  background: color-mix(in srgb, var(--primary) 32%, transparent);
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+}
+
+/* Attention tone — draws the eye to tabs that need action */
+.tabCountAttention {
+  color: #ffd7da;
+  background: rgba(239,107,115,0.20);
+  border-color: rgba(239,107,115,0.42);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab.active::after { animation: none; }
+}
+
+.tab:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 60%, transparent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 700px) {
+  .tabs { gap: 5px; padding: 5px; }
+  .tab { padding: 7px 11px; font-size: 12px; }
+  .tab .tabIco { font-size: 14px; }
+}
+
+/* Report tab hover flyout — reveals report sub-views (Daily / Week 1) */
+.tabFlyoutWrap { position: relative; display: inline-flex; }
+.tabFlyout {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 184px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px -14px rgba(0,0,0,0.65);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  transition: opacity .15s ease, transform .15s ease, visibility .15s;
+  z-index: 50;
+}
+/* Invisible bridge so the 6px gap doesn't drop the hover */
+.tabFlyout::before {
+  content: "";
+  position: absolute;
+  top: -8px; left: 0; right: 0; height: 8px;
+}
+.tabFlyoutWrap:hover .tabFlyout,
+.tabFlyoutWrap:focus-within .tabFlyout {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.tabFlyoutItem {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+.tabFlyoutItem:hover {
+  background: rgba(255,255,255,0.07);
+  color: var(--text-strong);
+}
+
+/* In-content sub-tab bar for the Report tab */
+.reportSubtabs {
+  display: inline-flex;
+  gap: 4px;
+  margin: 0 0 16px;
+  padding: 4px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 12px;
+}
+.reportSubtab {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.reportSubtab:hover { color: var(--text-strong); background: rgba(255,255,255,0.06); }
+.reportSubtab.active {
+  background: linear-gradient(135deg,
+              var(--primary-soft),
+              color-mix(in srgb, var(--accent) 22%, transparent));
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  color: var(--text-strong);
+}
+.reportWeekDd { position: relative; display: inline-flex; }
+.reportWeekBtn { display: inline-flex; align-items: center; gap: 6px; }
+.reportWeekCaret { font-size: 10px; opacity: .7; }
+.reportWeekMenu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  min-width: 190px;
+  padding: 6px;
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+  max-height: 320px;
+  overflow-y: auto;
+}
+.reportWeekMenu.open { display: block; }
+.reportWeekItem {
+  appearance: none;
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.reportWeekItem:hover { color: var(--text-strong); background: rgba(255,255,255,0.06); }
+.reportWeekItem.active {
+  background: linear-gradient(135deg,
+              var(--primary-soft),
+              color-mix(in srgb, var(--accent) 22%, transparent));
+  border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+  color: var(--text-strong);
+}
+          
+          .workTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.workTable th,
+.workTable td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  text-align: left;
+  vertical-align: top;
+  font-size: 13px;
+}
+
+.workTable th {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+.badge {
+  display:inline-flex;
+  padding:6px 9px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:800;
+}
+
+.badgeOk {
+  background: var(--success-soft);
+  color: var(--text-strong);
+}
+
+.badgeInfo {
+  background: var(--info-soft);
+  color: var(--text-strong);
+}
+
+.badgeWarn {
+  background: var(--accent-soft);
+  color: var(--text-strong);
+}
+
+.badgeMuted {
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+}
+
+.badgeDanger {
+  background: rgba(239,107,115,0.18);
+  color: #ffd7da;
+  border: 1px solid rgba(239,107,115,0.35);
+}
+
+.stageSelect {
+  padding:6px 8px;
+  border-radius:10px;
+  border:1px solid var(--line);
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+  font-size:12px;
+  font-weight:800;
+}
+
+/* Employee workload section (Team tab, internal) */
+.empSectionHead { margin: 4px 0 12px; }
+.empSectionHead h3 { font-size: 16px; }
+
+.empCardList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+@media (max-width: 700px) {
+  .empCardList { grid-template-columns: 1fr; }
+}
+
+.empCard { display: flex; flex-direction: column; }
+
+.empStatRow {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+.empStat {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 8px;
+  text-align: center;
+}
+.empStatVal { font-size: 18px; font-weight: 800; color: var(--text-strong); }
+.empStatLabel {
+  margin-top: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.empOverall { margin-top: 12px; }
+
+.empProg {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.10);
+  overflow: hidden;
+}
+.empProgFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+              var(--primary),
+              color-mix(in srgb, var(--accent) 70%, var(--primary)));
+  transition: width .3s ease;
+}
+
+.alertStrip {
+  display:flex;
+  gap:14px;
+  flex-wrap:wrap;
+  align-items:center;
+  padding:12px 14px;
+  margin-bottom:14px;
+  border-radius:14px;
+  border:1px solid rgba(239,107,115,0.28);
+  background:rgba(239,107,115,0.10);
+  color:#ffd7da;
+  font-size:13px;
+  font-weight:700;
+}
+
+.overduePill {
+  display:inline-flex;
+  padding:4px 8px;
+  border-radius:999px;
+  background:rgba(239,107,115,0.2);
+  color:#ffd7da;
+  font-size:11px;
+  font-weight:800;
+}
+
+.visChip {
+  display:inline-block;
+  font-size:9px;
+  padding:1px 5px;
+  border-radius:6px;
+  margin-left:6px;
+  font-weight:800;
+  letter-spacing:0.05em;
+  vertical-align:middle;
+}
+.visInternal { background: rgba(139,124,246,0.22); color:#d7d2fb; }
+.visClient { background: rgba(245,180,90,0.22); color:#ffe6c2; }
+
+.tabDivider {
+  flex: 0 0 auto;
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 6px;
+  background: linear-gradient(180deg, transparent, var(--line-strong), transparent);
+}
+
+.kpiGrid {
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap:12px;
+  margin-bottom:16px;
+}
+.kpiCard {
+  padding:15px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.035);
+}
+.kpiLabel { color:var(--muted); font-size:12px; font-weight:700; }
+.kpiValue { font-size:26px; font-weight:900; margin-top:4px; }
+
+.workSummaryChips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.summaryChip {
+  display: inline-flex;
+  padding: 8px 11px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.sectionHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.sectionSubtitle {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.standardList {
+  display: grid;
+  gap: 12px;
+}
+
+.standardCard {
+  padding: 15px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.035);
+}
+
+.standardCardTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.standardCardTitle {
+  font-size: 16px;
+  font-weight: 900;
+  margin-bottom: 5px;
+}
+
+.standardCardMeta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 14px;
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 12px;
+}
+
+.standardCardActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+@media (max-width: 1000px) {
+  .standardCardMeta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .sectionHead,
+  .standardCardTop {
+    flex-direction: column;
+  }
+
+  .standardCardMeta {
+    grid-template-columns: 1fr;
+  }
+}
+
+.workCardList {
+  display: grid;
+  gap: 12px;
+}
+
+.workCard {
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.035);
+}
+
+.workCardTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.workCardTitle {
+  font-size: 16px;
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+
+.workCardMeta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+.workCardActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+@media (max-width: 900px) {
+  .workCardTop {
+    flex-direction: column;
+  }
+
+  .workCardMeta {
+    grid-template-columns: 1fr;
+  }
+}
+
+.badgeDanger {
+  background: var(--danger-soft);
+  color: var(--text-strong);
+}
+
+.workModal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  justify-content: center;
+  align-items: center;
+}
+
+.workModal.open {
+  display: flex;
+}
+
+.workModalCard {
+  width: min(900px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: var(--shadow-soft);
+  padding: 18px;
+}
+
+.formGrid {
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.formField {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.formField input,
+.formField select,
+.formField textarea {
+  width:100%;
+  padding:12px;
+  border-radius:12px;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,0.04);
+  color:var(--text);
+  font:inherit;
+}
+
+.formField textarea {
+  min-height:90px;
+}
+
+          .item { padding:12px 0; border-top:1px solid rgba(255,255,255,0.08); }
+          .item:first-child { border-top:0; }
+          .itemTitle { font-weight:800; margin-bottom:6px; }
+
+          .wrap a { color: var(--primary); }
+
+          @media (max-width: 900px) {
+            .stats, .grid2 { grid-template-columns:1fr; }
+          }
+
+          /* ------------------------------------------------------------------
+             Polished refinement layer — depth, motion & color cues.
+             Pure CSS over existing markup (no structural changes).
+          ------------------------------------------------------------------ */
+
+          /* Lift + glow on interactive cards */
+          .statCard, .kpiCard, .panel, .workCard, .standardCard, .empCard {
+            transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+          }
+          .statCard:hover, .kpiCard:hover,
+          .workCard:hover, .standardCard:hover, .empCard:hover {
+            transform: translateY(-2px);
+            border-color: color-mix(in srgb, var(--primary) 35%, var(--line));
+            box-shadow: 0 14px 30px -18px color-mix(in srgb, var(--primary) 65%, transparent);
+          }
+
+          /* Accent top-edge + gradient numerals on the hero stats */
+          .statCard { position: relative; overflow: hidden; }
+          .statCard::before {
+            content: "";
+            position: absolute; inset: 0 0 auto 0; height: 3px;
+            background: linear-gradient(90deg,
+              var(--primary),
+              color-mix(in srgb, var(--accent) 70%, var(--primary)));
+            opacity: .9;
+          }
+          .statValue, .kpiValue {
+            background: linear-gradient(135deg,
+              var(--text-strong),
+              color-mix(in srgb, var(--primary) 65%, var(--text-strong)));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+          }
+
+          /* Accent bar in front of every panel heading */
+          .panel h2 { display: flex; align-items: center; gap: 10px; }
+          .panel h2::before {
+            content: "";
+            flex: 0 0 auto;
+            width: 4px; height: 17px;
+            border-radius: 999px;
+            background: linear-gradient(180deg,
+              var(--primary),
+              color-mix(in srgb, var(--accent) 70%, var(--primary)));
+          }
+
+          /* Table rows respond to the cursor */
+          .workTable tbody tr { transition: background .14s ease; }
+          .workTable tbody tr:hover { background: rgba(255,255,255,0.045); }
+
+          /* Tonal outlines so status badges read at a glance */
+          .badge { align-items: center; gap: 6px; border: 1px solid transparent; }
+          .badgeOk    { border-color: color-mix(in srgb, var(--success) 38%, transparent); }
+          .badgeInfo  { border-color: color-mix(in srgb, var(--info) 38%, transparent); }
+          .badgeWarn  { border-color: color-mix(in srgb, var(--accent) 38%, transparent); }
+          .badgeDanger{ border-color: color-mix(in srgb, var(--danger) 42%, transparent); }
+
+          /* Buttons gain motion + a primary glow */
+          .btn {
+            transition: transform .14s ease, background .14s ease,
+                        border-color .14s ease, box-shadow .14s ease;
+          }
+          .btn:hover {
+            transform: translateY(-1px);
+            background: rgba(255,255,255,0.09);
+            border-color: rgba(255,255,255,0.22);
+          }
+          .btn:active { transform: translateY(0); }
+          .btnPrimary:hover {
+            box-shadow: 0 10px 22px -10px color-mix(in srgb, var(--primary) 75%, transparent);
+          }
+
+          /* Left accent reveals on card hover */
+          .workCard, .standardCard { border-left: 3px solid transparent; }
+          .workCard:hover, .standardCard:hover {
+            border-left-color: color-mix(in srgb, var(--primary) 60%, transparent);
+          }
+
+          /* Chips + inline selects */
+          .summaryChip { transition: background .14s ease, border-color .14s ease; }
+          .summaryChip:hover {
+            background: rgba(255,255,255,0.10);
+            border-color: rgba(255,255,255,0.18);
+          }
+          .stageSelect { transition: border-color .14s ease, background .14s ease; cursor: pointer; }
+          .stageSelect:hover {
+            border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+            background: rgba(255,255,255,0.07);
+          }
+
+          /* Empty-state rows feel intentional, not broken
+             (these are always rendered as a single colspan cell) */
+          .workTable td[colspan] {
+            text-align: center;
+            padding: 26px 12px;
+            font-style: italic;
+            color: var(--muted);
+          }
+
+          /* Honour reduced-motion preferences */
+          @media (prefers-reduced-motion: reduce) {
+            .statCard, .kpiCard, .panel, .workCard, .standardCard,
+            .empCard, .btn, .tab, .workTable tbody tr { transition: none; }
+            .statCard:hover, .kpiCard:hover, .workCard:hover,
+            .standardCard:hover, .empCard:hover, .btn:hover { transform: none; }
+          }
