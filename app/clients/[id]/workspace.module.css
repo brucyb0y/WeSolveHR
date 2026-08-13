@@ -828,3 +828,38 @@ ${buildSweetAlertCss()}
             .statCard:hover, .kpiCard:hover, .workCard:hover,
             .standardCard:hover, .empCard:hover, .btn:hover { transform: none; }
           }
+
+/* ---- overview tab (were inline style attributes) ----------------------- */
+
+.notSet {
+  color: var(--danger);
+}
+
+.summaryBlock {
+  margin-top: 16px;
+}
+
+/* ---- task / updates tabs (were inline style attributes) ---------------- */
+
+.panelHeadRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.panelHeadFlush {
+  margin: 0;
+}
+
+.workCardBadges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.timelineList {
+  margin-top: 16px;
+}
