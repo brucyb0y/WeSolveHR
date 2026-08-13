@@ -21,7 +21,7 @@ export default function OverviewTab({
   updates,
   gtmAssociateNames,
   lastActivity,
-  summaryAndGoalsHtml,
+  summaryAndGoals,
 }) {
   return (
     <>
@@ -104,10 +104,9 @@ export default function OverviewTab({
         </div>
       </div>
 
-      <div
-        className={styles.summaryBlock}
-        dangerouslySetInnerHTML={{ __html: summaryAndGoalsHtml }}
-      />
+      {/* Rendered element, not an HTML string — the summary and goals panels
+          are components in components/charts/SummaryPanel. */}
+      <div className={styles.summaryBlock}>{summaryAndGoals}</div>
     </>
   );
 }

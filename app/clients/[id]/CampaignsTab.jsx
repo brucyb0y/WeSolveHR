@@ -30,8 +30,7 @@ export default function CampaignsTab({ clientId, campaigns, onAdd, onEdit }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState(null);
 
-  const sum = (key) =>
-    campaigns.reduce((n, c) => n + (Number(c[key]) || 0), 0);
+  const sum = (key) => campaigns.reduce((n, c) => n + (Number(c[key]) || 0), 0);
 
   const statusClass = (s) =>
     s === "completed"

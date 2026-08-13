@@ -167,8 +167,13 @@ export function OverviewTab({ client, services, teamMembers }) {
 }
 
 export function LeadFunnel({ metrics }) {
-  const { stageCount, totalLeads, qualifiedLeads, meetingLeads, convertedLeads } =
-    metrics;
+  const {
+    stageCount,
+    totalLeads,
+    qualifiedLeads,
+    meetingLeads,
+    convertedLeads,
+  } = metrics;
 
   const kpis = [
     ["Total Leads", totalLeads],

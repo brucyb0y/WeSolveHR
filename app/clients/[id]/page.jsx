@@ -46,12 +46,26 @@ import {
   formatDateOnly,
   getDateStringInTimeZone,
   normalizeClientGoalsData,
+  buildClientAutoReportSections,
+  clientWeeklyReportNumbering,
+  CLIENT_REPORT_METRICS,
   APP_TIMEZONE,
 } from "@/lib/server/app";
 
 import TopNav from "@/components/TopNav";
 import styles from "./workspace.module.css";
-import { priorityBadgeClass } from "./badges";
+import ActivityReport from "@/components/charts/ActivityReport";
+import FunnelReport from "@/components/charts/FunnelReport";
+import ReportSubviews from "./ReportSubviews";
+import ClientViewLinkButton from "./ClientViewLinkButton";
+import RegenSummaryButton from "./RegenSummaryButton";
+import EditGoalsButton from "./EditGoalsButton";
+import {
+  SummaryWithGoals,
+  ReportSummaryPanel,
+  ClientGoalsPanel,
+  hasSummaryContent,
+} from "@/components/charts/SummaryPanel";
 
 import WorkspaceTabs from "./WorkspaceTabs";
 import WorkspaceShell from "./WorkspaceShell";
@@ -470,6 +484,51 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
     incentiveStatuses: INCENTIVE_STATUSES,
   };
 
+  // Summary + goals block. Overview shows the daily one; the Report tab shows
+  // a copy per subview (built below, where each week's row is to hand).
+  const goalsUpdatedByName = clientGoals?.updated_by_user_id
+    ? userName(clientGoals.updated_by_user_id)
+    : "";
+
+  const summaryWithGoals = (period, row, extra = {}) => (
+    <SummaryWithGoals
+      summary={
+        <ReportSummaryPanel
+          period={period}
+          row={row}
+          editable
+          weekLabel={extra.weekLabel || ""}
+          rangeLabel={extra.rangeLabel || ""}
+          generatedText={row?.created_at ? formatDateTime(row.created_at) : ""}
+          regenButton={
+            <RegenSummaryButton
+              clientId={clientId}
+              period={period}
+              weekStart={extra.weekStart || null}
+              hasContent={hasSummaryContent(row)}
+            />
+          }
+        />
+      }
+      goals={
+        <ClientGoalsPanel
+          clientId={clientId}
+          goals={goals}
+          editable
+          updatedText={
+            clientGoals?.updated_at
+              ? formatDateTime(clientGoals.updated_at)
+              : ""
+          }
+          updatedByName={goalsUpdatedByName}
+          editButton={
+            <EditGoalsButton hasGoals={!!(goals.items.length || goals.notes)} />
+          }
+        />
+      }
+    />
+  );
+
   // Only the tabs with no callbacks render here; everything interactive is
   // constructed inside WorkspaceShell, which owns the modal state.
   const panel =
@@ -485,7 +544,7 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
         updates={updates}
         gtmAssociateNames={teamMembers.map((m) => m.name).join(", ")}
         lastActivity={timelineEvents[0]?.atText || "-"}
-        summaryAndGoalsHtml={null}
+        summaryAndGoals={summaryWithGoals("daily", data.reportSummaries?.daily)}
       />
     );
 
@@ -527,6 +586,97 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
       </div>
     ) : null;
 
+  // Auto-report subviews (daily + one per week). Built only for the Report tab
+  // — the aggregation walks every lead stage event, which is wasted work on the
+  // other thirteen.
+  let reportSubviews = null;
+  if (activeTab === "report") {
+    const sections = buildClientAutoReportSections({
+      leadAllRows,
+      campaigns,
+      meetings,
+      blockers,
+      incentives,
+      leadStageEvents: data.leadStageEvents || [],
+      users,
+      weekNumbering: clientWeeklyReportNumbering(client),
+    });
+
+    const rd = sections.reportData;
+
+    // Snapshot figures are all-time and identical on every subview, so they are
+    // built once and spread into each FunnelReport.
+    const snapshot = {
+      funnelStages: rd.funnelStages,
+      totalLeads: rd.totalLeads,
+      convertedNow: rd.convertedNow,
+      conversionRate: rd.conversionRate,
+    };
+
+    reportSubviews = (
+      <ReportSubviews
+        daily={{
+          summary: summaryWithGoals("daily", data.reportSummaries?.daily),
+          activity: (
+            <ActivityReport
+              title="Today's Report"
+              eyebrow="Daily snapshot"
+              rangeLabel={rd.dailyRangeLabel}
+              totals={rd.dailyAgg.totals}
+              rows={rd.dailyAgg.rows}
+              periodWord="today"
+              live
+              metrics={CLIENT_REPORT_METRICS}
+            />
+          ),
+          funnel: (
+            <FunnelReport
+              colLabel="Today"
+              rangeLabel={rd.dailyRangeLabel}
+              memberPeriodLabel="today"
+              agg={rd.dailyAgg}
+              {...snapshot}
+            />
+          ),
+        }}
+        weeks={(sections.weeklyReports || []).map((w) => ({
+          num: w.num,
+          displayNum: w.displayNum,
+          summary: summaryWithGoals(
+            "weekly",
+            (data.reportSummaries?.weeklyByDate || {})[w.weekStart],
+            {
+              weekStart: w.weekStart,
+              weekLabel: `Week ${w.displayNum}`,
+              rangeLabel: w.rangeLabel,
+            },
+          ),
+          activity: (
+            <ActivityReport
+              title={`Week ${w.displayNum} Report`}
+              eyebrow="Mon–Sat snapshot"
+              rangeLabel={w.rangeLabel}
+              totals={w.agg.totals}
+              rows={w.agg.rows}
+              periodWord={`in week ${w.displayNum}`}
+              live={false}
+              metrics={CLIENT_REPORT_METRICS}
+            />
+          ),
+          funnel: (
+            <FunnelReport
+              colLabel={`Week ${w.displayNum}`}
+              rangeLabel={w.rangeLabel}
+              memberPeriodLabel={`in week ${w.displayNum}`}
+              agg={w.agg}
+              {...snapshot}
+            />
+          ),
+        }))}
+      />
+    );
+  }
+
   // Meeting stats measured against the single render clock.
   const weekAgoMs = nowMs - 7 * 24 * 60 * 60 * 1000;
   const meetingMs = (m) =>
@@ -560,19 +710,49 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
     <>
       <TopNav user={user} active="clients" />
       <div className={styles.wrap}>
-        <div className={styles.headRow}>
+        <div className={styles.topbar}>
           <div>
+            <div className={styles.eyebrow}>Client Workspace internal</div>
             <h1>{client.name}</h1>
-            <div className={styles.meta}>
-              {client.industry || "-"} · {client.status || "-"}
+            <div className={styles.subtitle}>
+              {client.company_name || "-"} · {client.status || "-"} ·{" "}
+              {client.health_status || "-"}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <a className={styles.btn} href={`/clients/${clientId}/edit`}>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <a className={styles.btn} href="/clients">
+              ← Clients
+            </a>
+            {/* Only shown when the client actually has a Drive folder — a dead
+                link is worse than an absent one. */}
+            {client.google_drive_folder_url ? (
+              <a
+                className={styles.btn}
+                href={client.google_drive_folder_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Drive
+              </a>
+            ) : null}
+            <a
+              className={styles.btn}
+              href="https://notebooklm.google.com/notebook/76c66777-16e6-447f-b6a7-d40befa08590"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Notebook
+            </a>
+            <ClientViewLinkButton clientId={clientId} />
+            <a
+              className={`${styles.btn} ${styles.btnPrimary}`}
+              href={`/clients/${clientId}/edit`}
+            >
               Edit Client
             </a>
-            <a className={styles.btn} href="/clients">
-              ← All Clients
+            <a className={styles.btn} href={`/clients/${clientId}/reset`}>
+              Reset
             </a>
           </div>
         </div>
@@ -657,6 +837,7 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
             activityLogs={activityLogs}
             updates={updates}
             meetingStats={meetingStats}
+            reportSubviews={reportSubviews}
           />
         )}
       </div>

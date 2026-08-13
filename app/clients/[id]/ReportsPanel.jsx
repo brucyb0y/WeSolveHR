@@ -140,7 +140,10 @@ export default function ReportsPanel({ clientId, reports, onAdd, onEdit }) {
                   value={r.next_week_plan}
                 />
 
-                <div className={styles.workCardActions} style={{ marginTop: 12 }}>
+                <div
+                  className={styles.workCardActions}
+                  style={{ marginTop: 12 }}
+                >
                   <button
                     className={styles.btn}
                     type="button"
@@ -148,7 +151,9 @@ export default function ReportsPanel({ clientId, reports, onAdd, onEdit }) {
                     onClick={() =>
                       patch(
                         r.id,
-                        r.is_published ? { unpublish: true } : { publish: true },
+                        r.is_published
+                          ? { unpublish: true }
+                          : { publish: true },
                         `Failed to ${r.is_published ? "unpublish" : "publish"} report`,
                       )
                     }

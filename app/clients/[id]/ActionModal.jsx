@@ -8,12 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  WorkModal,
-  TextField,
-  SelectField,
-  TextAreaField,
-} from "./WorkModal";
+import { WorkModal, TextField, SelectField, TextAreaField } from "./WorkModal";
 
 const OWNER_TYPES = ["WeSolve", "Client"];
 const STATUSES = ["Open", "In Progress", "Waiting", "Done"];
@@ -127,11 +122,7 @@ export default function ActionModal({ clientId, action, onClose }) {
         value={form.priority}
         onChange={set("priority")}
       />
-      <TextAreaField
-        label="Notes"
-        value={form.notes}
-        onChange={set("notes")}
-      />
+      <TextAreaField label="Notes" value={form.notes} onChange={set("notes")} />
     </WorkModal>
   );
 }

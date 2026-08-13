@@ -17,6 +17,8 @@ import {
   CLIENT_LEAD_PIPELINE_STAGES,
   CLIENT_LEAD_DEMO_STATUSES,
   buildClientAutoReportSections,
+  CLIENT_REPORT_METRICS,
+  normalizeClientGoalsData,
   clientWeeklyReportNumbering,
   renderSummaryWithGoals,
 } from "@/lib/server/app.js";
@@ -34,17 +36,20 @@ import {
 import ClientViewTabs from "./ClientViewTabs";
 import LeadsTab from "./LeadsTab";
 import ReportTab from "./ReportTab";
+import ActivityReport from "@/components/charts/ActivityReport";
+import FunnelReport from "@/components/charts/FunnelReport";
+import {
+  SummaryWithGoals,
+  ReportSummaryPanel,
+  ClientGoalsPanel,
+} from "@/components/charts/SummaryPanel";
 import {
   ClientViewHeader,
   ClientViewStats,
   OverviewTab,
   LeadFunnel,
 } from "./OverviewPanels";
-import {
-  HighlightedCalls,
-  CampaignsTab,
-  MeetingsTab,
-} from "./TablePanels";
+import { HighlightedCalls, CampaignsTab, MeetingsTab } from "./TablePanels";
 import { BlockersTab, WorkTab, WeeklyReportsList } from "./WorkPanels";
 import styles from "./client-view.module.css";
 
@@ -72,7 +77,11 @@ const label = (map, key) =>
 export async function generateMetadata({ params }) {
   const { token } = await params;
   const data = await getClientViewData(token);
-  return { title: data ? `${data.client.name || "Client"} — Project View` : "Client view" };
+  return {
+    title: data
+      ? `${data.client.name || "Client"} — Project View`
+      : "Client view",
+  };
 }
 
 export default async function ClientViewPage({ params }) {
@@ -169,33 +178,106 @@ export default async function ClientViewPage({ params }) {
     weekNumbering: clientWeeklyReportNumbering(client),
   });
 
-  const summaryHtml = (period, summaryRow, extra = {}) =>
-    renderSummaryWithGoals({
-      period,
-      summaryRow,
-      goalsRow: clientGoals,
-      editable: false,
-      clientId: client.id,
-      users,
-      ...extra,
-    });
+  // Summary + goals, read-only: editable={false} means no regenerate button
+  // and no edit-goals control ever reaches the customer.
+  const goals = normalizeClientGoalsData(clientGoals);
+  const summaryPanel = (period, summaryRow, extra = {}) => (
+    <SummaryWithGoals
+      summary={
+        <ReportSummaryPanel
+          period={period}
+          row={summaryRow}
+          editable={false}
+          weekLabel={extra.weekLabel || ""}
+          rangeLabel={extra.rangeLabel || ""}
+          generatedText={
+            summaryRow?.created_at ? formatDateTime(summaryRow.created_at) : ""
+          }
+        />
+      }
+      goals={
+        <ClientGoalsPanel
+          clientId={client.id}
+          goals={goals}
+          editable={false}
+          updatedText={
+            clientGoals?.updated_at
+              ? formatDateTime(clientGoals.updated_at)
+              : ""
+          }
+        />
+      }
+    />
+  );
 
-  const dailyHtml =
-    summaryHtml("daily", reportSummaries.daily) +
-    (sections.dailyAutoReportHtml || "") +
-    (sections.leadFunnelReportDailyHtml || "");
+  // Charts render through the shared kit; only the AI summary + goals panel is
+  // still a server-built HTML string.
+  const rd = sections.reportData;
+
+  const funnelSnapshot = {
+    funnelStages: rd.funnelStages,
+    totalLeads: rd.totalLeads,
+    convertedNow: rd.convertedNow,
+    conversionRate: rd.conversionRate,
+  };
+
+  const daily = {
+    summary: summaryPanel("daily", reportSummaries.daily),
+    activity: (
+      <ActivityReport
+        title="Today's Report"
+        eyebrow="Daily snapshot"
+        rangeLabel={rd.dailyRangeLabel}
+        totals={rd.dailyAgg.totals}
+        rows={rd.dailyAgg.rows}
+        periodWord="today"
+        live
+        metrics={CLIENT_REPORT_METRICS}
+      />
+    ),
+    funnel: (
+      <FunnelReport
+        colLabel="Today"
+        rangeLabel={rd.dailyRangeLabel}
+        memberPeriodLabel="today"
+        agg={rd.dailyAgg}
+        {...funnelSnapshot}
+      />
+    ),
+  };
 
   const weeks = (sections.weeklyReports || []).map((w) => ({
     num: w.num,
     displayNum: w.displayNum,
-    html:
-      summaryHtml("weekly", (reportSummaries.weeklyByDate || {})[w.weekStart], {
-        weekStart: w.weekStart,
+    summary: summaryPanel(
+      "weekly",
+      (reportSummaries.weeklyByDate || {})[w.weekStart],
+      {
         weekLabel: `Week ${w.displayNum}`,
         rangeLabel: w.rangeLabel,
-      }) +
-      (w.activityHtml || "") +
-      (w.funnelHtml || ""),
+      },
+    ),
+    activity: (
+      <ActivityReport
+        title={`Week ${w.displayNum} Report`}
+        eyebrow="Mon–Sat snapshot"
+        rangeLabel={w.rangeLabel}
+        totals={w.agg.totals}
+        rows={w.agg.rows}
+        periodWord={`in week ${w.displayNum}`}
+        live={false}
+        metrics={CLIENT_REPORT_METRICS}
+      />
+    ),
+    funnel: (
+      <FunnelReport
+        colLabel={`Week ${w.displayNum}`}
+        rangeLabel={w.rangeLabel}
+        memberPeriodLabel={`in week ${w.displayNum}`}
+        agg={w.agg}
+        {...funnelSnapshot}
+      />
+    ),
   }));
 
   const totals = {
@@ -243,10 +325,7 @@ export default async function ClientViewPage({ params }) {
       key: "work",
       label: "Tasks",
       content: (
-        <WorkTab
-          linkedTasks={linkedTasks}
-          workOwnerGroups={workOwnerGroups}
-        />
+        <WorkTab linkedTasks={linkedTasks} workOwnerGroups={workOwnerGroups} />
       ),
     },
     {
@@ -292,7 +371,7 @@ export default async function ClientViewPage({ params }) {
       label: "Report",
       content: (
         <>
-          <ReportTab dailyHtml={dailyHtml} weeks={weeks} />
+          <ReportTab daily={daily} weeks={weeks} />
           <WeeklyReportsList
             reports={reports.map((r) => ({
               ...r,

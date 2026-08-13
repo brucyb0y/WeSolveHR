@@ -23,7 +23,9 @@ const EMPTY = {
 };
 
 const titleCase = (s) =>
-  String(s || "").charAt(0).toUpperCase() + String(s || "").slice(1);
+  String(s || "")
+    .charAt(0)
+    .toUpperCase() + String(s || "").slice(1);
 
 export default function CampaignModal({
   clientId,

@@ -23,7 +23,9 @@ const EMPTY = {
 };
 
 const titleCase = (s) =>
-  String(s || "").charAt(0).toUpperCase() + String(s || "").slice(1);
+  String(s || "")
+    .charAt(0)
+    .toUpperCase() + String(s || "").slice(1);
 
 export default function IncentiveModal({
   clientId,
@@ -40,7 +42,9 @@ export default function IncentiveModal({
     incentive
       ? {
           title: incentive.title || "",
-          gtm_user_id: incentive.gtm_user_id ? String(incentive.gtm_user_id) : "",
+          gtm_user_id: incentive.gtm_user_id
+            ? String(incentive.gtm_user_id)
+            : "",
           related_lead_id: incentive.related_lead_id
             ? String(incentive.related_lead_id)
             : "",

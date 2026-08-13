@@ -48,8 +48,7 @@ function EmployeeCard({ member }) {
       <div className={styles.workCardTop}>
         <div>
           <div className={styles.workCardTitle}>
-            {name || "-"}{" "}
-            <span className={VIS_CHIP.internal}>INTERNAL</span>
+            {name || "-"} <span className={VIS_CHIP.internal}>INTERNAL</span>
           </div>
           <div className={styles.meta}>{roleLabel}</div>
         </div>

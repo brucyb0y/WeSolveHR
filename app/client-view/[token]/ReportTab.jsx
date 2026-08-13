@@ -2,26 +2,20 @@
 
 // Report tab: Daily / Week-N subviews behind a subtab bar with a week picker.
 //
-// BRIDGE — read this before changing it.
+// The charts are real components now. Each subview renders through the shared
+// kit in components/charts — the SAME components /clients/[id]'s Report tab
+// uses, fed by the same aggregates from buildClientAutoReportSections(). One
+// renderer for both audiences is what keeps the customer-facing report honest
+// against the internal one.
 //
-// Each subview's body is still produced as an HTML string by the server:
-// renderSummaryWithGoals() plus the auto-report and lead-funnel sections from
-// buildClientAutoReportSections(), which render through the arKpiCard /
-// arBars / arStackedBars / arDonut / arFunnelChart SVG kit (~350 lines in
-// lib/server/app.js). That kit is shared with /clients/[id]'s Report tab, so it
-// is worth converting ONCE as a shared component rather than twice — and that
-// conversion belongs with /clients/[id], not here.
-//
-// Until then the server-rendered markup is injected with
-// dangerouslySetInnerHTML. It is our own server output, built from escaped
-// values, and no user input reaches it unescaped — but it is the one place in
-// this migration that is not real JSX, and it should not be copied as a
-// pattern. The subtab switching and week picker below ARE real React.
+// No HTML strings remain: the AI summary and goals panels are components too,
+// rendered read-only (editable={false}) so the customer never sees the
+// regenerate or edit-goals controls.
 
 import { useEffect, useRef, useState } from "react";
 import styles from "./client-view.module.css";
 
-export default function ReportTab({ dailyHtml, weeks }) {
+export default function ReportTab({ daily, weeks }) {
   const [view, setView] = useState("daily");
   const [weekMenuOpen, setWeekMenuOpen] = useState(false);
   const ddRef = useRef(null);
@@ -90,19 +84,20 @@ export default function ReportTab({ dailyHtml, weeks }) {
       </div>
 
       {view === "daily" ? (
-        <div
-          className={styles.reportSubview}
-          dangerouslySetInnerHTML={{ __html: dailyHtml }}
-        />
+        <div className={styles.reportSubview}>
+          {daily.summary}
+          {daily.activity}
+          {daily.funnel}
+        </div>
       ) : null}
 
       {weeks.map((w) =>
         view === `week${w.num}` ? (
-          <div
-            key={w.num}
-            className={styles.reportSubview}
-            dangerouslySetInnerHTML={{ __html: w.html }}
-          />
+          <div key={w.num} className={styles.reportSubview}>
+            {w.summary}
+            {w.activity}
+            {w.funnel}
+          </div>
         ) : null,
       )}
     </>

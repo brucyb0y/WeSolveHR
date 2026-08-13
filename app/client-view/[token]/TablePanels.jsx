@@ -105,14 +105,7 @@ export function CampaignsTab({ campaigns, totals }) {
       </div>
 
       <Table
-        columns={[
-          "Campaign",
-          "Type",
-          "Channel",
-          "Status",
-          "Sent",
-          "Responses",
-        ]}
+        columns={["Campaign", "Type", "Channel", "Status", "Sent", "Responses"]}
         rows={campaigns}
         emptyText="No campaigns shared yet."
         renderRow={(c) => {

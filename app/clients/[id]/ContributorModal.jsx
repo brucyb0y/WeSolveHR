@@ -142,11 +142,7 @@ export default function ContributorModal({ clientId, contributor, onClose }) {
         checked={form.can_view_client_dashboard}
         onChange={set("can_view_client_dashboard")}
       />
-      <TextAreaField
-        label="Notes"
-        value={form.notes}
-        onChange={set("notes")}
-      />
+      <TextAreaField label="Notes" value={form.notes} onChange={set("notes")} />
     </WorkModal>
   );
 }

@@ -15,7 +15,13 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./workspace.module.css";
 
-export default function TaskTab({ clientId, workItems, chips, alertStrip, onAdd }) {
+export default function TaskTab({
+  clientId,
+  workItems,
+  chips,
+  alertStrip,
+  onAdd,
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [busy, setBusy] = useState(false);

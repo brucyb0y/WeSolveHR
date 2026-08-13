@@ -18,7 +18,7 @@
 // modal shape: { kind, id? } — `kind` picks the component, `id` selects the row
 // being edited (absent for "add").
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ActionsTab from "./ActionsTab";
 import TaskTab from "./TaskTab";
 import BlockersTab from "./BlockersTab";
@@ -29,6 +29,7 @@ import MilestonesTab from "./MilestonesTab";
 import UpdatesTab from "./UpdatesTab";
 import TeamTab from "./TeamTab";
 import ReportsPanel from "./ReportsPanel";
+import { OPEN_GOALS_EVENT } from "./EditGoalsButton";
 
 import ActionModal from "./ActionModal";
 import BlockerModal from "./BlockerModal";
@@ -58,6 +59,15 @@ export default function WorkspaceShell({
   reportSubviews = null,
 }) {
   const [modal, setModal] = useState(null);
+
+  // The Report tab's goals panel is server-rendered and handed down as an
+  // element, so its "Edit goals" button cannot call open() directly. It
+  // dispatches an event instead; this is the single Goals modal for the page.
+  useEffect(() => {
+    const onOpenGoals = () => setModal({ kind: "goals" });
+    window.addEventListener(OPEN_GOALS_EVENT, onOpenGoals);
+    return () => window.removeEventListener(OPEN_GOALS_EVENT, onOpenGoals);
+  }, []);
 
   // Tabs call onAdd() with no argument and onEdit(id) with a row id; both route
   // to the same modal, which switches on whether a row was found.
