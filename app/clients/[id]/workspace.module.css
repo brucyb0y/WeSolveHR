@@ -2,15 +2,11 @@
  * <style> block. Class names camelCased for JSX; declarations unchanged.
  * The two bare element rules (h1, a) are scoped under `.wrap`.
  *
- * NOTE: the original page also loaded SweetAlert2 from a CDN
- * (<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11">). Any confirm /
- * toast dialogs that relied on window.Swal need an explicit decision when the
- * client components are converted — either add the dependency to package.json
- * or replace those calls. buildSweetAlertCss() already ships the styling in
- * globals.css.
+ * SweetAlert2 was loaded from a CDN by the original page. It is now a real
+ * dependency (package.json) and imported by the components that use it; its
+ * styling ships in globals.css via buildSweetAlertCss(), so the generator call
+ * that used to sit here has been removed — this is a CSS file, not a template.
  */
-
-${buildSweetAlertCss()}
 
           .wrap { max-width: 1600px; margin: 0 auto; padding: 24px 18px 36px; }
 
@@ -901,4 +897,9 @@ ${buildSweetAlertCss()}
    width:100%, which the original overrode inline. */
 .inlineCheckbox {
   width: auto;
+}
+
+/* AI quick-fill textarea in the meeting modal (was an inline min-height). */
+.aiNotes {
+  min-height: 120px;
 }

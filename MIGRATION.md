@@ -50,54 +50,52 @@ Three rules keep the two halves coexisting:
 
 ## Remaining work
 
-**24 of 25 done.** One left: `/clients/[id]`.
+**All 25 pages are converted and serving from React.** `route.js` is gone from
+every page segment; the Express adapter (`lib/server/adapter.js`) now serves
+only the `/api/*` endpoints, which the React pages call.
 
-| Route | Lines | Notes |
-| --- | --- | --- |
-### `/clients/[id]` — the last page
+Verified at runtime, not just at build: all 14 tabs of `/clients/[id]` return
+200 with their real content present, the lead filters discriminate correctly
+(`has_phone=yes` keeps a row that `has_phone=no` drops), and the other 13 pages
+still respond. `/my-dashboard`, `/account` and `/help` return 307 to `/login`
+under Basic auth — expected, since they use `requireUser` (session) rather than
+`requireDashboardUser`.
 
-| Section | Lines | State |
-| --- | --- | --- |
-| CSS | 822 | **done** — `app/clients/[id]/workspace.module.css` (817 lines, 82 classes) |
-| Data prep + helper renderers | 1,651 | to do |
-| Markup (14 tabs) | 1,649 | to do |
-| Client JS | **2,614 across 135 functions** | to do |
-| Route data loading | ~470 | to do — 17 parallel queries, lead filtering, business resolution, conditional report/goals load |
+### Still outstanding
 
-More client JS than `/leads/[business]` and `/client-view` combined. Convert tab
-by tab: Overview, then Leads (reuse `lib/data/client-view-leads.js` — same
-filter semantics), then the CRUD-heavy tabs (milestones / actions /
-contributors / work items / updates / blockers / meetings / campaigns /
-incentives / reports / goals), then audio recording, bulk lead ops and Excel
-import.
+1. **Chart kit** — `arKpiCard` / `arBars` / `arStackedBars` / `arDonut` /
+   `arFunnelChart` / `buildClientAutoReportSections` (~350 lines, app.js:4052).
+   Two things depend on it:
+   - the Report tab's auto-computed daily/weekly/funnel subviews, currently not
+     rendered on `/clients/[id]` (the PM-authored report cards below them are
+     converted and working);
+   - `/client-view/[token]`'s ReportTab, which still uses
+     `dangerouslySetInnerHTML` for chart bodies. Converting the kit retires that
+     bridge. Do both together — they share the kit, and converting one side
+     alone is how the two pages drift apart.
 
-**Decide before converting:** the page loads **SweetAlert2 from a CDN**
-(`<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11">`, app.js:6543) and
-calls `window.Swal` for confirms and toasts. It is an undeclared runtime
-dependency — not in package.json. Either add it properly or replace those calls
-with the app's own modal. `buildSweetAlertCss()` already ships the styling.
+2. **Overview summary panel** — `renderSummaryWithGoals` / `renderClientGoalsPanel`
+   is passed `summaryAndGoalsHtml={null}`. The Goals modal itself is converted
+   and wired; only the read-only panel that displays them is pending, and it
+   shares the chart kit's report-section helpers.
 
-**Chart kit:** converting this page's Report tab is where `arKpiCard` /
-`arBars` / `arStackedBars` / `arDonut` / `arFunnelChart` /
-`buildClientAutoReportSections` (~350 lines, app.js:4052) should become a shared
-component. Doing so retires the one `dangerouslySetInnerHTML` bridge in
-`app/client-view/[token]/ReportTab.jsx`, which is the only non-JSX spot left in
-the migration.
-
-It embeds `/leads/[business]?embed=1` in an iframe for
-`INLINE_CLIENT_LEADS_BUSINESSES` — that contract is already honoured by the
-converted leads page, so the iframe keeps working either way.
-
-Client-visible filters in `lib/data/client-view.js` are load-bearing (updates
-`is_client_visible`, actions `owner_type=Client`, blockers `blocker_side=client_side`,
-reports `is_published`). They are what keeps the customer page from showing
-internal data — do not relax them when refactoring.
+3. **`lib/server/app.js` shrink** — nothing imports the page renderers any more,
+   so `renderClientWorkspacePage` and its siblings are dead weight. Removing
+   them is safe but noisy; left for a separate pass so this migration's diff
+   stays reviewable.
 
 ## Pre-existing defects found
 
-Fifteen, all verified against the running app. Twelve are **preserved
-deliberately** so the migration stays visually faithful; four were fixed because
+Seventeen, all verified against the running app. Twelve are **preserved
+deliberately** so the migration stays visually faithful; five were fixed because
 preserving them was not possible or not defensible.
+
+Two more were found during the `/clients/[id]` conversion and preserved:
+the Meetings table's fourth/fifth column headers ("Status" / "MOM") sit over the
+meeting *type* and MOM-filled columns respectively — the labels are off by one
+against their contents; and `lead-call-icon` is emitted as a class with no rule
+anywhere and nothing querying it (all its styling is inline), so it was dropped
+rather than given a rule the original never had.
 
 ### Fixed
 

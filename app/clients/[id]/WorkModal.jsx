@@ -13,7 +13,18 @@
 import { useEffect } from "react";
 import styles from "./workspace.module.css";
 
-export function WorkModal({ title, onClose, onSave, saveLabel, saving, children }) {
+// `readOnly` drops the Cancel/Save footer entirely — used by the history
+// dialogs, which only display. Without it they would render a Save button with
+// no label and no handler.
+export function WorkModal({
+  title,
+  onClose,
+  onSave,
+  saveLabel,
+  saving,
+  readOnly,
+  children,
+}) {
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") onClose();
@@ -39,19 +50,21 @@ export function WorkModal({ title, onClose, onSave, saveLabel, saving, children 
 
         <div className={styles.formGrid}>{children}</div>
 
-        <div className={styles.modalActions}>
-          <button className={styles.btn} type="button" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            className={`${styles.btn} ${styles.btnPrimary}`}
-            type="button"
-            onClick={onSave}
-            disabled={saving}
-          >
-            {saving ? "Saving..." : saveLabel}
-          </button>
-        </div>
+        {readOnly ? null : (
+          <div className={styles.modalActions}>
+            <button className={styles.btn} type="button" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              className={`${styles.btn} ${styles.btnPrimary}`}
+              type="button"
+              onClick={onSave}
+              disabled={saving}
+            >
+              {saving ? "Saving..." : saveLabel}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
