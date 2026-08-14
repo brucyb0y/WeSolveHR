@@ -26,7 +26,7 @@
 // original goes out of its way to collect. The revert closure is passed up with
 // the request so the parent can restore the element it came from.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
 import styles from "./workspace.module.css";
@@ -92,16 +92,73 @@ function SortArrow({ arrow }) {
 
 // Reached-via is a small checkbox dropdown per row: a lead can be reached
 // through several channels at once, so this is not a single-select.
+//
+// THE CHECKBOXES ARE OPTIMISTIC, and they have to be. `lead[c.column]` comes
+// from server data, so a purely controlled checkbox snaps back the instant it
+// is clicked and only settles once router.refresh() re-runs the whole
+// workspace query — seconds on this tab. That reads as "the checkbox does
+// nothing", and the refresh remounts this component, closing the panel too.
+//
+// So a local override is applied immediately, the request goes out behind it,
+// and the override is dropped once the server value agrees (or restored on
+// failure). `open` lives in a ref-backed state that survives the refresh.
 function ReachDropdown({ lead, channels, onToggleChannel }) {
   const [open, setOpen] = useState(false);
+  // column -> boolean, only for values still in flight.
+  const [pending, setPending] = useState({});
+  const wrapRef = useRef(null);
+
+  // Server data has caught up — drop overrides that now match it.
+  useEffect(() => {
+    setPending((prev) => {
+      const next = {};
+      for (const [col, want] of Object.entries(prev)) {
+        if (!!lead[col] !== want) next[col] = want;
+      }
+      return Object.keys(next).length === Object.keys(prev).length
+        ? prev
+        : next;
+    });
+  }, [lead]);
+
+  // Click-outside closes the panel; bound only while open.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDocClick = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
+  }, [open]);
+
+  const valueOf = (column) =>
+    column in pending ? pending[column] : !!lead[column];
 
   const activeLabels = channels
-    .filter((c) => lead[c.column])
+    .filter((c) => valueOf(c.column))
     .map((c) => c.label);
   const label = activeLabels.length ? activeLabels.join(", ") : "Not reached";
 
+  async function toggle(channel, checked) {
+    setPending((p) => ({ ...p, [channel.column]: checked }));
+    const ok = await onToggleChannel(lead.id, channel, checked);
+    if (!ok) {
+      // Request failed — drop the override so the server value shows again.
+      setPending((p) => {
+        const next = { ...p };
+        delete next[channel.column];
+        return next;
+      });
+    }
+  }
+
   return (
-    <div style={{ position: "relative", display: "inline-block" }}>
+    <div
+      style={{ position: "relative", display: "inline-block" }}
+      ref={wrapRef}
+    >
       <button
         type="button"
         className={styles.btn}
@@ -139,17 +196,20 @@ function ReachDropdown({ lead, channels, onToggleChannel }) {
             <label
               key={c.key}
               style={{
-                display: "block",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
                 fontSize: 12,
                 whiteSpace: "nowrap",
                 padding: "3px 4px",
+                cursor: "pointer",
               }}
             >
               <input
                 type="checkbox"
-                checked={!!lead[c.column]}
-                onChange={(e) => onToggleChannel(lead.id, c, e.target.checked)}
-              />{" "}
+                checked={valueOf(c.column)}
+                onChange={(e) => toggle(c, e.target.checked)}
+              />
               {c.label}
             </label>
           ))}
@@ -184,6 +244,20 @@ export default function ClientLeadsTable({
   // that are not on screen, so the count must come from filteredIds.
   const [allMatching, setAllMatching] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // Server data caught up — discard overrides that now match it.
+  useEffect(() => {
+    setVisibleOverride((prev) => {
+      const next = {};
+      for (const [id, want] of Object.entries(prev)) {
+        const row = leads.find((l) => String(l.id) === String(id));
+        if (row && !!row.is_client_visible !== want) next[id] = want;
+      }
+      return Object.keys(next).length === Object.keys(prev).length
+        ? prev
+        : next;
+    });
+  }, [leads]);
 
   const pageIds = leads.map((l) => l.id);
   const selectedCount = allMatching ? filteredIds.length : selected.size;
@@ -262,13 +336,32 @@ export default function ClientLeadsTable({
     });
   }
 
-  const toggleVisible = (leadId, checked) =>
-    patchLead(
+  // Optimistic, for the same reason as the reached-via boxes: `checked` comes
+  // from server data, so without a local override the box snaps back until
+  // router.refresh() finishes re-running the workspace query.
+  const [visibleOverride, setVisibleOverride] = useState({});
+
+  const isVisible = (l) =>
+    l.id in visibleOverride ? visibleOverride[l.id] : !!l.is_client_visible;
+
+  async function toggleVisible(leadId, checked) {
+    setVisibleOverride((p) => ({ ...p, [leadId]: checked }));
+    const ok = await patchLead(
       leadId,
       { is_client_visible: checked },
       "Failed to update visibility",
     );
+    if (!ok) {
+      setVisibleOverride((p) => {
+        const next = { ...p };
+        delete next[leadId];
+        return next;
+      });
+    }
+  }
 
+  // Returns true/false so ReachDropdown knows whether to keep its optimistic
+  // value or roll it back.
   const toggleChannel = (leadId, channel, checked) =>
     patchLead(
       leadId,
@@ -682,7 +775,7 @@ export default function ClientLeadsTable({
                       <input
                         type="checkbox"
                         title="Client visible"
-                        checked={!!l.is_client_visible}
+                        checked={isVisible(l)}
                         onChange={(e) => toggleVisible(l.id, e.target.checked)}
                       />
                       <span
