@@ -133,6 +133,29 @@ Nothing in `app/api/**` calls `dispatch()`. The only files still routing through
 the Express adapter are the three deliberate keepers: `/whatsapp`,
 `/health/live`, `/health/ready`.
 
+### Express fully removed
+
+The last three routes (`/whatsapp`, `/health/live`, `/health/ready`) are native
+handlers, and the adapter is gone:
+
+* deleted `lib/server/adapter.js` (438 lines), `lib/server/dispatch.js`,
+  `scripts/gen-routes.mjs`;
+* removed `createCollector()` / `createUpload()`, the `app` object and its
+  export, `app.use("/api", requireDashboardAuth)`, and the two Express auth
+  middlewares (superseded by `lib/api/auth.js`);
+* uninstalled `express`, `express-session` and `multer` — nothing imported them.
+
+`handleWhatsAppWebhook` is the one interesting piece: ~1200 lines of bot command
+handling that now takes a REQUEST-SHAPED OBJECT (`{ body, ip, signature, url }`)
+instead of an Express request. Every internal reference was `req.body.*` or
+`req.ip`, so keeping that shape moved it off Express without touching the
+command logic. `sendTwiml` now RETURNS the TwiML instead of writing to `res`,
+which is why all ~34 `return sendTwiml(res, msg)` call sites still read the same.
+
+**Twilio signature validation needs the absolute URL Twilio actually called** —
+reconstructed from `x-forwarded-proto` / `x-forwarded-host`, because behind a
+proxy `request.url` is the internal origin and every signature would fail.
+
 ### Dead Express routes removed
 
 91 unreachable `app.*(...)` registrations deleted with acorn (AST, not regex —
