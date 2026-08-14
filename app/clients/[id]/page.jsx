@@ -836,14 +836,19 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
                 Drive
               </a>
             ) : null}
-            <a
-              className={styles.btn}
-              href="https://notebooklm.google.com/notebook/76c66777-16e6-447f-b6a7-d40befa08590"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Notebook
-            </a>
+            {/* Per-client notebook, set on the edit page. Hidden when unset,
+                the same way the Drive link behaves — this used to be ONE
+                hardcoded URL shown for every client. */}
+            {client.notebook_url ? (
+              <a
+                className={styles.btn}
+                href={client.notebook_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Notebook
+              </a>
+            ) : null}
             <ClientViewLinkButton clientId={clientId} />
             <a
               className={`${styles.btn} ${styles.btnPrimary}`}

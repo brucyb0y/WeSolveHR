@@ -89,6 +89,18 @@ export default function EditClientForm({ client, users, contacts }) {
             />
           </div>
 
+          {/* Optional, unlike the Drive link: a client without a notebook
+              simply gets no Notebook button. */}
+          <div className={styles.field}>
+            <label>Notebook Link</label>
+            <input
+              name="notebook_url"
+              type="url"
+              placeholder="https://notebooklm.google.com/notebook/…"
+              defaultValue={client.notebook_url || ""}
+            />
+          </div>
+
           <div className={styles.field}>
             <label>Status</label>
             <select name="status" defaultValue={client.status || "active"}>
@@ -161,7 +173,10 @@ export default function EditClientForm({ client, users, contacts }) {
 
         <div className={`${styles.field} ${styles.fieldSpaced}`}>
           <label>Description</label>
-          <textarea name="description" defaultValue={client.description || ""} />
+          <textarea
+            name="description"
+            defaultValue={client.description || ""}
+          />
         </div>
       </div>
 

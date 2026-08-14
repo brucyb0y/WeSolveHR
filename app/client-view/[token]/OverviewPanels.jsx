@@ -15,9 +15,6 @@ const TONE_CLASS = {
   info: styles.statusInfo,
 };
 
-const NOTEBOOK_URL =
-  "https://notebooklm.google.com/notebook/76c66777-16e6-447f-b6a7-d40befa08590";
-
 export function ClientViewHeader({ client }) {
   const tone = statusTone(client.status);
 
@@ -51,14 +48,19 @@ export function ClientViewHeader({ client }) {
             <span aria-hidden="true">📁</span>Google Drive
           </a>
         ) : null}
-        <a
-          className={styles.topbarCta}
-          href={NOTEBOOK_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <span aria-hidden="true">📓</span>Notebook
-        </a>
+        {/* The client's own notebook, set on the staff edit page. Hidden when
+            unset — this was previously ONE hardcoded URL, so every customer
+            saw the same notebook regardless of which client they were. */}
+        {client.notebook_url ? (
+          <a
+            className={styles.topbarCta}
+            href={client.notebook_url}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span aria-hidden="true">📓</span>Notebook
+          </a>
+        ) : null}
       </div>
     </div>
   );

@@ -48,6 +48,8 @@ export async function updateClientAction(clientId, _prevState, formData) {
       company_name: formData.get("company_name") || null,
       slug: normalizeSlug(formData.get("slug") || name),
       google_drive_folder_url: formData.get("google_drive_folder_url") || null,
+      // Empty -> null so the workspace can test for presence rather than "".
+      notebook_url: String(formData.get("notebook_url") || "").trim() || null,
       status: formData.get("status") || "active",
       health_status: formData.get("health_status") || "healthy",
       start_date: formData.get("start_date") || null,
