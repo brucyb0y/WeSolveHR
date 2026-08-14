@@ -205,6 +205,50 @@ are explanatory comments in app/reports/*.jsx.
 | `GET /api/attendance`, `.../insights`, `.../[userId]/red-reports` | duplicate registration collapsed |
 | `POST /api/account/profile-field` | **session-only auth — no basic-auth fallback** |
 | `PATCH /api/bugs/[id]` | assignee validated against users, not a bare FK |
+| `POST /api/client-work-items` | status always starts "todo" |
+| `GET/PATCH /api/client-work-items/[id]` | **dependency guard — read this one** |
+| `POST /api/cron/generate-report-summaries` | secret auth, fail-closed |
+| `GET /api/business-leads/[business]/check-phone`, `.../call-summaries` | normalised phone matching |
+| `GET/PUT/DELETE /api/business-leads/[business]/[id]` | delegates to the shared lead engine |
+| `PATCH .../[id]/status` | separate from PUT — status has its own side effects |
+| `PATCH .../[id]/quick-toggle` | **allow-list on the field name** |
+
+`quick-toggle` takes a FIELD NAME from the body and uses it as a column. The
+allow-list (`l2_done`, `qualified`, `lead_stage`) is the only thing stopping
+that from being an arbitrary column write — verified that `field: "org_id"` is
+rejected. Checkbox values are compared with `=== true`, so a truthy string
+cannot tick a box (verified: `"yes"` left it False, `true` set it).
+
+`cron/generate-report-summaries` is NOT user-authenticated — a scheduler calls
+it with a shared CRON_SECRET, accepted from a header, the query string OR the
+body because different schedulers can only send one. It is **fail-closed**: an
+unset CRON_SECRET rejects everything rather than running open (verified: 401
+with no secret and with a wrong one).
+
+Both business-leads reads match phones on a NORMALISED key in JS, not with
+`.eq("phone", …)`. The same number is stored with different punctuation and
+prefixes across imports, so an exact query match would silently miss most real
+duplicates. They differ on the empty case: check-phone returns
+`{duplicate:false}` (the form calls it on every keystroke and must not error
+mid-typing) while call-summaries 400s (it is opened deliberately for one lead).
+
+Both also preserve the `req.session?.user?.org_id` defect — that expression was
+always undefined, so DASHBOARD_ORG_ID is kept rather than silently switching to
+the caller's org.
+
+**The work-item dependency guard is the subtlest rule in the API.** An item
+cannot be marked done while its prerequisite is not. Two things make it work:
+
+* `effectiveDependencyId` falls back to the STORED dependency when the body
+  omits the field. A PATCH of just `{status:"done"}` carries no dependency, so
+  without the fallback the check is skipped entirely — verified live that such
+  a request IS blocked.
+* `""`, `null` and `undefined` all mean "no dependency"; only a real value is
+  coerced with `Number()`. Truthiness alone would treat `""` as an id.
+
+Self-dependency is rejected (an item blocking itself could never complete), and
+`completed_at` is derived from status — set on done, cleared otherwise —
+never read from the body.
 
 **`requireSessionUser()` exists for a reason — use it for self-service routes.**
 `/api/account/profile-field` writes to `user.id`. Under the normal
