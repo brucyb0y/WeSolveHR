@@ -63,13 +63,30 @@ under Basic auth — expected, since they use `requireUser` (session) rather tha
 
 ### Still outstanding
 
-**Only cleanup.** `lib/server/app.js` still holds the page renderers
-(`renderClientWorkspacePage` and siblings), the `ar*` HTML builders, and
-`renderSummaryWithGoals` / `renderReportSummaryPanel` / `renderClientGoalsPanel`
-— all now unused by the React pages, along with the `*Html` fields on
-`buildClientAutoReportSections`' return (the `reportData` aggregates replaced
-them). Removing them is safe but noisy; left for a separate pass so this
-migration's diff stays reviewable.
+Nothing. `lib/server/app.js` has been cleaned: **50,100 -> 24,489 lines (-51%)**.
+
+Removed:
+
+* the 28 non-API Express page routes (every one is now a React `page.jsx`);
+* 29 page-render functions — `renderClientWorkspacePage`,
+  `renderClientViewOnlyPage`, `renderLoginPage`, `renderTopNav`,
+  `renderQuickActionModal`, the `ar*` HTML chart kit, `buildActivityReport`,
+  and the rest of the `render*Page` family;
+* the legacy `*Html` fields on `buildClientAutoReportSections`
+  (`dailyAutoReportHtml`, `leadFunnelReportDailyHtml`, per-week `activityHtml` /
+  `funnelHtml`). Those kept the whole `ar*` HTML kit alive; with them gone the
+  aggregation has exactly one consumer, the React kit in `components/charts`.
+
+Kept, deliberately: all **94 `/api/*` handlers**, plus `/health/live`,
+`/health/ready` and `/whatsapp` — the only non-API routes the Express adapter
+still dispatches.
+
+**How it was done, if this needs repeating:** with an AST (acorn), not regex.
+Two hand-rolled attempts corrupted the file — the page renderers contain huge
+template literals holding CSS and client JS, so both "match braces" and "top
+level constructs start at column 0" are false here. A col-0 `}` inside an
+embedded CSS block silently truncated a route. acorn was installed as a one-off
+devDependency for the codemod and removed afterwards.
 
 **There is no `dangerouslySetInnerHTML` anywhere in `app/`.**
 

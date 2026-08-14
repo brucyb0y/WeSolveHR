@@ -19,7 +19,18 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      {/*
+        suppressHydrationWarning is here for BROWSER EXTENSIONS, not for our own
+        markup. Extensions inject attributes into <body> before React hydrates —
+        ColorZilla adds cz-shortcut-listen="true", Grammarly adds data-gr-*, and
+        others do the same — which React reports as a hydration mismatch the app
+        cannot fix or control.
+
+        It is deliberately narrow: the flag suppresses warnings for THIS
+        element's own attributes and text only, never its descendants. Real
+        hydration bugs inside the page still surface as errors.
+      */}
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }
