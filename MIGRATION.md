@@ -125,11 +125,26 @@ Any other module-level mutable state shared between an RSC/server action and a
 route handler needs the same `globalThis` treatment.
 
 
-## Phase 2 (in progress): native API route handlers
+## Phase 2: native API route handlers — COMPLETE
 
-The UI is fully migrated. The API is not: **1 of 83 route files is native**, the
-other 82 are still AUTO-GENERATED shims forwarding into ~97 Express handlers in
-`lib/server/app.js` via `lib/server/dispatch.js`.
+**All 81 API routes are native Next.js handlers. Zero shims remain.**
+
+Nothing in `app/api/**` calls `dispatch()`. The only files still routing through
+the Express adapter are the three deliberate keepers: `/whatsapp`,
+`/health/live`, `/health/ready`.
+
+### Dead Express routes removed
+
+91 unreachable `app.*(...)` registrations deleted with acorn (AST, not regex —
+this file's template literals defeated two heuristic attempts in phase 1).
+`lib/server/app.js`: **24,352 -> 19,539 lines**.
+
+Exactly three registrations remain, and they are the only ones the adapter
+still dispatches to: `POST /whatsapp`, `GET /health/live`, `GET /health/ready`.
+
+The file is now a **library, not a server**: ~91 exported helpers that the
+native routes and RSC pages import. Verified before and after that every one of
+those 91 imported symbols still resolves.
 
 ### Foundation (done, verified)
 
@@ -412,6 +427,30 @@ families under `/api/clients/[clientId]/*`, and last the multipart/upload
 endpoints (`note-audio`, `import-excel`, `upload-call`, `call-recording`) —
 those use multer in Express and need `request.formData()` instead, so they are
 the only ones that are not a mechanical translation.
+
+## Multipart routes
+
+Express used multer (`upload.single("audio")` / `("file")`), which gave handlers
+`{buffer, originalname, mimetype}`. Native handlers receive a web `File`, so
+`lib/api/respond.js` provides:
+
+* `readUploadedFile(form, field)` — materialises a Node Buffer via
+  `arrayBuffer()`. Required because the storage/transcription/import helpers in
+  `lib/server/app.js` take a Buffer and cannot consume a stream.
+* `formToBody(form)` — the non-file fields as a plain object.
+
+**Everything in a multipart body arrives as a STRING.** That is why booleans in
+these routes are compared against `"true"` as well as `true` — the JSON path and
+the multipart path receive different types for the same field.
+
+Converted: `note-audio`, `call-recording`, `lead-voice-uploads/[id]/audio`
+(a binary proxy, not JSON — it keeps Twilio credentials server-side, forwards
+the upstream status so an expired recording stays a 404, and sets
+`Accept-Ranges: bytes` so players can seek), plus the three Excel imports.
+
+**Note:** `importRassetLeadsFromExcel` returns `ok:true, total:0` for an
+unreadable file rather than erroring — verified, pre-existing, and worth
+tightening if users are uploading broken sheets and seeing "success".
 
 ## Chart kit
 
