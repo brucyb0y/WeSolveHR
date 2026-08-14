@@ -187,19 +187,91 @@ pages unaffected):
 | `PATCH .../linked-tasks/[taskId]` | authorizes by name match before writing |
 | `POST .../report-summary/generate` | week_start normalised to a Monday key |
 | `POST .../leads` | goes through createBusinessLead, not a direct insert |
+| `GET/PATCH/DELETE .../leads/[leadId]` | two PATCH paths, both log transitions |
+| `GET /api/reports/task/[taskNo]` | three callers share this response shape |
+| `GET /api/team-work`, `.../logs` | bad date falls back to today, never errors |
 
-**Open defect — `POST .../leads` accepts a nonexistent client.** It only checks
+**DELETED — `/api/reports/summary` and `/api/reports/cards`.** Both returned
+server-rendered HTML that the OLD /reports page injected with innerHTML; the
+converted React page builds that markup itself and called neither. Removed with
+acorn (routes + the now-orphaned `renderReportsSummaryHtml` /
+`renderReportCardsHtml` builders); both now 404. The only remaining mentions
+are explanatory comments in app/reports/*.jsx.
+
+| `POST /api/team-work/hours` | clamps rather than rejects; logs only real changes |
+| `POST /api/team-work/members` | appends with a sort_order gap of 10 |
+| `PATCH/DELETE /api/team-work/members/[id]` | hard delete; name read before removal |
+| `POST/DELETE /api/team-work/columns[/id]` | org-wide; label read before removal |
+| `GET /api/attendance`, `.../insights`, `.../[userId]/red-reports` | duplicate registration collapsed |
+| `POST /api/account/profile-field` | **session-only auth — no basic-auth fallback** |
+| `PATCH /api/bugs/[id]` | assignee validated against users, not a bare FK |
+
+**`requireSessionUser()` exists for a reason — use it for self-service routes.**
+`/api/account/profile-field` writes to `user.id`. Under the normal
+`requireApiUser`, basic auth resolves to a fallback admin, so anyone holding the
+shared DASHBOARD_PASSWORD could edit that admin's profile. The Express original
+enforced this by using `requireUserLogin` rather than `requireDashboardAuth`.
+Verified: basic-auth credentials get 401 on this route while working everywhere
+else.
+
+`PATCH /api/bugs/[id]` validates the assignee against the users table (exists,
+active, same org) rather than trusting the id — a bare foreign key would accept
+another org's user and assign a bug to someone the board cannot display.
+
+**`/api/attendance/insights` was registered TWICE** in app.js with two
+functionally identical handlers. Express serves the first match, so the second
+was unreachable dead code; one native route resolves it by construction.
+
+**PERFORMANCE — `/api/attendance/insights` takes ~117 seconds.** Verified live
+(200, valid payload, 117s application time). Pre-existing: the route is a thin
+wrapper over `getAttendanceInsightsData`, which is where the time goes. Not
+introduced by the migration, but it will hit a proxy/gateway timeout in
+production and is worth profiling separately.
+
+`red-reports` scans a DIFFERENT range depending on the month: the current month
+only up to today, a past month in full — otherwise every future day of this
+month counts as a missing report. Verified: current month returned 12 days,
+July returned 27.
+
+`team-work/members` encodes two deliberate asymmetries:
+
+* **sort_order jumps by 10, not 1** — the gap leaves room to reorder by
+  rewriting one row instead of renumbering the whole team.
+* **`responsibility: ""` clears the note, but `name: "  "` is rejected.** An
+  empty note is a real edit; a nameless member would be unidentifiable on the
+  board. An empty patch overall returns "Nothing to update" rather than a no-op
+  write, because the hover-card saves on blur.
+
+`team-work/hours` is worth copying from: hours are CLAMPED (non-numeric or
+negative -> 0, above 24 -> 24) rather than rejected, because the board's inputs
+are free-text and erroring mid-edit is worse than correcting. And the activity
+log is written only when the value actually CHANGED — verified that re-saving
+an unchanged cell leaves the log count identical.
+
+**FIXED — `POST .../leads` accepted a nonexistent client.** It only checks
 `if (!clientId)`, so `/api/clients/999999/leads` returns 200 and inserts a row
 with `client_id: 999999` that no client owns (reproduced, then cleaned up).
-Pre-existing and faithfully preserved, but INCONSISTENT with its siblings —
-`.../goals` and `.../client-view-link` both look the client up and 404. The fix
-is a client-existence check before `resolveClientLeadBusiness`; not applied
-unilaterally because it changes a write endpoint's behaviour.
+It was inconsistent with its siblings — `.../goals` and `.../client-view-link`
+both look the client up and 404. The route now does the same lookup before
+`resolveClientLeadBusiness`; verified a bad id 404s and valid creates still
+work.
 
-**`.../leads/[leadId]` is deliberately still a shim.** Its GET, PATCH and
-DELETE live in one route file, and the PATCH alone is ~526 lines (light-key
-fast path, notes, audio, stage history). Converting two verbs and leaving the
-third would 405 it, so it needs its own focused pass — not a partial one.
+**`.../leads/[leadId]` (GET/PATCH/DELETE) — the largest handler, now native.**
+Three things it encodes:
+
+* **Lead storage is not uniform.** A client mapped to an inline static business
+  writes to that business's own table with NO client_id filter; everyone else
+  uses per-client `client_leads` rows. `resolveLeadSource()` decides, and the
+  client_id filter is applied only when there is one — adding it
+  unconditionally matches zero rows for static businesses.
+* **PATCH has two paths.** "Light" when every key is an inline
+  dropdown/toggle/note (validated and written here), "full" otherwise (through
+  `updateBusinessLead`, used by the lead form).
+* **BOTH paths must log `client_lead_status_changed`.** The funnel report is
+  built from those events, so a form edit that changes company AND stage has to
+  emit the transition too — otherwise the lead moves while the funnel silently
+  misses it. Verified live: light stage change, light demo change, and a
+  combined form edit all produced correct from -> to events.
 
 Three that break the usual mould:
 
