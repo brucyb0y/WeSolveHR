@@ -8,7 +8,7 @@
 //     import. `category_type` does not apply there, which is why it is only
 //     passed to the first.
 //
-// The category is validated against CLIENT_LEAD_CATEGORY_TYPES before use —
+// The category is validated against the client's own category list before
 // the Leads tab's chips are built from it, so an unrecognised value would
 // produce leads no chip can reach.
 
@@ -18,7 +18,7 @@ import {
   resolveLeadSource,
   importClientLeadsFromExcel,
   importRassetLeadsFromExcel,
-  CLIENT_LEAD_CATEGORY_TYPES,
+  getClientLeadCategoryTypes,
 } from "@/lib/server/app";
 import { requireApiUser, orgIdForApi } from "@/lib/api/auth";
 import {
@@ -51,7 +51,7 @@ export const POST = withApiErrors(
     const categoryType = String(body.category_type || "").trim();
     if (
       categoryType &&
-      !CLIENT_LEAD_CATEGORY_TYPES.some((c) => c.key === categoryType)
+      !getClientLeadCategoryTypes(clientId).some((c) => c.key === categoryType)
     ) {
       return apiError(400, "Invalid category type");
     }

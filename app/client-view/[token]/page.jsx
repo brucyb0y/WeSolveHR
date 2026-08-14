@@ -119,8 +119,10 @@ export default async function ClientViewPage({ params }) {
 
   // ---- leads ------------------------------------------------------------
   const decoratedLeads = decorateLeads(leads);
-  const leadOptions = buildLeadFilterOptions(decoratedLeads);
-  const categoryCounts = buildCategoryCounts(decoratedLeads);
+  // Category Type can be overridden per client, so both the filter list and
+  // the pills have to be resolved against THIS client rather than the default.
+  const leadOptions = buildLeadFilterOptions(decoratedLeads, client.id);
+  const categoryCounts = buildCategoryCounts(decoratedLeads, client.id);
   const todayStr = getTodayDateStringInTimeZone(APP_TIMEZONE);
 
   const stageLabelOf = (l) =>

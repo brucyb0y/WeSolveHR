@@ -34,8 +34,8 @@ import {
 import {
   CLIENT_LEAD_PIPELINE_STAGES,
   CLIENT_LEAD_DEMO_STATUSES,
-  CLIENT_LEAD_CATEGORY_TYPES,
-  CLIENT_LEAD_CATEGORY_TYPE_LABELS,
+  getClientLeadCategoryTypes,
+  getClientLeadCategoryTypeLabels,
   REACH_VIA_CHANNELS,
   CAMPAIGN_TYPES,
   CAMPAIGN_STATUSES,
@@ -221,6 +221,12 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
   ).length;
 
   const hasActiveLeadQuery = !!leadSearch || activeFilterCount > 0;
+
+  // Category Type is per-client: some clients replace the default list
+  // entirely (see the overrides map in lib/server/app.js). Resolve once here
+  // so the modal, the bulk-set dropdown and the filter popup all agree.
+  const categoryTypes = getClientLeadCategoryTypes(clientId);
+  const categoryTypeLabels = getClientLeadCategoryTypeLabels(clientId);
 
   // A category pill toggles its own key out of the multi-select.
   const categoryPillHref = (key) => {
@@ -891,8 +897,8 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
               users={users}
               stages={CLIENT_LEAD_PIPELINE_STAGES}
               demoStatuses={CLIENT_LEAD_DEMO_STATUSES}
-              categoryTypes={CLIENT_LEAD_CATEGORY_TYPES}
-              categoryTypeLabels={CLIENT_LEAD_CATEGORY_TYPE_LABELS}
+              categoryTypes={categoryTypes}
+              categoryTypeLabels={categoryTypeLabels}
               categoryCounts={leadCategoryTypeCounts.map((c) => ({
                 ...c,
                 href: categoryPillHref(c.key),
@@ -922,7 +928,7 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
               filterOptions={{
                 pipelineStages: CLIENT_LEAD_PIPELINE_STAGES,
                 demoStatuses: CLIENT_LEAD_DEMO_STATUSES,
-                categoryTypes: CLIENT_LEAD_CATEGORY_TYPES,
+                categoryTypes,
                 assigneeOptions,
                 hasPhoneOptions: HAS_PHONE_FILTER_OPTIONS,
                 reachedViaOptions:

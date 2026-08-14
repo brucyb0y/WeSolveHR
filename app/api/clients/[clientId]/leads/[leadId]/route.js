@@ -30,7 +30,7 @@ import {
   CLIENT_LEAD_PIPELINE_STAGES,
   CLIENT_LEAD_OUTREACH_STATUSES,
   CLIENT_LEAD_DEMO_STATUSES,
-  CLIENT_LEAD_CATEGORY_TYPES,
+  getClientLeadCategoryTypes,
   REACH_VIA_CHANNELS,
 } from "@/lib/server/app";
 import { requireApiUser, orgIdForApi } from "@/lib/api/auth";
@@ -183,7 +183,9 @@ export const PATCH = withApiErrors(
         const value = normalizeText(body.category_type || "");
         if (
           value &&
-          !CLIENT_LEAD_CATEGORY_TYPES.map((c) => c.key).includes(value)
+          !getClientLeadCategoryTypes(clientId)
+            .map((c) => c.key)
+            .includes(value)
         ) {
           return apiError(400, "Invalid category type");
         }
@@ -199,7 +201,11 @@ export const PATCH = withApiErrors(
         lightPatch.callback_date = callbackDate || null;
       }
 
-      for (const key of ["assigned_to", "phone_assigned_to", "email_assigned_to"]) {
+      for (const key of [
+        "assigned_to",
+        "phone_assigned_to",
+        "email_assigned_to",
+      ]) {
         if (body[key] !== undefined) {
           lightPatch[key] = String(body[key] || "").trim() || null;
         }
@@ -323,7 +329,10 @@ export const PATCH = withApiErrors(
       return apiSuccess(lead);
     } catch (err) {
       console.error("lead full update error:", err);
-      return apiError(err.statusCode || 500, err.message || "Failed to update lead");
+      return apiError(
+        err.statusCode || 500,
+        err.message || "Failed to update lead",
+      );
     }
   },
 );
