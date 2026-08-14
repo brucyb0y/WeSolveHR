@@ -124,6 +124,66 @@ real session login, not Basic auth.**
 Any other module-level mutable state shared between an RSC/server action and a
 route handler needs the same `globalThis` treatment.
 
+
+## Phase 2 (in progress): native API route handlers
+
+The UI is fully migrated. The API is not: **1 of 83 route files is native**, the
+other 82 are still AUTO-GENERATED shims forwarding into ~97 Express handlers in
+`lib/server/app.js` via `lib/server/dispatch.js`.
+
+### Foundation (done, verified)
+
+* `lib/api/respond.js` — `apiSuccess` / `apiError` / `withApiErrors`, plus
+  `readJsonBody`, `searchParamsToQuery` and `routeParams`. The
+  `{ok:true,data}` / `{ok:false,error}` envelope is a hard contract: dozens of
+  fetch call sites branch on `json.ok`.
+* `lib/api/auth.js` — `requireApiUser(request)`, mirroring
+  `requireDashboardAuth`'s precedence (session -> basic auth -> unprotected)
+  but **never redirecting**. It returns `{user}` or `{response}` with a 401.
+  That is structurally the fix for the failure that broke the tasks console:
+  the Express version redirected to /login and clients JSON.parsed the HTML.
+
+### Converting one route
+
+1. Write `app/api/<path>/route.js` exporting the verb(s). `scripts/gen-routes.mjs`
+   skips any folder holding a route.js it did not generate (it only deletes
+   files whose header says AUTO-GENERATED), so a hand-written file is safe and
+   the shim disappears on the next run.
+2. Auth first: `const {user, response} = await requireApiUser(request); if (response) return response;`
+3. Translate: `req.params` -> `await routeParams(ctx)`; `req.query` ->
+   `searchParamsToQuery(request)`; `req.body` -> `await readJsonBody(request)`;
+   `sendApiError(res,s,m)` -> `return apiError(s,m)`;
+   `sendApiSuccess(res,d)` -> `return apiSuccess(d)`.
+4. Delete the Express handler from `lib/server/app.js` once the native one is
+   verified. Leaving both is harmless (the shim is gone so Express is
+   unreachable) but keeps dead code around.
+
+Done so far — **5 of 83 route files native**, each verified against a live
+server (correct envelope, 401 JSON when unauthenticated, shimmed routes and
+pages unaffected):
+
+| Route | Note |
+| --- | --- |
+| `GET /api/users` | dashboard-org scoped, as the original |
+| `GET /api/clients/nav-list` | caller-org scoped; name falls back to company_name |
+| `GET /api/logs` | five optional filters; loader error message passed through |
+| `GET /api/top-nav-summary` | non-managers get zeroes, not 403 |
+| `GET /api/tasks` | repeated `progressBucket` must stay an array |
+
+That last one is the trap worth repeating: `progressBucket` is sent once per
+checked bucket. `searchParams.get()` returns only the first, which silently
+narrows the result set — verified live as 24 rows for one bucket vs 113 for
+three. Use `searchParamsToQuery`, never `.get()`, for any repeatable filter.
+
+### Order worth taking
+
+Highest-traffic and simplest first: the plain reads (`/api/tasks`,
+`/api/logs`, `/api/clients/nav-list`, `/api/top-nav-summary`), then the CRUD
+families under `/api/clients/[clientId]/*`, and last the multipart/upload
+endpoints (`note-audio`, `import-excel`, `upload-call`, `call-recording`) —
+those use multer in Express and need `request.formData()` instead, so they are
+the only ones that are not a mechanical translation.
+
 ## Chart kit
 
 `components/charts/` is shared by `/clients/[id]` (staff) and
