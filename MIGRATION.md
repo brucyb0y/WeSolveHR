@@ -169,6 +169,119 @@ pages unaffected):
 | `GET /api/logs` | five optional filters; loader error message passed through |
 | `GET /api/top-nav-summary` | non-managers get zeroes, not 403 |
 | `GET /api/tasks` | repeated `progressBucket` must stay an array |
+| `POST /api/clients/[clientId]/goals` | caps preserved (300/100/20k/100 goals); blank rows dropped |
+| `POST /api/clients/[clientId]/actions` | see schema note below |
+| `PATCH|PUT .../actions/[actionId]` | **method + envelope both fixed** |
+| `POST .../actions/[actionId]/archive` | **envelope fixed** |
+| `POST .../blockers` | invalid enums fall back, never reject |
+| `PATCH .../blockers/[blockerId]` | archive + partial update share the verb |
+| `POST/PATCH .../campaigns[/id]` | merge-with-existing before the payload builder |
+| `POST/GET/PATCH .../meetings[/id]` | GET reads archived rows, PATCH does not |
+| `POST/PUT/PATCH .../milestones[/id]`, `.../archive` | key-by-key; separate archive endpoint |
+| `POST/PATCH .../incentives[/id]` | payload-builder family (merge required) |
+| `POST/PUT .../updates[/id]`, `.../archive` | `archived_at`, not `deleted_at` |
+| `POST/PATCH .../reports[/id]` | four exclusive ops on one PATCH |
+| `GET/POST/PATCH .../contributors[/id]`, `.../archive` | **method + envelope both fixed** |
+| `POST .../documents` | form post — NOT the JSON envelope |
+| `POST .../client-view-link` | idempotent; token reused, never regenerated |
+| `PATCH .../linked-tasks/[taskId]` | authorizes by name match before writing |
+| `POST .../report-summary/generate` | week_start normalised to a Monday key |
+| `POST .../leads` | goes through createBusinessLead, not a direct insert |
+
+**Open defect — `POST .../leads` accepts a nonexistent client.** It only checks
+`if (!clientId)`, so `/api/clients/999999/leads` returns 200 and inserts a row
+with `client_id: 999999` that no client owns (reproduced, then cleaned up).
+Pre-existing and faithfully preserved, but INCONSISTENT with its siblings —
+`.../goals` and `.../client-view-link` both look the client up and 404. The fix
+is a client-existence check before `resolveClientLeadBusiness`; not applied
+unilaterally because it changes a write endpoint's behaviour.
+
+**`.../leads/[leadId]` is deliberately still a shim.** Its GET, PATCH and
+DELETE live in one route file, and the PATCH alone is ~526 lines (light-key
+fast path, notes, audio, stage history). Converting two verbs and leaving the
+third would 405 it, so it needs its own focused pass — not a partial one.
+
+Three that break the usual mould:
+
+* **`.../documents` is a form POST.** Form-encoded body (`is_client_visible`
+  arrives as the string `"on"`), plain-text errors, and a 303 redirect on
+  success. Wrapping it in `{ok, data}` would break whatever form posts to it.
+  Its URL allow-list (drive.google.com / docs.google.com only) is a real guard —
+  verified that `https://evil.example/x` is rejected.
+* **`.../client-view-link` is idempotent.** It REUSES an existing token;
+  regenerating on each click would silently invalidate a link the customer has
+  already bookmarked (verified: two calls returned the same token). The absolute
+  URL is built from forwarded host/proto headers, because behind a proxy
+  `request.url` is the internal origin.
+* **`.../linked-tasks/[taskId]` has no foreign key to authorize against.** A
+  task belongs to a client only when its free-text `business` matches the
+  client's name or company_name, so the route re-checks that match before
+  writing — otherwise any client's URL could edit any task by id. The check runs
+  BEFORE field validation, so probing with a bad payload reveals nothing.
+
+**The PUT-vs-PATCH + `{success}`-envelope pair has now appeared twice** — on
+actions and on contributors, in both cases making edit silently return 405 while
+create/archive reported failure on success. When converting any remaining
+route, check the verb the React caller actually sends and the field it checks,
+not just what Express registered. Both were verified live as 405 before the
+fix.
+
+Soft-delete column names differ per table and must not be copy-pasted:
+`is_active` + `deleted_at` (blockers, campaigns, meetings, milestones,
+incentives, reports), `archived_at` (client_updates), `archived` + status
+"Inactive" (client_contributors), `archived` + status "Archived"
+(client_actions).
+
+Two boolean rules that are security-relevant, both verified live:
+
+* **`is_client_visible === true`** on updates — never coerced. Posting the
+  string `"yes"` must NOT publish an internal update to the customer
+  (verified: stored `False`).
+* **`is_client_visible !== false`** on reports — the OPPOSITE default. A report
+  is customer-visible once published unless someone opts out. These two look
+  like a copy-paste error and are not.
+
+`PATCH .../reports/[reportId]` carries four mutually exclusive operations —
+archive / publish / unpublish / edit — checked in that order. Publish and
+unpublish touch only the publish fields, so publishing never rewrites the
+report body (verified: `summary` survived a publish).
+
+**Payload-builder families need `{...existing, ...body}`.** Campaigns, meetings
+and incentives map fields through a shared `build*PayloadFromBody` helper that
+applies a default to every field it knows. Feeding it only the changed keys
+therefore RESETS everything else — a PATCH of `{status}` would zero
+`sent_count`. Verified: patching status alone left `sent_count` at 10, and
+patching `decisions` left `summary` intact. Blockers and actions build their
+patch key-by-key instead and must NOT be merged this way.
+
+`PATCH .../blockers/[blockerId]` is the template for the remaining CRUD
+families. Two rules it encodes, both verified live:
+
+* **`!== undefined`, never truthiness.** `owner_user_id: null` must CLEAR the
+  owner while omitting the key must PRESERVE it. Truthiness collapses those two
+  into one and silently discards data.
+* **`resolved_at` is derived, never taken from the body** — stamped when status
+  becomes "resolved", cleared when it moves back, so it cannot drift out of step
+  with `resolution_status`.
+
+### Three defects found while converting the actions family
+
+1. **PATCH vs PUT.** The route was registered `app.put(...)` but `ActionModal`
+   sends `PATCH`, so every edit returned **405** and silently did nothing.
+   Verified live before the fix. Both verbs are exported now.
+2. **Non-standard envelope.** `.../actions/:actionId` replied
+   `{success, action}` and `.../archive` replied `{success}`, while
+   `ActionsTab`/`ActionModal` check `json.ok`. A successful archive reported
+   "Failed to archive action" while having archived the row. The original
+   client hedged with `if (!json.success && !json.ok)`; the converted
+   components did not. Both endpoints now return `{ok, data}` — they have a
+   single caller each, so nothing else depended on the old shape.
+3. **Missing columns — `migrations/001_client_actions_missing_columns.sql`.**
+   The create handler has always written `owner_name`, `priority` and `notes`;
+   none exist on `client_actions`, so every insert failed with PGRST204 and the
+   table is empty. **Creating an action has never worked.** Run that migration
+   before expecting the Actions tab to function; the route code is already
+   correct and needs no change once the columns exist.
 
 That last one is the trap worth repeating: `progressBucket` is sent once per
 checked bucket. `searchParams.get()` returns only the first, which silently
