@@ -234,6 +234,7 @@ export default function ClientLeadsTable({
   onStageChange,
   onDemoChange,
   onQuickUpdate,
+  onLogMeeting,
   onAddNote,
   onNotesHistory,
   onStatusHistory,
@@ -968,20 +969,56 @@ export default function ClientLeadsTable({
                   </td>
 
                   <td>
-                    <select
-                      className={styles.stageSelect}
-                      defaultValue={l.demo}
-                      onFocus={(e) => {
-                        e.target.dataset.prev = e.target.value;
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
                       }}
-                      onChange={(e) => requestDemoChange(e, l.id)}
                     >
-                      {demoStatuses.map((s) => (
-                        <option value={s.key} key={s.key}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
+                      <select
+                        className={styles.stageSelect}
+                        defaultValue={l.demo}
+                        onFocus={(e) => {
+                          e.target.dataset.prev = e.target.value;
+                        }}
+                        onChange={(e) => requestDemoChange(e, l.id)}
+                      >
+                        {demoStatuses.map((s) => (
+                          <option value={s.key} key={s.key}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                      {/* A completed demo can be logged as a meeting: the +
+                          opens Log Meeting, and saving it advances this lead to
+                          Meeting Completed. Keyed off the SAVED demo value, so
+                          it appears only after the change is persisted. */}
+                      {l.demo === "completed" ? (
+                        <button
+                          className={styles.btn}
+                          type="button"
+                          title={`Log meeting for ${l.company} — moves it to Meeting Completed`}
+                          aria-label={`Log meeting for ${l.company}`}
+                          onClick={() => onLogMeeting(l)}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: 0,
+                            width: 22,
+                            height: 22,
+                            minWidth: 22,
+                            borderRadius: "50%",
+                            fontSize: 14,
+                            lineHeight: 1,
+                            flexShrink: 0,
+                          }}
+                        >
+                          +
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
 
                   <td style={{ width: 360 }}>

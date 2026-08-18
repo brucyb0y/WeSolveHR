@@ -24,6 +24,7 @@ import LeadFilterPopup, { LEAD_FILTER_FIELD_NAMES } from "./LeadFilterPopup";
 import LeadsPagination from "./LeadsPagination";
 import LeadNoteModal from "./LeadNoteModal";
 import LeadQuickUpdateModal from "./LeadQuickUpdateModal";
+import MeetingModal from "./MeetingModal";
 import LeadImportModal from "./LeadImportModal";
 import ClientLeadModal from "./ClientLeadModal";
 import {
@@ -324,6 +325,7 @@ export default function LeadsTab({
           setLeadModal({ kind: "note", mode: "demo", id, demo, revert })
         }
         onQuickUpdate={(lead) => setLeadModal({ kind: "quickUpdate", lead })}
+        onLogMeeting={(lead) => setLeadModal({ kind: "logMeeting", lead })}
         onAddNote={(id) => setLeadModal({ kind: "note", mode: "note", id })}
         onNotesHistory={(id) => setLeadModal({ kind: "notesHistory", id })}
         onStatusHistory={(id) => setLeadModal({ kind: "statusHistory", id })}
@@ -375,6 +377,14 @@ export default function LeadsTab({
           stages={stages}
           demoStatuses={demoStatuses}
           reachChannels={reachChannels}
+          onClose={() => setLeadModal(null)}
+        />
+      ) : null}
+
+      {leadModal?.kind === "logMeeting" ? (
+        <MeetingModal
+          clientId={clientId}
+          advanceLead={leadModal.lead}
           onClose={() => setLeadModal(null)}
         />
       ) : null}

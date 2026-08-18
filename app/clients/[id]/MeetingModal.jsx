@@ -26,6 +26,8 @@ const TYPES = [
   { value: "adhoc", label: "Ad-hoc" },
 ];
 
+const MEETING_COMPLETED_STAGE = "meeting_completed";
+
 const LONG_FIELDS = [
   ["summary", "Summary", "Brief call summary"],
   ["discussion_points", "Discussion Points", "Key points discussed"],
@@ -51,7 +53,15 @@ const EMPTY = {
   next_steps: "",
 };
 
-export default function MeetingModal({ clientId, meeting, onClose }) {
+// advanceLead (optional): when this modal is opened from a lead row whose demo
+// is Completed, saving the meeting also moves that lead to the Meeting Completed
+// pipeline stage. Passed as the decorated lead ({ id, stage, company }).
+export default function MeetingModal({
+  clientId,
+  meeting,
+  advanceLead,
+  onClose,
+}) {
   const router = useRouter();
   const isEdit = !!meeting;
 
@@ -124,6 +134,40 @@ export default function MeetingModal({ clientId, meeting, onClose }) {
       if (!json.ok) {
         alert(json.error || "Failed to save meeting");
         return;
+      }
+
+      // Opened from a "demo completed → +" lead action: advance that lead to
+      // Meeting Completed. The meeting is already saved, so a failure here is
+      // surfaced but does not undo it. Skip when the lead is already there, to
+      // avoid a redundant status-history entry. The server logs the stage
+      // transition automatically; the note records why it moved.
+      if (advanceLead && advanceLead.stage !== MEETING_COMPLETED_STAGE) {
+        try {
+          const title = form.title.trim();
+          const res2 = await fetch(
+            `/api/clients/${clientId}/leads/${advanceLead.id}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                pipeline_stage: MEETING_COMPLETED_STAGE,
+                add_note: `Moved to Meeting Completed after logging meeting${
+                  title ? `: "${title}"` : ""
+                }.`,
+              }),
+            },
+          );
+          const json2 = await res2.json();
+          if (!json2.ok) {
+            alert(
+              `Meeting saved, but the lead status could not be updated: ${
+                json2.error || "unknown error"
+              }`,
+            );
+          }
+        } catch {
+          alert("Meeting saved, but the lead status could not be updated.");
+        }
       }
 
       onClose();
