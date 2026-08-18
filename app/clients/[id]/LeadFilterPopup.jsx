@@ -15,6 +15,34 @@
 import { useEffect, useRef, useState } from "react";
 import styles from "./workspace.module.css";
 
+// Query keys the controls in this popup own — one entry per named input below.
+//
+// The parent must NOT also pass these as hidden inputs. This form submits every
+// active filter twice otherwise: once from the stale hidden input the parent
+// carries to preserve state, and once from the control here. Because the hidden
+// inputs render before the controls, the stale value comes first in the query
+// string and the server's firstOf() keeps it — so the SECOND time you change a
+// filter it silently keeps showing the first value. Only pass-through state the
+// popup has no control for (sort, sort_dir, mine) belongs in hiddenInputs.
+export const LEAD_FILTER_FIELD_NAMES = [
+  "pipeline_stage",
+  "demo_status",
+  "category_type",
+  "location",
+  "phone_assignee",
+  "email_assignee",
+  "has_phone",
+  "reached_via",
+  "notes",
+  "has_note_audio",
+  "notes_by",
+  "updated_from",
+  "updated_to",
+  "callback_date_from",
+  "callback_date_to",
+  "missed_callback",
+];
+
 const LABEL_STYLE = {
   display: "flex",
   flexDirection: "column",

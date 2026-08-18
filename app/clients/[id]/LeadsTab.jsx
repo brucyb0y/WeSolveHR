@@ -20,7 +20,7 @@
 import { useState } from "react";
 import styles from "./workspace.module.css";
 import ClientLeadsTable from "./ClientLeadsTable";
-import LeadFilterPopup from "./LeadFilterPopup";
+import LeadFilterPopup, { LEAD_FILTER_FIELD_NAMES } from "./LeadFilterPopup";
 import LeadsPagination from "./LeadsPagination";
 import LeadNoteModal from "./LeadNoteModal";
 import LeadQuickUpdateModal from "./LeadQuickUpdateModal";
@@ -239,7 +239,13 @@ export default function LeadsTab({
             activeCount={activeFilterCount}
             search={search}
             hiddenInputs={filterHiddenInputs.filter(
-              (h) => h.name !== "search" && h.name !== "tab",
+              (h) =>
+                h.name !== "search" &&
+                h.name !== "tab" &&
+                // The popup's own controls resubmit these; carrying them as
+                // hidden inputs too would duplicate the key and the server
+                // would keep the stale value. (See LEAD_FILTER_FIELD_NAMES.)
+                !LEAD_FILTER_FIELD_NAMES.includes(h.name),
             )}
             filters={filters}
             options={filterOptions}
