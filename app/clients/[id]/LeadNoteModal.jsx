@@ -29,7 +29,14 @@ import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
 import { WorkModal, Field, TextAreaField } from "./WorkModal";
 
-const FOLLOW_UP_STAGE = "follow_up_required";
+// Stages that commit to contacting the lead again on a specific day, so the
+// status-change dialog collects a callback date and makes it mandatory. Keep in
+// sync with the same set in LeadQuickUpdateModal.jsx.
+const CALLBACK_STAGES = new Set([
+  "follow_up_required",
+  "follow_up_in_progress",
+  "meeting_scheduled",
+]);
 
 // Raised from 75 to 25 in b3f9d92 — kept as a named constant so the message and
 // the check cannot drift apart.
@@ -68,7 +75,7 @@ export default function LeadNoteModal({
   const [callbackDate, setCallbackDate] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const needsCallback = mode === "stage" && stage === FOLLOW_UP_STAGE;
+  const needsCallback = mode === "stage" && CALLBACK_STAGES.has(stage);
 
   function cancel() {
     // Lets the caller put a stage/demo dropdown back to its previous value —

@@ -25,7 +25,14 @@ import Swal from "sweetalert2";
 import { WorkModal, Field, SelectField, TextAreaField } from "./WorkModal";
 import styles from "./workspace.module.css";
 
-const FOLLOW_UP_STAGE = "follow_up_required";
+// Stages that commit to contacting the lead again on a specific day, so a
+// callback date is shown and required. Keep in sync with the same set in
+// LeadNoteModal.jsx.
+const CALLBACK_STAGES = new Set([
+  "follow_up_required",
+  "follow_up_in_progress",
+  "meeting_scheduled",
+]);
 
 export default function LeadQuickUpdateModal({
   clientId,
@@ -40,6 +47,7 @@ export default function LeadQuickUpdateModal({
   const [stage, setStage] = useState(lead.stage || "");
   const [demo, setDemo] = useState(lead.demo || "");
   const [callbackDate, setCallbackDate] = useState(lead.callback_date || "");
+  const needsCallback = CALLBACK_STAGES.has(stage);
   const [note, setNote] = useState("");
   const [reached, setReached] = useState(() =>
     Object.fromEntries(reachChannels.map((c) => [c.key, !!lead[c.column]])),
@@ -163,8 +171,8 @@ export default function LeadQuickUpdateModal({
       alert("Add a note, attach a voice note, or record one before saving.");
       return;
     }
-    if (stage === FOLLOW_UP_STAGE && !callbackDate) {
-      alert("Select a callback date for this follow-up.");
+    if (needsCallback && !callbackDate) {
+      alert("Select a callback date for this stage.");
       return;
     }
 
@@ -201,7 +209,7 @@ export default function LeadQuickUpdateModal({
         else fd.append("audio", file);
         fd.append("pipeline_stage", stage);
         fd.append("demo_status", demo);
-        if (stage === FOLLOW_UP_STAGE) fd.append("callback_date", callbackDate);
+        if (needsCallback) fd.append("callback_date", callbackDate);
         fd.append("is_call_made", "false");
         for (const c of reachChannels) {
           fd.append(`reached_via_${c.key}`, reached[c.key] ? "true" : "false");
@@ -220,7 +228,7 @@ export default function LeadQuickUpdateModal({
           add_note: text,
           is_call_made: false,
         };
-        if (stage === FOLLOW_UP_STAGE) body.callback_date = callbackDate;
+        if (needsCallback) body.callback_date = callbackDate;
         for (const c of reachChannels) {
           body[`reached_via_${c.key}`] = reached[c.key];
         }
@@ -265,9 +273,10 @@ export default function LeadQuickUpdateModal({
         onChange={setStage}
       />
 
-      {/* Only a follow-up needs a date, so the field appears with the stage
-          that requires it rather than sitting empty the rest of the time. */}
-      {stage === FOLLOW_UP_STAGE ? (
+      {/* Only stages that schedule a next contact need a date, so the field
+          appears with those stages rather than sitting empty the rest of the
+          time. */}
+      {needsCallback ? (
         <Field label="Callback Date">
           <input
             type="date"

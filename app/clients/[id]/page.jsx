@@ -78,7 +78,6 @@ import LeadsTab from "./LeadsTab";
 export const dynamic = "force-dynamic";
 
 const LEAD_STATUS_HISTORY_PREVIEW = 2;
-const FOLLOW_UP_STAGE = "follow_up_required";
 
 // Numeric-ish columns open descending on first click — for counts and dates
 // "most" is the useful first answer, not "least".
