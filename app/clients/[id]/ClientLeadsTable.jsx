@@ -470,13 +470,54 @@ export default function ClientLeadsTable({
     );
   }
 
-  async function bulkSet(value, field, loadingLabel) {
+  // Reached-via is stored as one boolean column per channel, so the bulk action
+  // writes those columns directly. Sending a virtual `reached_via` key instead
+  // (as this once did) is not on the API's light-update whitelist, so the PATCH
+  // falls through to the full update, which rejects the row for missing
+  // identity fields — the "Enter at least phone, company, …" error. "none"
+  // clears every channel; a channel key marks just that one.
+  async function bulkReachedVia(value) {
     const ids = selectedIds;
     if (!ids.length) return;
+    let body;
+    if (value === "none") {
+      body = Object.fromEntries(reachChannels.map((c) => [c.column, false]));
+    } else {
+      const channel = reachChannels.find((c) => c.key === value);
+      if (!channel) return;
+      body = { [channel.column]: true };
+    }
     await runBulkLeadAction(
       ids,
-      () => ({ [field]: value }),
+      () => body,
+      `Updating reached via for ${ids.length} lead(s)...`,
+    );
+  }
+
+  // "Unassigned" clears the field, so the sentinel is translated to null here —
+  // writing the literal "__unassigned__" would store it as the assignee's name
+  // and it would not even match the "Unassigned" filter afterwards.
+  async function bulkAssign(value, field, loadingLabel) {
+    const ids = selectedIds;
+    if (!ids.length) return;
+    const assignee = value === "__unassigned__" ? null : value;
+    await runBulkLeadAction(
+      ids,
+      () => ({ [field]: assignee }),
       `${loadingLabel} for ${ids.length} lead(s)...`,
+    );
+  }
+
+  // "__clear__" removes the category; anything else sets it. The raw sentinel
+  // would be rejected by the API as an invalid category key.
+  async function bulkCategory(value) {
+    const ids = selectedIds;
+    if (!ids.length) return;
+    const category = value === "__clear__" ? null : value;
+    await runBulkLeadAction(
+      ids,
+      () => ({ category_type: category }),
+      `Setting category type for ${ids.length} lead(s)...`,
     );
   }
 
@@ -615,11 +656,7 @@ export default function ClientLeadsTable({
             className={styles.stageSelect}
             disabled={busy}
             defaultValue=""
-            onChange={(e) =>
-              runFromSelect(e, (v) =>
-                bulkSet(v, "reached_via", "Updating reached via"),
-              )
-            }
+            onChange={(e) => runFromSelect(e, bulkReachedVia)}
           >
             <option value="">Set reached via…</option>
             {reachChannels.map((c) => (
@@ -636,7 +673,7 @@ export default function ClientLeadsTable({
             defaultValue=""
             onChange={(e) =>
               runFromSelect(e, (v) =>
-                bulkSet(v, "phone_assigned_to", "Assigning for phone"),
+                bulkAssign(v, "phone_assigned_to", "Assigning for phone"),
               )
             }
           >
@@ -655,7 +692,7 @@ export default function ClientLeadsTable({
             defaultValue=""
             onChange={(e) =>
               runFromSelect(e, (v) =>
-                bulkSet(v, "email_assigned_to", "Assigning for email"),
+                bulkAssign(v, "email_assigned_to", "Assigning for email"),
               )
             }
           >
@@ -672,11 +709,7 @@ export default function ClientLeadsTable({
             className={styles.stageSelect}
             disabled={busy}
             defaultValue=""
-            onChange={(e) =>
-              runFromSelect(e, (v) =>
-                bulkSet(v, "category_type", "Setting category type"),
-              )
-            }
+            onChange={(e) => runFromSelect(e, bulkCategory)}
           >
             <option value="">Set category type…</option>
             <option value="__clear__">Clear category type</option>
