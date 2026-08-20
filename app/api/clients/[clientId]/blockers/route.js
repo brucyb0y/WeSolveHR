@@ -1,14 +1,3 @@
-// POST /api/clients/:clientId/blockers — raise a blocker.
-//
-// blocker_side and priority are validated against allow-lists and fall back to
-// safe defaults rather than rejecting: an unrecognised side becomes "internal"
-// (the conservative choice — client_side blockers are surfaced on the customer
-// dashboard, so a typo must never leak one there) and an unrecognised priority
-// becomes "medium".
-//
-// New blockers always start resolution_status "open"; the field is not read
-// from the body, so a blocker cannot be created already resolved.
-
 import {
   supabase,
   DASHBOARD_ORG_ID,

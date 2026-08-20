@@ -1,20 +1,3 @@
-// POST /api/clients — create a client from the "New Client" form.
-//
-// FORM POST, NOT A JSON API: form-encoded body, plain-text errors, and a
-// redirect to the new client's workspace on success. Same shape as
-// .../documents; wrapping it in {ok, data} would break the form.
-//
-// SLUG COLLISIONS RETRY RATHER THAN FAIL. The slug is derived from the client
-// name (the form has no slug field), so two clients called the same thing would
-// otherwise bounce the user with an error they cannot act on. Instead the
-// insert retries up to 5 times appending -2, -3 … and only a non-unique-
-// violation error (or exhausting the attempts) gives up. 23505 is Postgres's
-// unique-violation code.
-//
-// Services and contacts are best-effort: their failures are logged but do NOT
-// fail the request, because the client row already exists and reporting an
-// error would imply nothing was created. That is the original's behaviour.
-
 import {
   supabase,
   DASHBOARD_ORG_ID,
@@ -105,7 +88,6 @@ export async function POST(request) {
     }
     if (!client) return text(500, "Failed to create client");
 
-    // ---- services (best effort) -------------------------------------------
     const selectedServices = ensureArray(form.getAll("services"))
       .map((x) => String(x).trim())
       .filter(Boolean);
@@ -135,7 +117,6 @@ export async function POST(request) {
       }
     }
 
-    // ---- contacts (best effort) -------------------------------------------
     const contactRows = [];
     const pushContact = (prefix, isPrimary) => {
       const n = get(`${prefix}name`);

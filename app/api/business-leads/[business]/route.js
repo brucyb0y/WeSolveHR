@@ -1,15 +1,3 @@
-// POST /api/business-leads/:business — create a lead in a static business.
-//
-// Delegates to createBusinessLead, the same engine the client-lead route uses,
-// so dedupe/validation/column-mapping stay identical across both surfaces.
-//
-// createBusinessLead attaches `statusCode` to its errors (duplicate phone,
-// unknown business), so those surface with their own status rather than a
-// blanket 500.
-//
-// PRESERVED DEFECT: `req.session?.user?.org_id` was always undefined, so this
-// always used DASHBOARD_ORG_ID.
-
 import { DASHBOARD_ORG_ID, createBusinessLead } from "@/lib/server/app";
 import { requireApiUser } from "@/lib/api/auth";
 import {

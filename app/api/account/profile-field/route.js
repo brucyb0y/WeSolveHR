@@ -1,14 +1,3 @@
-// POST /api/account/profile-field — update one field on the CALLER's profile.
-//
-// SESSION-ONLY AUTH. This writes to `user.id`, so it must never accept the
-// shared dashboard basic-auth credentials — those resolve to a fallback admin,
-// and anyone holding the password could then edit that admin's profile. The
-// Express version used requireUserLogin for exactly this reason.
-//
-// The field name is validated against ACCOUNT_FIELD_OPTIONS before being used
-// as a column, so it cannot be turned into an arbitrary column write. An empty
-// value is allowed and clears the field.
-
 import { supabase, ACCOUNT_FIELD_OPTIONS } from "@/lib/server/app";
 import { requireSessionUser } from "@/lib/api/auth";
 import {

@@ -1,10 +1,3 @@
-// GET /api/attendance/:userId/red-reports — days in a month with no report filed.
-//
-// The scanned range depends on WHICH month is asked for: the current month is
-// only checked up to today (you cannot be late for a day that has not happened),
-// while a past month is checked in full. Without that distinction every future
-// day of the current month would count as a missing report.
-
 import {
   DASHBOARD_ORG_ID,
   getAttendanceMonthNavigation,

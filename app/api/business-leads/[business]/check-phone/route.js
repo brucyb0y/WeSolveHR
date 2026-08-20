@@ -1,18 +1,3 @@
-// GET /api/business-leads/:business/check-phone — duplicate-phone lookup.
-//
-// Comparison is on a NORMALISED key, not the raw string: the same number is
-// stored with different punctuation and country prefixes across imports, so a
-// direct `.eq("phone", …)` would miss most real duplicates. That is also why
-// the rows are filtered in JS rather than in the query.
-//
-// An empty/unparseable phone returns `{duplicate:false}` rather than an error —
-// the form calls this on every keystroke and must not show errors mid-typing.
-//
-// PRESERVED DEFECT: the original read `req.session?.user?.org_id`, but the
-// session stores `userId`, never `user` — so this ALWAYS fell back to
-// DASHBOARD_ORG_ID. Kept as DASHBOARD_ORG_ID rather than silently switching to
-// the caller's org, which would change behaviour in a multi-org deployment.
-
 import {
   supabase,
   DASHBOARD_ORG_ID,

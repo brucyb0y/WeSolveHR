@@ -1,13 +1,3 @@
-// POST /api/ai/parse-meeting-notes — AI quick-fill for the meeting form.
-//
-// The prompt and response shaping live in parseMeetingNotesWithAI
-// (lib/server/app.js) beside the other AI helpers; this handler only validates
-// input and maps errors. A ~40-line prompt inside a route file would be
-// unreadable and would drift from the original.
-//
-// A missing OPENAI_API_KEY is tagged statusCode 500 by the helper and its
-// message is passed through, because it names the exact fix.
-
 import { parseMeetingNotesWithAI } from "@/lib/server/app";
 import { requireApiUser } from "@/lib/api/auth";
 import {

@@ -1,13 +1,3 @@
-// GET / POST /api/clients/:clientId/contributors
-//
-// Contributors are contractors and client-side people who are NOT WeSolve
-// users — distinct from the employees on the Team tab, which come from the
-// users table.
-//
-// ENVELOPE FIXED: the Express version replied `{success, contributors}` /
-// `{success, contributor}` while ContributorModal checks `json.ok`, so a
-// successful create reported failure. Both now return `{ok, data}`.
-
 import { supabase } from "@/lib/server/app";
 import { requireApiUser } from "@/lib/api/auth";
 import {
@@ -34,7 +24,6 @@ export const GET = withApiErrors(
       .select("*")
       .eq("client_id", clientId)
       .eq("archived", false)
-      // Grouped by type first, then newest within each group.
       .order("person_type", { ascending: true })
       .order("created_at", { ascending: false });
 
@@ -70,8 +59,6 @@ export const POST = withApiErrors(
         email: body.email || null,
         phone: body.phone || null,
         role: body.role,
-        // Permission flags are coerced to real booleans — they gate what a
-        // non-employee can see and do.
         can_update_work: !!body.can_update_work,
         can_view_client_dashboard: !!body.can_view_client_dashboard,
         status: body.status || "Active",

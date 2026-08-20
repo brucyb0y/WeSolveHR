@@ -1,16 +1,3 @@
-// GET /api/business-leads/:business/call-summaries — voice-call records for
-// one lead phone number.
-//
-// Matched on the normalised phone key in JS for the same reason as
-// check-phone: stored numbers vary in formatting, so an exact query match
-// would silently return nothing for most leads.
-//
-// Unlike check-phone, a missing phone is an ERROR here — this is opened
-// deliberately for one lead, not called while typing.
-//
-// PRESERVED DEFECT: `req.session?.user?.org_id` always resolved to undefined
-// in the original (the session holds `userId`), so DASHBOARD_ORG_ID is kept.
-
 import {
   supabase,
   DASHBOARD_ORG_ID,

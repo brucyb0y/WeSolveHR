@@ -1,13 +1,3 @@
-// GET / PUT / DELETE /api/business-leads/:business/:id
-//
-// All three delegate to the shared business-lead engine, so column mapping and
-// validation stay identical to the client-lead routes that use the same
-// helpers.
-//
-// PRESERVED DEFECT: the original read `req.session?.user?.org_id`, which was
-// always undefined (the session stores `userId`), so every call used
-// DASHBOARD_ORG_ID. Kept as-is rather than silently re-scoping to the caller.
-
 import {
   DASHBOARD_ORG_ID,
   getBusinessLeadById,

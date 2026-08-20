@@ -1,17 +1,3 @@
-// PATCH /api/clients/:clientId/blockers/:blockerId
-//
-// Two operations share this verb, matching the original:
-//   * `{ archive: true }` soft-deletes (is_active=false + deleted_at), and
-//     returns early — no other field is applied in that request;
-//   * otherwise a partial update, where only keys PRESENT in the body are
-//     written. `!== undefined` is the test, not truthiness: sending
-//     `owner_user_id: null` must clear the owner, while omitting it must leave
-//     the existing value alone.
-//
-// resolved_at is derived, never taken from the body — it is stamped when the
-// status becomes "resolved" and cleared when it moves back, so it can't drift
-// out of step with resolution_status.
-
 import {
   supabase,
   DASHBOARD_ORG_ID,
@@ -67,7 +53,6 @@ export const PATCH = withApiErrors(
     }
     if (!existing) return apiError(404, "Blocker not found");
 
-    // ---- archive ----------------------------------------------------------
     if (body.archive === true) {
       const { data, error } = await scope(
         supabase.from("client_blockers").update({
@@ -99,7 +84,6 @@ export const PATCH = withApiErrors(
       return apiSuccess(data);
     }
 
-    // ---- partial update ---------------------------------------------------
     const patch = { updated_at: now, last_updated_by_user_id: actorUserId };
 
     if (body.title !== undefined) {

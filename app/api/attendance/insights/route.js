@@ -1,9 +1,3 @@
-// GET /api/attendance/insights — aggregate attendance insights.
-//
-// The Express file registered this path TWICE (two functionally identical
-// handlers). Express serves the first match, so the second was unreachable
-// dead code; collapsing to one native route resolves that by construction.
-
 import { getAttendanceInsightsData } from "@/lib/server/app";
 import { requireApiUser, orgIdForApi } from "@/lib/api/auth";
 import { apiSuccess, apiError, withApiErrors } from "@/lib/api/respond";

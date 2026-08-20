@@ -1,14 +1,3 @@
-// PATCH /api/business-leads/:business/:id/quick-toggle — inline checkbox /
-// stage edits from the leads table.
-//
-// The field name is checked against an ALLOW-LIST before being used as a
-// column. Without that, the body could name any column and turn this into an
-// arbitrary write.
-//
-// Value coercion depends on the field: `lead_stage` is free text, everything
-// else is a checkbox and is compared with `=== true` so a truthy string cannot
-// tick a box that was not ticked.
-
 import {
   supabase,
   DASHBOARD_ORG_ID,

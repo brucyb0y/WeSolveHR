@@ -1,13 +1,3 @@
-// POST /api/clients/:clientId/actions/:actionId/archive
-//
-// Archiving is a soft delete: the row stays and gains archived=true plus an
-// "Archived" status, so history and the activity timeline survive.
-//
-// Returns the standard {ok, data} envelope. The Express version replied
-// `{success: true}`, which ActionsTab (its only caller) does not understand —
-// it checks json.ok, so a successful archive reported "Failed to archive
-// action" while having actually archived the row.
-
 import { supabase } from "@/lib/server/app";
 import { requireApiUser } from "@/lib/api/auth";
 import {

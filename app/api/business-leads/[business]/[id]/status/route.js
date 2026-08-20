@@ -1,9 +1,3 @@
-// PATCH /api/business-leads/:business/:id/status — pipeline status only.
-//
-// Separate from the generic PUT because status changes carry their own side
-// effects inside updateBusinessLeadStatus; routing them through the general
-// update path would skip those.
-
 import {
   DASHBOARD_ORG_ID,
   updateBusinessLeadStatus,

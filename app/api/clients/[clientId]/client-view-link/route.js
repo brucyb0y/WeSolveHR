@@ -1,14 +1,3 @@
-// POST /api/clients/:clientId/client-view-link — mint / reveal the customer
-// share link.
-//
-// The token is REUSED when one already exists — this endpoint is idempotent by
-// design. Regenerating on every click would silently invalidate a link the
-// client already has bookmarked.
-//
-// The absolute URL is built from the forwarded host/proto headers, falling back
-// to the request URL. Behind a proxy `request.url` is the internal origin, so
-// using it alone would hand the client an unreachable localhost link.
-
 import { supabase, insertClientActivityLog, generateClientViewToken } from "@/lib/server/app";
 import { requireApiUser, orgIdForApi } from "@/lib/api/auth";
 import {

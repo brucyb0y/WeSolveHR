@@ -1,7 +1,3 @@
-// POST /api/business-leads/enrich-url — enrich a lead from a single URL.
-//
-// Same helper as /api/rasset-leads/enrich, called with no Maps URL.
-
 import { enrichLeadFromUrl } from "@/lib/server/app";
 import { requireApiUser } from "@/lib/api/auth";
 import {

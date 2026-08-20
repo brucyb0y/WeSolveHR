@@ -1,5 +1,3 @@
-// POST /api/clients/:clientId/actions — create a client action.
-
 import {
   supabase,
   DASHBOARD_ORG_ID,
@@ -27,9 +25,6 @@ export const POST = withApiErrors(
     const clientId = Number(rawId);
     const body = await readJsonBody(request);
     const title = String(body.title || "").trim();
-
-    // One combined check, matching the original: a missing client id and a
-    // missing title both surface as "Action title is required".
     if (!clientId || !title) return apiError(400, "Action title is required");
 
     const now = new Date().toISOString();

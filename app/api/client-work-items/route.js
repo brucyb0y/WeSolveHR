@@ -1,12 +1,3 @@
-// POST /api/client-work-items — create a work item for a client.
-//
-// Lives at the top level rather than under /api/clients/:id because a work
-// item's client is part of its BODY (client_id), not its path — the same
-// endpoint serves the workspace and anything else that files work.
-//
-// New items always start status "todo": the field is not read from the body,
-// so an item cannot be created already done.
-
 import {
   supabase,
   insertClientActivityLog,

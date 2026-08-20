@@ -1,10 +1,3 @@
-// PATCH /api/clients/:clientId/campaigns/:campaignId
-//
-// Archive and update share the verb, as elsewhere. The update branch rebuilds
-// the payload from `{...existing, ...body}` rather than from the body alone —
-// that is what makes a partial PATCH safe here: buildCampaignPayloadFromBody
-// applies defaults to every field it knows, so feeding it only the changed keys
-// would reset the untouched ones to their defaults.
 
 import {
   supabase,

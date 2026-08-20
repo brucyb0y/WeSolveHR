@@ -1,22 +1,3 @@
-// GET / PATCH /api/client-work-items/:id
-//
-// THE DEPENDENCY GUARD IS THE POINT OF THIS ROUTE. A work item can declare
-// another as a prerequisite, and this refuses to mark an item done while its
-// dependency is not — that rule lives here rather than in the UI, so it holds
-// no matter what calls the API.
-//
-// Two subtleties in how the dependency is resolved:
-//   * `effectiveDependencyId` falls back to the STORED dependency when the body
-//     omits the field. Otherwise a PATCH of just `{status:"done"}` would see no
-//     dependency and skip the check entirely.
-//   * "", null and undefined all mean "no dependency"; only a real value is
-//     coerced with Number(). Truthiness alone would treat "" as a lookup.
-//
-// Self-dependency is rejected — an item that blocks itself could never be done.
-//
-// completed_at is derived from status, never taken from the body, so it cannot
-// drift out of step (set on done, cleared on anything else).
-
 import { supabase, insertClientActivityLog } from "@/lib/server/app";
 import { requireApiUser, orgIdForApi } from "@/lib/api/auth";
 import {
@@ -33,7 +14,6 @@ export const dynamic = "force-dynamic";
 const STATUSES = ["todo", "in_progress", "done"];
 const PRIORITIES = ["low", "medium", "high"];
 
-// "", null and undefined all mean "cleared"; anything else is an id.
 const optionalId = (v) =>
   v === "" || v === undefined || v === null ? null : Number(v);
 
@@ -96,7 +76,6 @@ export const PATCH = withApiErrors(
     }
     if (!existing) return apiError(404, "Work item not found");
 
-    // ---- archive ----------------------------------------------------------
     if (body.archive === true) {
       const { data, error } = await supabase
         .from("client_work_items")
@@ -130,7 +109,6 @@ export const PATCH = withApiErrors(
       return apiSuccess(data);
     }
 
-    // ---- validation -------------------------------------------------------
     if (body.status && !STATUSES.includes(body.status)) {
       return apiError(400, "Invalid status");
     }
@@ -145,8 +123,6 @@ export const PATCH = withApiErrors(
       return apiError(400, "A work item cannot depend on itself");
     }
 
-    // Fall back to the stored dependency so a status-only PATCH is still
-    // checked against it.
     const effectiveDependencyId =
       body.dependency_work_item_id === undefined
         ? existing.dependency_work_item_id || null
@@ -158,7 +134,6 @@ export const PATCH = withApiErrors(
         .select("id, client_id, title, status")
         .eq("org_id", orgId)
         .eq("id", effectiveDependencyId)
-        // Same client — an item cannot depend on another client's work.
         .eq("client_id", existing.client_id)
         .eq("is_active", true)
         .is("deleted_at", null)
@@ -179,7 +154,6 @@ export const PATCH = withApiErrors(
       }
     }
 
-    // ---- patch ------------------------------------------------------------
     const patch = { updated_at: now, last_updated_by_user_id: actorUserId };
 
     if (body.title !== undefined) {

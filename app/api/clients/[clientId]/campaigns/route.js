@@ -1,8 +1,3 @@
-// POST /api/clients/:clientId/campaigns — create a campaign.
-//
-// Field mapping and validation live in buildCampaignPayloadFromBody (shared
-// with the PATCH route), so the two cannot disagree about what a campaign is.
-
 import {
   supabase,
   insertClientActivityLog,

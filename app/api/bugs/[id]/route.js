@@ -1,17 +1,3 @@
-// PATCH /api/bugs/:id — update a bug on the Stage-0 board.
-//
-// Partial update built key-by-key on `!== undefined`, so omitting a field
-// leaves it alone while sending null clears it. There is no payload builder
-// here — do NOT merge with the existing row.
-//
-// The assignee is VALIDATED against the users table before being written:
-// it must exist, be active, and belong to this org. A bare foreign key would
-// accept an id from another org, silently assigning a bug to someone the board
-// can't display.
-//
-// Scoped to DASHBOARD_ORG_ID rather than the caller's org, matching the
-// original — the bug board is a single cross-org surface.
-
 import {
   supabase,
   DASHBOARD_ORG_ID,

@@ -1,5 +1,3 @@
-// GET /api/attendance — attendance board data for the caller's org.
-
 import { getAttendancePageData } from "@/lib/server/app";
 import { requireApiUser, orgIdForApi } from "@/lib/api/auth";
 import { apiSuccess, apiError, withApiErrors } from "@/lib/api/respond";

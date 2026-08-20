@@ -1,11 +1,3 @@
-// Update a contributor.
-//
-// FIXED — the same two defects the actions route had:
-//   * registered PUT only, while ContributorModal sends PATCH, so every edit
-//     returned 405 and silently did nothing (verified before the fix);
-//   * replied `{success, contributor}` where the modal checks `json.ok`.
-// Both verbs are exported and the envelope is standard.
-
 import { supabase } from "@/lib/server/app";
 import { requireApiUser } from "@/lib/api/auth";
 import {

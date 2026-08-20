@@ -1,13 +1,3 @@
-/* Page-scoped styles for /leads/:business, from renderBusinessLeadsPage()'s
- * <style> block. Class names camelCased for JSX; declarations unchanged.
- *
- * Two mechanical adjustments:
- *   - the six bare element rules (h1, table, th, td, input/select/textarea) are
- *     scoped under `.wrap`, as CSS Modules requires;
- *   - `body.embed .wrap` becomes `.wrapEmbed`, applied to the wrapper in JSX —
- *     the React page cannot put a class on <body>, and embed is a prop.
- */
-
 .leadStatusSelect {
   width: 92px;
   max-width: 92px;
