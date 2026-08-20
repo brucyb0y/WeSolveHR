@@ -36,6 +36,7 @@ import {
   CLIENT_LEAD_DEMO_STATUSES,
   getClientLeadCategoryTypes,
   getClientLeadCategoryTypeLabels,
+  getBusinessCanonicalName,
   REACH_VIA_CHANNELS,
   CAMPAIGN_TYPES,
   CAMPAIGN_STATUSES,
@@ -461,8 +462,14 @@ export default async function ClientWorkspacePage({ params, searchParams }) {
     new Set(users.map((u) => u && u.name).filter(Boolean)),
   ).map((n) => ({ key: n, label: n }));
 
-  // Revivflow's sheet brings its own columns; other clients do not render them.
-  const showOptionalSheetFields = !!client.show_revivflow_lead_fields;
+  // Revivflow's sheet brings its own columns (persona, payment profile, ICP
+  // segment, company email, Instagram activity); other clients do not render
+  // them. Keyed off the client's canonical business — its name resolves to the
+  // "revivflow" business. (The former `show_revivflow_lead_fields` flag column
+  // was never created, so reading it always yielded false and hid the fields.)
+  const showOptionalSheetFields =
+    getBusinessCanonicalName(client.name) === "revivflow" ||
+    getBusinessCanonicalName(client.company_name) === "revivflow";
 
   const performance = buildClientPerformanceMetrics({
     leadAllRows,
