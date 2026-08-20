@@ -400,12 +400,6 @@ export default function ClientLeadsTable({
     );
   }
 
-  // Reached-via is stored as one boolean column per channel, so the bulk action
-  // writes those columns directly. Sending a virtual `reached_via` key instead
-  // (as this once did) is not on the API's light-update whitelist, so the PATCH
-  // falls through to the full update, which rejects the row for missing
-  // identity fields — the "Enter at least phone, company, …" error. "none"
-  // clears every channel; a channel key marks just that one.
   async function bulkReachedVia(value) {
     const ids = selectedIds;
     if (!ids.length) return;
@@ -424,9 +418,6 @@ export default function ClientLeadsTable({
     );
   }
 
-  // "Unassigned" clears the field, so the sentinel is translated to null here —
-  // writing the literal "__unassigned__" would store it as the assignee's name
-  // and it would not even match the "Unassigned" filter afterwards.
   async function bulkAssign(value, field, loadingLabel) {
     const ids = selectedIds;
     if (!ids.length) return;
@@ -438,8 +429,6 @@ export default function ClientLeadsTable({
     );
   }
 
-  // "__clear__" removes the category; anything else sets it. The raw sentinel
-  // would be rejected by the API as an invalid category key.
   async function bulkCategory(value) {
     const ids = selectedIds;
     if (!ids.length) return;

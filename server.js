@@ -130,11 +130,10 @@ const APP_TIMEZONE_OFFSET = "+05:30";
 const DEFAULT_SHIFT_START_TEXT = "10:30 AM";
 const LATE_APPROVAL_NOTICE_HOURS = 3;
 
-// Attendance day settings
-const ATTENDANCE_DAY_START_HOUR = 6; // 6:00 AM IST
-const LONG_SHIFT_THRESHOLD_MIN = 10 * 60; // 10 hours
-const LONG_BREAK_THRESHOLD_MIN = 2 * 60; // 2 hours
-const HALF_DAY_THRESHOLD_MIN = 4 * 60; // optional future use
+const ATTENDANCE_DAY_START_HOUR = 6;
+const LONG_SHIFT_THRESHOLD_MIN = 10 * 60;
+const LONG_BREAK_THRESHOLD_MIN = 2 * 60;
+const HALF_DAY_THRESHOLD_MIN = 4 * 60;
 
 function normalizeText(text) {
   return String(text || "")
@@ -147,18 +146,14 @@ function normalizePhoneForLogin(input) {
 
   let value = String(input).trim();
 
-  // Remove whatsapp: if someone pastes it
   value = value.replace(/^whatsapp:/i, "");
 
-  // Remove spaces, dashes, brackets, dots etc, but keep digits and +
   value = value.replace(/[^\d+]/g, "");
 
-  // Convert 00... to +...
   if (value.startsWith("00")) {
     value = `+${value.slice(2)}`;
   }
 
-  // If user entered full country code but no plus, add it
   if (value && !value.startsWith("+")) {
     value = `+${value}`;
   }
@@ -231,7 +226,7 @@ app.use(
     cookie: {
       secure: false,
       httpOnly: true,
-      maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+      maxAge: 1000 * 60 * 60 * 24 * 30,
     },
   }),
 );
@@ -1886,7 +1881,6 @@ function parseFlexibleDate(input) {
     }
   }
 
-  // YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
     const [year, month, day] = raw.split("-").map(Number);
     const d = new Date(year, month - 1, day);
@@ -1896,7 +1890,6 @@ function parseFlexibleDate(input) {
     }
   }
 
-  // "5 Apr"
   const parts = raw.split(/\s+/);
   if (parts.length === 2) {
     const day = parseInt(parts[0], 10);
@@ -6612,7 +6605,6 @@ function parseTimeValueToTodayIso(timeValue) {
 
   const raw = String(timeValue).trim();
 
-  // supports "21:30:00" or "21:30"
   const m24 = raw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (m24) {
     const hour = Number(m24[1]);
@@ -6641,7 +6633,6 @@ function parseTimeValueToTodayIso(timeValue) {
     return d.toISOString();
   }
 
-  // fallback for old style like "10:30 AM"
   return parseLocalDateTimeForToday(raw);
 }
 
@@ -6785,12 +6776,6 @@ function parseMarkAttendanceCommand(text) {
 function parseDirectManagerAttendanceCommand(text) {
   const raw = normalizeText(text);
 
-  // supports:
-  // login khateeba 3 pm
-  // login khateeba today 3 pm
-  // login khateeba mukhtar 3 pm
-  // logout khateeba 6:30 pm
-  // back khateeba today 4 pm
   let match = raw.match(
     /^(login|logout|back)\s+(.+?)(?:\s+(today))?\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))$/i,
   );
@@ -6805,9 +6790,6 @@ function parseDirectManagerAttendanceCommand(text) {
     };
   }
 
-  // supports:
-  // login khateeba
-  // logout khateeba mukhtar
   match = raw.match(/^(login|logout|back)\s+(.+)$/i);
   if (match) {
     const maybeName = match[2]
@@ -6827,9 +6809,6 @@ function parseDirectManagerAttendanceCommand(text) {
     }
   }
 
-  // supports:
-  // break khateeba 30 3 pm
-  // break khateeba 30 3:15 pm
   match = raw.match(
     /^break\s+(.+?)(?:\s+(today))?\s+(\d+)\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))$/i,
   );
@@ -6844,8 +6823,6 @@ function parseDirectManagerAttendanceCommand(text) {
     };
   }
 
-  // supports:
-  // break khateeba 30
   match = raw.match(/^break\s+(.+?)\s+(\d+)$/i);
   if (match) {
     return {
@@ -6857,9 +6834,6 @@ function parseDirectManagerAttendanceCommand(text) {
     };
   }
 
-  // supports:
-  // break khateeba 3 pm
-  // break khateeba today 3 pm
   match = raw.match(
     /^break\s+(.+?)(?:\s+(today))?\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))$/i,
   );
@@ -6874,8 +6848,6 @@ function parseDirectManagerAttendanceCommand(text) {
     };
   }
 
-  // supports:
-  // break khateeba
   match = raw.match(/^break\s+(.+)$/i);
   if (match) {
     const maybeName = match[1]
@@ -6897,33 +6869,6 @@ function parseDirectManagerAttendanceCommand(text) {
 
   return null;
 }
-
-// function parseSimpleTaskCommand(text) {
-//   const raw = normalizeText(text);
-
-//   let match = raw.match(
-//     /^task\s+(.+?)\s+(low|medium|high|urgent)\s+(.+?)\s+by\s+(.+)$/i,
-//   );
-
-//   if (match) {
-//     return {
-//       assignee_name: match[1].trim(),
-//       priority: match[2].toLowerCase(),
-//       title: match[3].trim(),
-//       deadline_text: match[4].trim(),
-//     };
-//   }
-
-//   match = raw.match(/^task\s+(.+?)\s+(.+?)\s+by\s+(.+)$/i);
-//   if (!match) return null;
-
-//   return {
-//     assignee_name: match[1].trim(),
-//     priority: null,
-//     title: match[2].trim(),
-//     deadline_text: match[3].trim(),
-//   };
-// }
 
 function parseTaskIdCommand(text, commandWord) {
   const msg = normalizeText(text);
@@ -7321,10 +7266,8 @@ function parseAttendanceCommand(text) {
 
   let rest = raw.replace(/^(login|logout|break|back)\b/i, "").trim();
 
-  // remove date words from name area
   rest = rest.replace(/\b(today|yesterday|tomorrow)\b/gi, "").trim();
 
-  // extract time like 3 pm, 3pm, 3:30 pm
   const timeMatch = rest.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
 
   let timeText = null;
@@ -7529,7 +7472,6 @@ async function requireUserLogin(req, res, next) {
 async function requireDashboardAuth(req, res, next) {
   try {
     const isApiRoute = req.path.startsWith("/api/");
-    // 1) Prefer real user session if present
     const sessionUserId = req.session?.userId;
 
     if (sessionUserId) {
@@ -7550,12 +7492,10 @@ async function requireDashboardAuth(req, res, next) {
         return next();
       }
 
-      // session exists but user no longer valid -> clear it
       req.session.destroy(() => {});
       return res.redirect("/login");
     }
 
-    // 2) Fallback to existing dashboard basic auth
     const username = process.env.DASHBOARD_USERNAME;
     const password = process.env.DASHBOARD_PASSWORD;
 
@@ -7598,7 +7538,6 @@ async function requireDashboardAuth(req, res, next) {
       return res.redirect("/login");
     }
 
-    // Optional: attach one admin user for legacy dashboard flows if needed
     const { data: fallbackAdmin, error: fallbackAdminError } = await supabase
       .from("users")
       .select("*")
@@ -12706,8 +12645,8 @@ async function getLogsPageData(orgId, filters = {}) {
   const q = String(filters.q || "").trim();
   const user = String(filters.user || "").trim();
   const outcome = String(filters.outcome || "").trim();
-  const day = String(filters.day || "").trim(); // YYYY-MM-DD
-  const month = String(filters.month || "").trim(); // YYYY-MM
+  const day = String(filters.day || "").trim();
+  const month = String(filters.month || "").trim();
 
   let startDate = null;
   let endDate = null;
@@ -13171,119 +13110,6 @@ async function handleCreateTaskAdvanced(res, user, taskCommand) {
       .join("\n"),
   );
 }
-
-// async function handleCreateTask(res, user, taskCommand) {
-//   if (!taskCommand.assignee_name) {
-//     return sendTwiml(
-//       res,
-//       "I understood this as a task, but could not identify the assignee.",
-//     );
-//   }
-
-//   if (!taskCommand.title) {
-//     return sendTwiml(
-//       res,
-//       "I understood this as a task, but could not identify the title.",
-//     );
-//   }
-
-// const assignee = await findUniqueUserByName(taskCommand.assignee_name, user.org_id);
-//   if (!assignee) {
-//     return sendTwiml(
-//       res,
-//       `I could not uniquely find an active user named "${taskCommand.assignee_name}".`,
-//     );
-//   }
-
-//   if (!isManagerOrAdmin(user) && assignee.id !== user.id) {
-//     return sendTwiml(
-//       res,
-//       "You are not allowed to assign tasks to other people.",
-//     );
-//   }
-
-//   const deadline = parseDeadline(taskCommand.deadline_text);
-
-//   if (!deadline) {
-//     return sendTwiml(
-//       res,
-//       `I could not understand the deadline "${taskCommand.deadline_text}". Use today, tomorrow, friday, 11 april, or april 11.`,
-//     );
-//   }
-
-//   const taskRow = {
-//     assigned_to_user_id: assignee.id,
-//     org_id: user.org_id,
-//     created_by_user_id: user.id,
-//     last_updated_by_user_id: user.id,
-//     title: taskCommand.title,
-//     detail: null,
-//     priority: taskCommand.priority || "medium",
-//     status: "open",
-//     progress: 0,
-//     deadline,
-//     blocker_note: null,
-//     updated_at: new Date().toISOString(),
-//   };
-
-//   const { data: createdTask, error: taskError } = await supabase
-//     .from("tasks")
-//     .insert([taskRow])
-//     .select("id, task_no, title, priority, deadline")
-//     .single();
-
-//   if (taskError) {
-//     console.error("Task insert error:", taskError);
-//     return sendTwiml(
-//       res,
-//       "❌ Could not create task\nReason: system could not save it\nTry: please send the task again once",
-//     );
-//   }
-
-// const { error: ownerUpsertError } = await supabase
-//   .from("task_owners")
-//   .upsert([
-//     {
-//       org_id: user.org_id,
-//       task_id: createdTask.id,
-//       user_id: assignee.id,
-//     },
-//   ]);
-
-// if (ownerUpsertError) {
-//   console.error("Simple task owner upsert error:", ownerUpsertError);
-
-//   await supabase
-//     .from("tasks")
-//     .delete()
-//     .eq("id", createdTask.id);
-
-//   return sendTwiml(
-//     res,
-//     "❌ Task could not be completed because owner save failed. Nothing was created.",
-//   );
-//   }
-
-//   await insertTaskHistory(
-//     createdTask.id,
-//     user.id,
-//     "task_created",
-//     "task",
-//     null,
-//     {
-//       title: createdTask.title,
-//       priority: createdTask.priority,
-//       deadline: createdTask.deadline,
-//       assigned_to_user_id: assignee.id,
-//     },
-//     user.org_id
-//   );
-
-//   return sendTwiml(
-//     res,
-//     `✅ Task #${createdTask.task_no || createdTask.id} created\nAssigned to ${assignee.name}\nPriority: ${createdTask.priority}\nTitle: ${createdTask.title}\nDue: ${createdTask.deadline || "no deadline"}`,
-//   );
-// }
 
 async function handleBlockTask(res, user, taskId, reason) {
   const cleanNote = String(reason || "").trim();

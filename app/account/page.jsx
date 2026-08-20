@@ -1,8 +1,3 @@
-// /account — replaces the inline HTML in app.get("/account").
-//
-// Session-only auth (requireUserLogin), as before. See account.module.css for
-// why this page carries its own background instead of the shared theme.
-
 import TopNav from "@/components/TopNav";
 import { requireUser } from "@/lib/auth";
 import {

@@ -1,15 +1,5 @@
 "use client";
 
-// Department / Designation dropdown with inline save status.
-//
-// Same contract as before: change fires POST /api/account/profile-field with
-// { field, value }, the select is disabled while in flight, and the status line
-// shows "Saving…" then "Saved" or the error message.
-//
-// When the stored value is not one of the known options (or is unset) a
-// selected "-" option is appended so nothing is lost visually until the user
-// picks a real value — carried over from renderAccountFieldSelect().
-
 import { useState } from "react";
 import styles from "./account.module.css";
 
