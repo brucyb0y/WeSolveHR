@@ -62,6 +62,12 @@ const OPTIONAL_SHEET_FIELDS = [
   ["monthly_chargebacks", "Monthly Chargebacks", "monthly_chargebacks"],
   ["mode_of_payment", "Mode of Payment", "mode_of_payment"],
   ["icp_category", "ICP Category", "icp_category"],
+  ["company_email", "Company Email", "company_email"],
+  [
+    "last_instagram_activity",
+    "Last Instagram Activity",
+    "last_instagram_activity",
+  ],
 ];
 
 const EMPTY = {
@@ -94,6 +100,8 @@ const EMPTY = {
   monthly_chargebacks: "",
   mode_of_payment: "",
   icp_category: "",
+  company_email: "",
+  last_instagram_activity: "",
 };
 
 export default function ClientLeadModal({
