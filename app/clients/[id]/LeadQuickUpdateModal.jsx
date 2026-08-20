@@ -40,6 +40,7 @@ export default function LeadQuickUpdateModal({
   stages,
   demoStatuses,
   reachChannels,
+  onSaved,
   onClose,
 }) {
   const router = useRouter();
@@ -248,6 +249,9 @@ export default function LeadQuickUpdateModal({
         return;
       }
 
+      // Hand the new Status/Demo back so the table row updates immediately,
+      // rather than waiting for the router.refresh() below to re-query.
+      onSaved?.({ stage, demo });
       onClose();
       router.refresh();
     } catch {

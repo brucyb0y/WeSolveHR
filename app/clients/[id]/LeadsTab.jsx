@@ -17,7 +17,7 @@
 // href-BUILDING function: page.jsx is a server component, and functions do not
 // cross that boundary. The pills therefore carry their href on the row data.
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import styles from "./workspace.module.css";
 import ClientLeadsTable from "./ClientLeadsTable";
 import LeadFilterPopup, { LEAD_FILTER_FIELD_NAMES } from "./LeadFilterPopup";
@@ -66,6 +66,44 @@ export default function LeadsTab({
   showOptionalSheetFields,
 }) {
   const [leadModal, setLeadModal] = useState(null);
+
+  // Optimistic Status/Demo overrides. Saving from the quick-update popup PATCHes
+  // then router.refresh()es, but that re-runs the whole workspace query and can
+  // take seconds on this tab — so the table would show the old Status/Demo until
+  // it lands. Applying the change here keeps the row in sync instantly; each
+  // override clears itself once the refreshed server data matches it. Keyed by
+  // lead id, holding the decorated { stage, demo } the table reads.
+  const [leadOverrides, setLeadOverrides] = useState({});
+
+  useEffect(() => {
+    setLeadOverrides((prev) => {
+      const next = {};
+      for (const [id, ov] of Object.entries(prev)) {
+        const row = leads.find((l) => String(l.id) === String(id));
+        // Keep the override only while the server row still disagrees with it.
+        if (row && Object.keys(ov).some((k) => row[k] !== ov[k])) next[id] = ov;
+      }
+      return Object.keys(next).length === Object.keys(prev).length
+        ? prev
+        : next;
+    });
+  }, [leads]);
+
+  // Memoised so its identity is stable while leads/overrides are unchanged —
+  // otherwise the table's own leads-effect would re-run on every render.
+  const displayLeads = useMemo(
+    () =>
+      leads.map((l) =>
+        leadOverrides[l.id] ? { ...l, ...leadOverrides[l.id] } : l,
+      ),
+    [leads, leadOverrides],
+  );
+
+  const applyLeadOverride = (leadId, patch) =>
+    setLeadOverrides((prev) => ({
+      ...prev,
+      [leadId]: { ...prev[leadId], ...patch },
+    }));
 
   // Mode 1: the client's leads live in a static lead business — embed that
   // page rather than duplicating its table.
@@ -308,7 +346,7 @@ export default function LeadsTab({
 
       <ClientLeadsTable
         clientId={clientId}
-        leads={leads}
+        leads={displayLeads}
         filteredIds={filteredIds}
         users={users}
         stages={stages}
@@ -377,6 +415,7 @@ export default function LeadsTab({
           stages={stages}
           demoStatuses={demoStatuses}
           reachChannels={reachChannels}
+          onSaved={(patch) => applyLeadOverride(leadModal.lead.id, patch)}
           onClose={() => setLeadModal(null)}
         />
       ) : null}

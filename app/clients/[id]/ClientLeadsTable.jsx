@@ -937,7 +937,12 @@ export default function ClientLeadsTable({
                   </td>
 
                   <td>
+                    {/* Uncontrolled so an inline pick sticks while its note
+                        dialog is open, but keyed on the SAVED stage so it
+                        remounts — and shows the new value — when the row's
+                        stage changes elsewhere (e.g. the quick-update popup). */}
                     <select
+                      key={l.stage}
                       className={styles.stageSelect}
                       defaultValue={l.stage}
                       onFocus={(e) => {
@@ -1009,7 +1014,11 @@ export default function ClientLeadsTable({
                         gap: 6,
                       }}
                     >
+                      {/* Keyed on the saved demo so it remounts to the new
+                          value when the row changes elsewhere (quick-update
+                          popup); uncontrolled otherwise, like the stage cell. */}
                       <select
+                        key={l.demo}
                         className={styles.stageSelect}
                         defaultValue={l.demo}
                         onFocus={(e) => {
