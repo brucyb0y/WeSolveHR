@@ -1,39 +1,9 @@
 "use client";
 
-// The client leads table plus its bulk-action bar.
-//
-// These are one component because they share selection state: the bar only
-// appears once something is ticked, and every bulk action operates on exactly
-// that set. Splitting them would mean lifting selection into a parent that has
-// no other use for it.
-//
-// Two selection scopes, deliberately kept distinct — the original had both and
-// conflating them would silently widen destructive actions:
-//   * the header checkbox selects the rows ON THIS PAGE;
-//   * "Select all N leads" selects every lead MATCHING THE CURRENT FILTERS,
-//     including rows on other pages, and only appears once the page-level box
-//     is used. `filteredIds` carries those ids from the server.
-//
-// PRESERVED DEFECT: the original tagged both call icons class="lead-call-icon",
-// but no rule ever defined it and no script queries it — all the styling is
-// inline. The class is dropped here rather than adding a rule the original
-// never had; appearance is unchanged either way.
-//
-// THE STAGE AND DEMO DROPDOWNS DO NOT SAVE ON CHANGE. Each one opens a note
-// dialog and the change is written only once a reason is supplied; cancelling
-// puts the dropdown back where it was. Patching straight from onChange would be
-// the obvious reading of this UI and would silently drop the audit trail the
-// original goes out of its way to collect. The revert closure is passed up with
-// the request so the parent can restore the element it came from.
-
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Swal from "sweetalert2";
 import styles from "./workspace.module.css";
-
-// Bulk requests go out in batches rather than all at once: an all-pages
-// selection can be thousands of leads, and firing that many concurrent PATCHes
-// would flood the server. 15 matches the original.
 const BULK_BATCH = 15;
 
 function PhoneIcon() {
@@ -53,10 +23,6 @@ function PhoneIcon() {
   );
 }
 
-// Sort headers are built here from plain href/arrow DATA rather than arriving
-// as rendered elements, because the row body also needs a sort link ("Updated
-// …" under each company) — and a function that builds links cannot be passed
-// from a server component to a client one.
 function SortTh({ href, label, arrow, style }) {
   return (
     <th style={{ textAlign: "left", ...style }}>
@@ -77,8 +43,6 @@ function SortTh({ href, label, arrow, style }) {
   );
 }
 
-// An inactive column shows a dimmed double-arrow; the active one shows its
-// direction at full opacity.
 function SortArrow({ arrow }) {
   if (arrow === "asc") return <> ↑</>;
   if (arrow === "desc") return <> ↓</>;
@@ -90,25 +54,12 @@ function SortArrow({ arrow }) {
   );
 }
 
-// Reached-via is a small checkbox dropdown per row: a lead can be reached
-// through several channels at once, so this is not a single-select.
-//
-// THE CHECKBOXES ARE OPTIMISTIC, and they have to be. `lead[c.column]` comes
-// from server data, so a purely controlled checkbox snaps back the instant it
-// is clicked and only settles once router.refresh() re-runs the whole
-// workspace query — seconds on this tab. That reads as "the checkbox does
-// nothing", and the refresh remounts this component, closing the panel too.
-//
-// So a local override is applied immediately, the request goes out behind it,
-// and the override is dropped once the server value agrees (or restored on
-// failure). `open` lives in a ref-backed state that survives the refresh.
 function ReachDropdown({ lead, channels, onToggleChannel }) {
   const [open, setOpen] = useState(false);
   // column -> boolean, only for values still in flight.
   const [pending, setPending] = useState({});
   const wrapRef = useRef(null);
 
-  // Server data has caught up — drop overrides that now match it.
   useEffect(() => {
     setPending((prev) => {
       const next = {};
@@ -121,7 +72,6 @@ function ReachDropdown({ lead, channels, onToggleChannel }) {
     });
   }, [lead]);
 
-  // Click-outside closes the panel; bound only while open.
   useEffect(() => {
     if (!open) return undefined;
     const onDocClick = (e) => {
@@ -145,7 +95,6 @@ function ReachDropdown({ lead, channels, onToggleChannel }) {
     setPending((p) => ({ ...p, [channel.column]: checked }));
     const ok = await onToggleChannel(lead.id, channel, checked);
     if (!ok) {
-      // Request failed — drop the override so the server value shows again.
       setPending((p) => {
         const next = { ...p };
         delete next[channel.column];
@@ -246,7 +195,6 @@ export default function ClientLeadsTable({
   const [allMatching, setAllMatching] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // Server data caught up — discard overrides that now match it.
   useEffect(() => {
     setVisibleOverride((prev) => {
       const next = {};
@@ -315,10 +263,6 @@ export default function ClientLeadsTable({
       failMessage,
     );
 
-  // ---- inline row edits -------------------------------------------------
-
-  // Hands the new value up along with a revert for the exact <select> that
-  // produced it, so Cancel restores that row and no other.
   function requestStageChange(e, leadId) {
     const select = e.target;
     const value = select.value;
@@ -337,9 +281,6 @@ export default function ClientLeadsTable({
     });
   }
 
-  // Optimistic, for the same reason as the reached-via boxes: `checked` comes
-  // from server data, so without a local override the box snaps back until
-  // router.refresh() finishes re-running the workspace query.
   const [visibleOverride, setVisibleOverride] = useState({});
 
   const isVisible = (l) =>
@@ -361,8 +302,6 @@ export default function ClientLeadsTable({
     }
   }
 
-  // Returns true/false so ReachDropdown knows whether to keep its optimistic
-  // value or roll it back.
   const toggleChannel = (leadId, channel, checked) =>
     patchLead(
       leadId,
@@ -379,12 +318,6 @@ export default function ClientLeadsTable({
     );
   }
 
-  // ---- bulk actions -----------------------------------------------------
-
-  // There is no bulk endpoint — the original fans the same PATCH out across
-  // every selected id and reloads once at the end. Preserved, including the
-  // partial-failure report: with thousands of leads some requests can fail
-  // while others succeed, and silently reloading would hide that.
   async function runBulkLeadAction(ids, makeBody, loadingMessage) {
     let failed = 0;
 
@@ -435,9 +368,6 @@ export default function ClientLeadsTable({
     router.refresh();
   }
 
-  // Status and demo changes offer an optional note applied to every selected
-  // lead, so a sweeping change carries its reason. Returning null means the
-  // user cancelled — the action is abandoned, not applied without a note.
   async function promptBulkNote(count, label) {
     const res = await Swal.fire({
       title: `Update ${label} for ${count} lead(s)`,
@@ -458,7 +388,7 @@ export default function ClientLeadsTable({
     if (!ids.length) return;
 
     const note = await promptBulkNote(ids.length, label);
-    if (note === null) return; // cancelled
+    if (note === null) return;
 
     const body = { [field]: value };
     if (note) body.add_note = note;
