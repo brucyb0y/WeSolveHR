@@ -50,24 +50,31 @@ const STATUSES = [
   { value: "inactive", label: "Inactive" },
 ];
 
+// The Revivflow sheet's own columns, shown only for the Revivflow workspace.
+// Ordered to mirror the import CSV so an editor recognises them. Every column
+// the "Final Format" sheet carries that isn't already one of the standard
+// fields above is here, so nothing imported is uneditable.
 // [state key, label, lead column]
 const OPTIONAL_SHEET_FIELDS = [
   ["persona", "Persona", "persona"],
+  ["company_email", "Company Email", "company_email"],
+  ["company_hq_phone", "Company Number", "company_hq_phone"],
   ["company_size", "Company Size", "company_size"],
+  ["company_instagram_url", "Instagram URL", "company_instagram_url"],
   [
     "last_linkedin_activity",
     "Last LinkedIn Activity",
     "last_linkedin_activity",
   ],
-  ["monthly_chargebacks", "Monthly Chargebacks", "monthly_chargebacks"],
-  ["mode_of_payment", "Mode of Payment", "mode_of_payment"],
-  ["icp_category", "ICP Category", "icp_category"],
-  ["company_email", "Company Email", "company_email"],
   [
     "last_instagram_activity",
     "Last Instagram Activity",
     "last_instagram_activity",
   ],
+  ["mode_of_payment", "Mode of Payment", "mode_of_payment"],
+  ["monthly_chargebacks", "Monthly Chargebacks", "monthly_chargebacks"],
+  ["company_subtype", "Sub Category", "company_subtype"],
+  ["icp_category", "ICP Category", "icp_category"],
 ];
 
 const EMPTY = {
@@ -102,6 +109,9 @@ const EMPTY = {
   icp_category: "",
   company_email: "",
   last_instagram_activity: "",
+  company_hq_phone: "",
+  company_instagram_url: "",
+  company_subtype: "",
 };
 
 export default function ClientLeadModal({
@@ -384,16 +394,32 @@ export default function ClientLeadModal({
         onChange={set("verified_by")}
       />
 
-      {showOptionalSheetFields
-        ? OPTIONAL_SHEET_FIELDS.map(([key, label]) => (
+      {showOptionalSheetFields ? (
+        <>
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              marginTop: 6,
+              paddingTop: 12,
+              borderTop: "1px solid var(--line)",
+              fontSize: 13,
+              fontWeight: 800,
+              letterSpacing: "0.04em",
+              color: "var(--muted, #9aa3c0)",
+            }}
+          >
+            Revivflow Fields
+          </div>
+          {OPTIONAL_SHEET_FIELDS.map(([key, label]) => (
             <TextField
               key={key}
               label={label}
               value={form[key]}
               onChange={set(key)}
             />
-          ))
-        : null}
+          ))}
+        </>
+      ) : null}
 
       <TextAreaField
         label="Add Note"
