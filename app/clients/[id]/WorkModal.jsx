@@ -16,6 +16,9 @@ import styles from "./workspace.module.css";
 // `readOnly` drops the Cancel/Save footer entirely — used by the history
 // dialogs, which only display. Without it they would render a Save button with
 // no label and no handler.
+// `size="sm"` narrows the card for the light dialogs (e.g. the quick "log a
+// call" update) that hold only a few fields and looked oversized at the default
+// 900px width. Other modals omit it and keep the roomy default.
 export function WorkModal({
   title,
   onClose,
@@ -23,6 +26,7 @@ export function WorkModal({
   saveLabel,
   saving,
   readOnly,
+  size,
   children,
 }) {
   useEffect(() => {
@@ -40,7 +44,11 @@ export function WorkModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className={styles.workModalCard}>
+      <div
+        className={`${styles.workModalCard} ${
+          size === "sm" ? styles.workModalCardSm : ""
+        }`}
+      >
         <div className={styles.modalHead}>
           <div className={styles.modalTitle}>{title}</div>
           <button className={styles.btn} type="button" onClick={onClose}>

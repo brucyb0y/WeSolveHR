@@ -679,6 +679,13 @@
   padding: 18px;
 }
 
+.workModalCardSm {
+  width: min(560px, 100%);
+  padding: 16px;
+}
+.workModalCardSm .formGrid { gap: 10px; }
+.workModalCardSm textarea { min-height: 68px; }
+
 .formGrid {
   display:grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

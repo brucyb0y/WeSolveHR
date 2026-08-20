@@ -260,6 +260,7 @@ export default function LeadQuickUpdateModal({
 
   return (
     <WorkModal
+      size="sm"
       title={lead.company ? `Update — ${lead.company}` : "Update Lead"}
       saveLabel="Save"
       saving={saving}
