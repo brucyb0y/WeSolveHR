@@ -77,6 +77,37 @@ const OPTIONAL_SHEET_FIELDS = [
   ["icp_category", "ICP Category", "icp_category"],
 ];
 
+// Revivflow's edit form mirrors its import sheet exactly: only the "Final
+// Format" CSV's own columns, in the CSV's order, labelled with the CSV heading.
+// Everything the generic lead form shows that the sheet does NOT carry (funding
+// trio, Lead Category, Category Type, Source, Pipeline/Outreach/Demo/Status) is
+// hidden — those stay editable from the table row and the quick-update popup.
+// The lead keeps whatever it already had for the hidden fields; the form loads
+// and re-saves them untouched, so nothing is wiped. [form key, CSV heading].
+const REVIVFLOW_EDIT_FIELDS = [
+  ["company", "Company name"],
+  ["website", "Company website"],
+  ["contact_name", "Full name"],
+  ["persona", "Persona"],
+  ["email", "Persona Email"],
+  ["company_email", "Company Email"],
+  ["phone", "Persona Number"],
+  ["company_hq_phone", "Company Number"],
+  ["person_linkedin_url", "Person LinkedIn URL"],
+  ["company_linkedin_url", "Company LinkedIn"],
+  ["last_linkedin_activity", "Last Linkedin Activity"],
+  ["country", "Country"],
+  ["state", "State"],
+  ["city", "City"],
+  ["company_instagram_url", "Instagram URL"],
+  ["last_instagram_activity", "Last Instagram Activity"],
+  ["mode_of_payment", "Mode of Payment"],
+  ["company_subtype", "Sub Category"],
+  ["phone_assigned_to", "Assign for Phone"],
+  ["email_assigned_to", "Assign for email"],
+  ["verified_by", "Verified By"],
+];
+
 const EMPTY = {
   company: "",
   contact_name: "",
@@ -282,147 +313,134 @@ export default function ClientLeadModal({
       onSave={save}
       onClose={onClose}
     >
-      <TextField
-        label="Company"
-        value={form.company}
-        onChange={set("company")}
-      />
-      <TextField
-        label="Contact Name"
-        value={form.contact_name}
-        onChange={set("contact_name")}
-      />
-      <TextField label="Phone" value={form.phone} onChange={set("phone")} />
-      <TextField label="Email" value={form.email} onChange={set("email")} />
-      <TextField label="City" value={form.city} onChange={set("city")} />
-      <TextField label="State" value={form.state} onChange={set("state")} />
-      <TextField
-        label="Country"
-        value={form.country}
-        onChange={set("country")}
-      />
-      <TextField
-        label="Website"
-        value={form.website}
-        onChange={set("website")}
-      />
-      <TextField
-        label="Person LinkedIn"
-        value={form.person_linkedin_url}
-        onChange={set("person_linkedin_url")}
-      />
-      <TextField
-        label="Company LinkedIn"
-        value={form.company_linkedin_url}
-        onChange={set("company_linkedin_url")}
-      />
-      <TextField
-        label="Last Round Amount"
-        value={form.company_last_round_amount}
-        onChange={set("company_last_round_amount")}
-      />
-      <TextField
-        label="Last Funding Date"
-        value={form.company_last_funding_date}
-        onChange={set("company_last_funding_date")}
-      />
-      <TextField
-        label="Funding Round"
-        value={form.company_funding_round}
-        onChange={set("company_funding_round")}
-      />
-
-      <SelectField
-        label="Lead Category"
-        options={CATEGORIES}
-        value={form.lead_category}
-        onChange={set("lead_category")}
-      />
-      <SelectField
-        label="Category Type"
-        options={[
-          { value: "", label: "None" },
-          ...categoryTypes.map((c) => ({ value: c.key, label: c.label })),
-        ]}
-        value={form.category_type}
-        onChange={set("category_type")}
-      />
-      <SelectField
-        label="Source"
-        options={SOURCES}
-        value={form.lead_source}
-        onChange={set("lead_source")}
-      />
-      <SelectField
-        label="Pipeline Stage"
-        options={asOptions(stages)}
-        value={form.pipeline_stage}
-        onChange={set("pipeline_stage")}
-      />
-      <SelectField
-        label="Outreach Status"
-        options={OUTREACH_STATUSES}
-        value={form.outreach_status}
-        onChange={set("outreach_status")}
-      />
-      <SelectField
-        label="Demo Status"
-        options={asOptions(demoStatuses)}
-        value={form.demo_status}
-        onChange={set("demo_status")}
-      />
-      <SelectField
-        label="Status"
-        options={STATUSES}
-        value={form.status}
-        onChange={set("status")}
-      />
-
-      <TextField
-        label="Assigned for Phone"
-        value={form.phone_assigned_to}
-        onChange={set("phone_assigned_to")}
-      />
-      <TextField
-        label="Assigned for Email"
-        value={form.email_assigned_to}
-        onChange={set("email_assigned_to")}
-      />
-      <TextField
-        label="Verified By"
-        value={form.verified_by}
-        onChange={set("verified_by")}
-      />
-
       {showOptionalSheetFields ? (
+        // Revivflow: only the import sheet's own columns.
+        REVIVFLOW_EDIT_FIELDS.map(([key, label]) => (
+          <TextField
+            key={key}
+            label={label}
+            value={form[key]}
+            onChange={set(key)}
+          />
+        ))
+      ) : (
         <>
-          <div
-            style={{
-              gridColumn: "1 / -1",
-              marginTop: 6,
-              paddingTop: 12,
-              borderTop: "1px solid var(--line)",
-              fontSize: 13,
-              fontWeight: 800,
-              letterSpacing: "0.04em",
-              color: "var(--muted, #9aa3c0)",
-            }}
-          >
-            Revivflow Fields
-          </div>
-          {OPTIONAL_SHEET_FIELDS.map(([key, label]) => (
-            <TextField
-              key={key}
-              label={label}
-              value={form[key]}
-              onChange={set(key)}
-            />
-          ))}
+          <TextField
+            label="Company"
+            value={form.company}
+            onChange={set("company")}
+          />
+          <TextField
+            label="Contact Name"
+            value={form.contact_name}
+            onChange={set("contact_name")}
+          />
+          <TextField label="Phone" value={form.phone} onChange={set("phone")} />
+          <TextField label="Email" value={form.email} onChange={set("email")} />
+          <TextField label="City" value={form.city} onChange={set("city")} />
+          <TextField label="State" value={form.state} onChange={set("state")} />
+          <TextField
+            label="Country"
+            value={form.country}
+            onChange={set("country")}
+          />
+          <TextField
+            label="Website"
+            value={form.website}
+            onChange={set("website")}
+          />
+          <TextField
+            label="Person LinkedIn"
+            value={form.person_linkedin_url}
+            onChange={set("person_linkedin_url")}
+          />
+          <TextField
+            label="Company LinkedIn"
+            value={form.company_linkedin_url}
+            onChange={set("company_linkedin_url")}
+          />
+          <TextField
+            label="Last Round Amount"
+            value={form.company_last_round_amount}
+            onChange={set("company_last_round_amount")}
+          />
+          <TextField
+            label="Last Funding Date"
+            value={form.company_last_funding_date}
+            onChange={set("company_last_funding_date")}
+          />
+          <TextField
+            label="Funding Round"
+            value={form.company_funding_round}
+            onChange={set("company_funding_round")}
+          />
+
+          <SelectField
+            label="Lead Category"
+            options={CATEGORIES}
+            value={form.lead_category}
+            onChange={set("lead_category")}
+          />
+          <SelectField
+            label="Category Type"
+            options={[
+              { value: "", label: "None" },
+              ...categoryTypes.map((c) => ({ value: c.key, label: c.label })),
+            ]}
+            value={form.category_type}
+            onChange={set("category_type")}
+          />
+          <SelectField
+            label="Source"
+            options={SOURCES}
+            value={form.lead_source}
+            onChange={set("lead_source")}
+          />
+          <SelectField
+            label="Pipeline Stage"
+            options={asOptions(stages)}
+            value={form.pipeline_stage}
+            onChange={set("pipeline_stage")}
+          />
+          <SelectField
+            label="Outreach Status"
+            options={OUTREACH_STATUSES}
+            value={form.outreach_status}
+            onChange={set("outreach_status")}
+          />
+          <SelectField
+            label="Demo Status"
+            options={asOptions(demoStatuses)}
+            value={form.demo_status}
+            onChange={set("demo_status")}
+          />
+          <SelectField
+            label="Status"
+            options={STATUSES}
+            value={form.status}
+            onChange={set("status")}
+          />
+
+          <TextField
+            label="Assigned for Phone"
+            value={form.phone_assigned_to}
+            onChange={set("phone_assigned_to")}
+          />
+          <TextField
+            label="Assigned for Email"
+            value={form.email_assigned_to}
+            onChange={set("email_assigned_to")}
+          />
+          <TextField
+            label="Verified By"
+            value={form.verified_by}
+            onChange={set("verified_by")}
+          />
         </>
-      ) : null}
+      )}
 
       <TextAreaField
-        label="Add Note"
+        label={showOptionalSheetFields ? "Notes" : "Add Note"}
         placeholder="Appended to the lead's note history — existing notes are kept."
         value={newNote}
         onChange={setNewNote}
